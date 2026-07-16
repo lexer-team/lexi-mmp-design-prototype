@@ -1,0 +1,53 @@
+<svg width="960" height="640" viewBox="0 0 960 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="640" rx="24" fill="#F6FAFF"/>
+  <rect x="92" y="40" width="776" height="560" rx="14" fill="white" stroke="#D4E1F2" stroke-width="2"/>
+
+  <rect x="120" y="68" width="720" height="56" rx="10" fill="#E0F2FE"/>
+  <text x="144" y="101" fill="#0C4A6E" font-family="Arial, sans-serif" font-size="22" font-weight="700">Promo Calendar Q4</text>
+
+  <rect x="120" y="148" width="720" height="34" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="136" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Week</text>
+  <text x="252" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Campaign</text>
+  <text x="498" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Channel</text>
+  <text x="640" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Audience</text>
+  <text x="778" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Status</text>
+
+  <rect x="120" y="192" width="720" height="44" rx="8" fill="#FFF7ED"/>
+  <text x="136" y="219" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">Nov 18</text>
+  <text x="252" y="219" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">Early access warm-up</text>
+  <text x="498" y="219" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">Email + Meta</text>
+  <text x="640" y="219" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">BF core (90-180d)</text>
+  <text x="778" y="219" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">Scheduled</text>
+
+  <rect x="120" y="244" width="720" height="44" rx="8" fill="#ECFDF5"/>
+  <text x="136" y="271" fill="#065F46" font-family="Arial, sans-serif" font-size="12">Nov 24</text>
+  <text x="252" y="271" fill="#065F46" font-family="Arial, sans-serif" font-size="12">Countdown push</text>
+  <text x="498" y="271" fill="#065F46" font-family="Arial, sans-serif" font-size="12">Meta</text>
+  <text x="640" y="271" fill="#065F46" font-family="Arial, sans-serif" font-size="12">High-value reactivation</text>
+  <text x="778" y="271" fill="#065F46" font-family="Arial, sans-serif" font-size="12">In review</text>
+
+  <rect x="120" y="296" width="720" height="44" rx="8" fill="#FEF3C7"/>
+  <text x="136" y="323" fill="#92400E" font-family="Arial, sans-serif" font-size="12">Nov 28</text>
+  <text x="252" y="323" fill="#92400E" font-family="Arial, sans-serif" font-size="12">BF day hero offer</text>
+  <text x="498" y="323" fill="#92400E" font-family="Arial, sans-serif" font-size="12">Email + SMS</text>
+  <text x="640" y="323" fill="#92400E" font-family="Arial, sans-serif" font-size="12">All reactivation tiers</text>
+  <text x="778" y="323" fill="#92400E" font-family="Arial, sans-serif" font-size="12">Planned</text>
+
+  <rect x="120" y="368" width="342" height="180" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="140" y="394" fill="#334155" font-family="Arial, sans-serif" font-size="12" font-weight="700">Channel cadence</text>
+  <line x1="146" y1="420" x2="430" y2="420" stroke="#CBD5E1"/>
+  <line x1="146" y1="450" x2="430" y2="450" stroke="#CBD5E1"/>
+  <line x1="146" y1="480" x2="430" y2="480" stroke="#CBD5E1"/>
+  <text x="146" y="440" fill="#475569" font-family="Arial, sans-serif" font-size="11">Email: 3 sends/week</text>
+  <text x="146" y="470" fill="#475569" font-family="Arial, sans-serif" font-size="11">Meta: Daily refresh</text>
+  <text x="146" y="500" fill="#475569" font-family="Arial, sans-serif" font-size="11">SMS: 2 key moments</text>
+
+  <rect x="498" y="368" width="342" height="180" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="518" y="394" fill="#334155" font-family="Arial, sans-serif" font-size="12" font-weight="700">Q4 checkpoints</text>
+  <text x="518" y="426" fill="#475569" font-family="Arial, sans-serif" font-size="11">• Segment lock: Nov 16</text>
+  <text x="518" y="450" fill="#475569" font-family="Arial, sans-serif" font-size="11">• Creative QA: Nov 21</text>
+  <text x="518" y="474" fill="#475569" font-family="Arial, sans-serif" font-size="11">• Budget shift review: Nov 26</text>
+  <text x="518" y="498" fill="#475569" font-family="Arial, sans-serif" font-size="11">• Post-mortem prep: Dec 2</text>
+
+  <text x="120" y="582" fill="#64748B" font-family="Arial, sans-serif" font-size="11">Dummy spreadsheet preview for prototype demo.</text>
+</svg>

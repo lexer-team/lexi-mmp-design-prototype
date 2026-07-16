@@ -1,0 +1,50 @@
+<svg width="960" height="640" viewBox="0 0 960 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="640" rx="24" fill="#F8FAFC"/>
+  <rect x="84" y="36" width="792" height="568" rx="14" fill="white" stroke="#D7E0EA" stroke-width="2"/>
+
+  <rect x="112" y="64" width="736" height="56" rx="10" fill="#EEF2FF"/>
+  <text x="136" y="98" fill="#312E81" font-family="Arial, sans-serif" font-size="22" font-weight="700">Channel Budget Split (Q4)</text>
+
+  <rect x="112" y="148" width="736" height="34" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="130" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Channel</text>
+  <text x="332" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Budget</text>
+  <text x="470" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Spend to date</text>
+  <text x="636" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Remaining</text>
+  <text x="772" y="170" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700">Mix</text>
+
+  <rect x="112" y="192" width="736" height="42" rx="8" fill="#EFF6FF"/>
+  <text x="130" y="218" fill="#1E3A8A" font-family="Arial, sans-serif" font-size="12">Meta paid social</text>
+  <text x="332" y="218" fill="#1E3A8A" font-family="Arial, sans-serif" font-size="12">$420,000</text>
+  <text x="470" y="218" fill="#1E3A8A" font-family="Arial, sans-serif" font-size="12">$256,000</text>
+  <text x="636" y="218" fill="#1E3A8A" font-family="Arial, sans-serif" font-size="12">$164,000</text>
+  <text x="772" y="218" fill="#1E3A8A" font-family="Arial, sans-serif" font-size="12">46%</text>
+
+  <rect x="112" y="242" width="736" height="42" rx="8" fill="#ECFDF5"/>
+  <text x="130" y="268" fill="#065F46" font-family="Arial, sans-serif" font-size="12">Klaviyo email</text>
+  <text x="332" y="268" fill="#065F46" font-family="Arial, sans-serif" font-size="12">$240,000</text>
+  <text x="470" y="268" fill="#065F46" font-family="Arial, sans-serif" font-size="12">$132,000</text>
+  <text x="636" y="268" fill="#065F46" font-family="Arial, sans-serif" font-size="12">$108,000</text>
+  <text x="772" y="268" fill="#065F46" font-family="Arial, sans-serif" font-size="12">26%</text>
+
+  <rect x="112" y="292" width="736" height="42" rx="8" fill="#FFF7ED"/>
+  <text x="130" y="318" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">SMS</text>
+  <text x="332" y="318" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">$95,000</text>
+  <text x="470" y="318" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">$49,000</text>
+  <text x="636" y="318" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">$46,000</text>
+  <text x="772" y="318" fill="#9A3412" font-family="Arial, sans-serif" font-size="12">10%</text>
+
+  <rect x="112" y="342" width="736" height="42" rx="8" fill="#FEF2F2"/>
+  <text x="130" y="368" fill="#991B1B" font-family="Arial, sans-serif" font-size="12">Affiliate + partners</text>
+  <text x="332" y="368" fill="#991B1B" font-family="Arial, sans-serif" font-size="12">$160,000</text>
+  <text x="470" y="368" fill="#991B1B" font-family="Arial, sans-serif" font-size="12">$71,000</text>
+  <text x="636" y="368" fill="#991B1B" font-family="Arial, sans-serif" font-size="12">$89,000</text>
+  <text x="772" y="368" fill="#991B1B" font-family="Arial, sans-serif" font-size="12">18%</text>
+
+  <rect x="112" y="414" width="736" height="170" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="132" y="442" fill="#334155" font-family="Arial, sans-serif" font-size="12" font-weight="700">Budget notes</text>
+  <text x="132" y="470" fill="#475569" font-family="Arial, sans-serif" font-size="11">• Shift +8% from affiliate to Meta during Nov 24-29 if ROAS stays above 3.8x.</text>
+  <text x="132" y="494" fill="#475569" font-family="Arial, sans-serif" font-size="11">• Hold email investment for repeat-customer urgency waves.</text>
+  <text x="132" y="518" fill="#475569" font-family="Arial, sans-serif" font-size="11">• Keep 6% contingency budget unallocated until BF day pacing check.</text>
+
+  <text x="112" y="606" fill="#64748B" font-family="Arial, sans-serif" font-size="11">Dummy CSV preview for prototype demo.</text>
+</svg>

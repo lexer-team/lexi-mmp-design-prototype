@@ -1,0 +1,34 @@
+<svg width="1200" height="800" viewBox="0 0 1200 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="1200" y2="800" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171717"/>
+      <stop offset="1" stop-color="#2B0E1E"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="800" rx="28" fill="url(#bg3)"/>
+
+  <g transform="translate(100 90)">
+    <rect x="0" y="0" width="1000" height="620" rx="28" fill="#131313" stroke="#CD4496" stroke-opacity="0.5"/>
+
+    <text x="64" y="110" fill="#FCDAEB" font-size="56" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">IN-STORE BLACK FRIDAY</text>
+    <text x="64" y="164" fill="#FFFFFF" font-size="30" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">WINDOW + AISLE SIGNAGE KIT</text>
+
+    <g transform="translate(70 220)">
+      <rect x="0" y="0" width="270" height="300" rx="18" fill="#FCDAEB"/>
+      <text x="26" y="86" fill="#A82071" font-size="34" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">BLACK</text>
+      <text x="26" y="130" fill="#A82071" font-size="34" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">FRIDAY</text>
+      <text x="26" y="220" fill="#A82071" font-size="58" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">UP TO</text>
+      <text x="26" y="278" fill="#A82071" font-size="86" font-family="'Mona Sans', Arial, sans-serif" font-weight="900">70%</text>
+    </g>
+
+    <g transform="translate(380 220)">
+      <rect x="0" y="0" width="540" height="300" rx="18" fill="#1C1C1C" stroke="#CD4496"/>
+      <text x="34" y="66" fill="#FCDAEB" font-size="28" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">Placement plan</text>
+      <text x="34" y="124" fill="#FFFFFF" font-size="22" font-family="'Mona Sans', Arial, sans-serif">• Storefront vinyl: all metro stores</text>
+      <text x="34" y="168" fill="#FFFFFF" font-size="22" font-family="'Mona Sans', Arial, sans-serif">• Entry A-frame: top 80 locations</text>
+      <text x="34" y="212" fill="#FFFFFF" font-size="22" font-family="'Mona Sans', Arial, sans-serif">• Denim aisle cards: all stores</text>
+      <text x="34" y="256" fill="#FFFFFF" font-size="22" font-family="'Mona Sans', Arial, sans-serif">• Fitting room reminders: high-traffic stores</text>
+    </g>
+  </g>
+</svg>
