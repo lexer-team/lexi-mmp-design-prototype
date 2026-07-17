@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { ConfirmDialog } from "@/components/ui/Dialog";
@@ -68,7 +69,7 @@ import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations";
+type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
 import { registerDefs } from "@/data/def-registry";
@@ -478,6 +479,8 @@ function SegmentV1Inner() {
     : page === "playbook" ? "Playbook"
     : page === "calendar" ? "Calendar"
     : page === "insights" ? "Insights"
+    : page === "users" ? "Users"
+    : page === "context" ? "Context"
     : page === "sources" ? "Sources"
     : page === "integrations" ? "Integrations"
     : page === "activations" ? "Activations"
@@ -660,6 +663,14 @@ function SegmentV1Inner() {
           ) : page === "sources" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <SourcesPage />
+            </div>
+          ) : page === "users" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <UsersPage />
+            </div>
+          ) : page === "context" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <BusinessContextPage />
             </div>
           ) : page === "integrations" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
@@ -1363,6 +1374,864 @@ function SourcesPage() {
   );
 }
 
+function UsersPage() {
+  type UserStatus = "Active" | "Invited" | "Suspended";
+  type ManagedUser = {
+    id: string;
+    fullName: string;
+    email: string;
+    role: string;
+    team: string;
+    timeZone: string;
+    addedDate: string;
+    loginLog: Array<{ id: string; timestamp: string; activity: string; channel: string }>;
+    status: UserStatus;
+    lastUpdated: string;
+  };
+
+  const [roleOptions, setRoleOptions] = useState(["Admin", "Manager", "Analyst", "Viewer"]);
+  const [teamOptions, setTeamOptions] = useState(["Operations", "Growth", "Data", "Marketing", "Lifecycle"]);
+  const timeZoneOptions = [
+    "Australia/Sydney",
+    "Australia/Melbourne",
+    "America/Los_Angeles",
+    "America/New_York",
+    "Europe/London",
+  ];
+
+  const [users, setUsers] = useState<ManagedUser[]>([
+    {
+      id: "usr-1",
+      fullName: "Izac Hall",
+      email: "izac@lexer.ai",
+      role: "Admin",
+      team: "Operations",
+      timeZone: "Australia/Sydney",
+      addedDate: "2026-05-11",
+      loginLog: [
+        { id: "log-1", timestamp: "2026-07-17 09:14", activity: "Successful login", channel: "Web app" },
+        { id: "log-2", timestamp: "2026-07-16 18:03", activity: "MFA challenge completed", channel: "Web app" },
+        { id: "log-3", timestamp: "2026-07-15 08:22", activity: "Password reset", channel: "Email link" },
+      ],
+      status: "Active",
+      lastUpdated: "Just now",
+    },
+    {
+      id: "usr-2",
+      fullName: "Mina Lee",
+      email: "mina@lexer.ai",
+      role: "Manager",
+      team: "Growth",
+      timeZone: "Australia/Melbourne",
+      addedDate: "2026-06-04",
+      loginLog: [
+        { id: "log-4", timestamp: "2026-07-17 07:42", activity: "Successful login", channel: "Web app" },
+        { id: "log-5", timestamp: "2026-07-16 16:57", activity: "Session timeout", channel: "Web app" },
+      ],
+      status: "Active",
+      lastUpdated: "2 hr ago",
+    },
+    {
+      id: "usr-3",
+      fullName: "Ryan Ortiz",
+      email: "ryan@lexer.ai",
+      role: "Analyst",
+      team: "Data",
+      timeZone: "America/Los_Angeles",
+      addedDate: "2026-07-13",
+      loginLog: [
+        { id: "log-6", timestamp: "2026-07-13 11:05", activity: "Invite accepted", channel: "Email link" },
+      ],
+      status: "Invited",
+      lastUpdated: "1 day ago",
+    },
+  ]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(users[0]?.id ?? null);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserRole, setNewUserRole] = useState("Analyst");
+  const [newUserTeam, setNewUserTeam] = useState("Data");
+  const [newUserTimeZone, setNewUserTimeZone] = useState("Australia/Sydney");
+  const [showAddRole, setShowAddRole] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [showAddTeam, setShowAddTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+
+  const selectedUser = selectedUserId ? users.find((u) => u.id === selectedUserId) ?? null : null;
+
+  const updateSelectedUser = (updater: (user: ManagedUser) => ManagedUser) => {
+    if (!selectedUserId) return;
+    setUsers((prev) => prev.map((user) => (
+      user.id === selectedUserId ? updater(user) : user
+    )));
+  };
+
+  const removeSelectedUser = () => {
+    if (!selectedUserId) return;
+    setUsers((prev) => {
+      const nextUsers = prev.filter((user) => user.id !== selectedUserId);
+      setSelectedUserId(nextUsers[0]?.id ?? null);
+      return nextUsers;
+    });
+  };
+
+  const addUser = () => {
+    if (!newUserName.trim() || !newUserEmail.trim()) return;
+    const id = `usr-${Date.now()}`;
+    const nextUser: ManagedUser = {
+      id,
+      fullName: newUserName.trim(),
+      email: newUserEmail.trim(),
+      role: newUserRole,
+      team: newUserTeam,
+      timeZone: newUserTimeZone,
+      addedDate: new Date().toISOString().slice(0, 10),
+      loginLog: [
+        {
+          id: `log-${Date.now()}`,
+          timestamp: "Not signed in yet",
+          activity: "User account created",
+          channel: "Admin panel",
+        },
+      ],
+      status: "Invited",
+      lastUpdated: "Just now",
+    };
+    setUsers((prev) => [nextUser, ...prev]);
+    setSelectedUserId(id);
+    setNewUserName("");
+    setNewUserEmail("");
+  };
+
+  return (
+    <div className="flex h-full flex-col px-6 py-6">
+      <div className="mb-4 flex flex-col gap-1">
+        <h1 className="text-xl font-semibold text-foreground">Users</h1>
+        <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
+      </div>
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-4 overflow-y-auto rounded-xl border border-border bg-card p-4">
+          <div className="space-y-3 rounded-lg border border-border bg-background p-3">
+            <p className="text-xs font-semibold text-muted-foreground">Create user</p>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground">Full name</p>
+              <Input className="mt-1" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Enter full name" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground">Email</p>
+              <Input className="mt-1" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="name@company.com" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground">Role</p>
+                <select
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground"
+                  value={newUserRole}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === "__add_role__") {
+                      setShowAddRole(true);
+                      return;
+                    }
+                    setNewUserRole(value);
+                  }}
+                >
+                  {roleOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                  <option value="__add_role__">+ Add Role</option>
+                </select>
+                {showAddRole && (
+                  <div className="mt-2 rounded-md border border-border bg-card p-2">
+                    <p className="text-[11px] font-semibold text-muted-foreground">New role</p>
+                    <Input
+                      className="mt-1 h-8"
+                      value={newRoleName}
+                      onChange={(e) => setNewRoleName(e.target.value)}
+                      placeholder="Enter role name"
+                    />
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowAddRole(false);
+                          setNewRoleName("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const role = newRoleName.trim();
+                          if (!role) return;
+                          const exists = roleOptions.some((option) => option.toLowerCase() === role.toLowerCase());
+                          if (!exists) {
+                            setRoleOptions((prev) => [...prev, role]);
+                          }
+                          setNewUserRole(role);
+                          setShowAddRole(false);
+                          setNewRoleName("");
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground">Team</p>
+                <select
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground"
+                  value={newUserTeam}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === "__add_team__") {
+                      setShowAddTeam(true);
+                      return;
+                    }
+                    setNewUserTeam(value);
+                  }}
+                >
+                  {teamOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                  <option value="__add_team__">+ Add Team</option>
+                </select>
+                {showAddTeam && (
+                  <div className="mt-2 rounded-md border border-border bg-card p-2">
+                    <p className="text-[11px] font-semibold text-muted-foreground">New team</p>
+                    <Input
+                      className="mt-1 h-8"
+                      value={newTeamName}
+                      onChange={(e) => setNewTeamName(e.target.value)}
+                      placeholder="Enter team name"
+                    />
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowAddTeam(false);
+                          setNewTeamName("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const team = newTeamName.trim();
+                          if (!team) return;
+                          const exists = teamOptions.some((option) => option.toLowerCase() === team.toLowerCase());
+                          if (!exists) {
+                            setTeamOptions((prev) => [...prev, team]);
+                          }
+                          setNewUserTeam(team);
+                          setShowAddTeam(false);
+                          setNewTeamName("");
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-muted-foreground">Time zone</p>
+              <select
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground"
+                value={newUserTimeZone}
+                onChange={(e) => setNewUserTimeZone(e.target.value)}
+              >
+                {timeZoneOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </div>
+            <Button className="w-full" onClick={addUser}>Create user</Button>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-border bg-background p-3">
+            <p className="text-xs font-semibold text-muted-foreground">User directory</p>
+            <div className="max-h-[26rem] space-y-1 overflow-y-auto">
+              {users.map((user) => (
+                <button
+                  key={user.id}
+                  onClick={() => setSelectedUserId(user.id)}
+                  className={cn(
+                    "w-full rounded-md border px-2.5 py-2 text-left transition-colors",
+                    selectedUserId === user.id
+                      ? "border-primary/30 bg-primary/5"
+                      : "border-transparent hover:border-border hover:bg-muted/40",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-medium text-foreground">{user.fullName}</p>
+                    <Badge
+                      size="sm"
+                      variant={user.status === "Active" ? "success" : user.status === "Invited" ? "outline" : "destructive"}
+                    >
+                      {user.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-foreground-secondary">{user.email}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto rounded-xl border border-border bg-card p-4">
+          {selectedUser ? (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Account details</p>
+                  <h2 className="text-base font-semibold text-foreground">{selectedUser.fullName}</h2>
+                </div>
+                <Badge
+                  size="sm"
+                  variant={selectedUser.status === "Active" ? "success" : selectedUser.status === "Invited" ? "outline" : "destructive"}
+                >
+                  {selectedUser.status}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Full name</p>
+                  <Input className="mt-1" value={selectedUser.fullName} onChange={(e) => updateSelectedUser((u) => ({ ...u, fullName: e.target.value, lastUpdated: "Just now" }))} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Email</p>
+                  <Input className="mt-1" value={selectedUser.email} onChange={(e) => updateSelectedUser((u) => ({ ...u, email: e.target.value, lastUpdated: "Just now" }))} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Role</p>
+                  <Input className="mt-1" value={selectedUser.role} onChange={(e) => updateSelectedUser((u) => ({ ...u, role: e.target.value, lastUpdated: "Just now" }))} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Team</p>
+                  <Input className="mt-1" value={selectedUser.team} onChange={(e) => updateSelectedUser((u) => ({ ...u, team: e.target.value, lastUpdated: "Just now" }))} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Time zone</p>
+                  <select
+                    className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground"
+                    value={selectedUser.timeZone}
+                    onChange={(e) => updateSelectedUser((u) => ({ ...u, timeZone: e.target.value, lastUpdated: "Just now" }))}
+                  >
+                    {timeZoneOptions.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">User added date</p>
+                  <Input className="mt-1" value={selectedUser.addedDate} onChange={(e) => updateSelectedUser((u) => ({ ...u, addedDate: e.target.value, lastUpdated: "Just now" }))} />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                {selectedUser.status !== "Active" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={selectedUser.status === "Invited"}
+                    onClick={() => updateSelectedUser((u) => ({ ...u, status: "Invited", lastUpdated: "Just now" }))}
+                  >
+                    Invited
+                  </Button>
+                )}
+
+                {selectedUser.status !== "Invited" && (
+                  <Button
+                    size="sm"
+                    disabled={selectedUser.status === "Active"}
+                    onClick={() => updateSelectedUser((u) => ({ ...u, status: "Active", lastUpdated: "Just now" }))}
+                  >
+                    Active
+                  </Button>
+                )}
+
+                <Button size="sm" className="bg-black text-white hover:bg-black/90" onClick={() => updateSelectedUser((u) => ({ ...u, status: "Suspended", lastUpdated: "Just now" }))}>Suspend</Button>
+                {selectedUser.status !== "Invited" && (
+                  <Button size="sm" variant="destructive" onClick={removeSelectedUser}>Remove</Button>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-border bg-background p-3">
+                <p className="text-xs font-semibold text-muted-foreground">Login log</p>
+                <div className="mt-2 space-y-1.5">
+                  {selectedUser.loginLog.map((entry) => (
+                    <div key={entry.id} className="rounded-md border border-border/70 bg-card px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium text-foreground">{entry.activity}</p>
+                        <p className="text-[11px] text-muted-foreground">{entry.timestamp}</p>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-foreground-secondary">{entry.channel}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground">Last updated: {selectedUser.lastUpdated}</p>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Select a user to manage account details.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BusinessContextPage() {
+  type ContextCard = {
+    id: string;
+    label: string;
+    isCustom: boolean;
+    text: string;
+    savedText: string;
+    isEditing: boolean;
+    isSaved: boolean;
+    isConfirmed: boolean;
+  };
+
+  const [cards, setCards] = useState<ContextCard[]>([
+    {
+      id: "brand",
+      label: "Brand",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "brand-name",
+      label: "Brand Name(s)",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "brand-context",
+      label: "Brand Context",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "customer-terminology",
+      label: "Customer terminology - customers/members/guests",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "data",
+      label: "Data",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "data-sources-systems",
+      label: "Data sources and systems",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "identity-resolution-rules",
+      label: "Identity resolution rules - same customer across channels/devices",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "household-income-tiers",
+      label: "Household income tiers",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "field-definitions",
+      label: "Field definitions - source-specific meaning overrides",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "data-quality-flags",
+      label: "Data quality flags - known unreliable fields/periods",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "source-hierarchy",
+      label: "Source hierarchy - system of record on conflict",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "customer-intelligence",
+      label: "Customer intelligence",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "lifecycle-tiers",
+      label: "Lifecycle tiers - New/Active/Lapsing/Lapsed thresholds",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "value-tiers",
+      label: "Value tiers - VIP/top-spender definitions",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "exclusion-groups",
+      label: "Exclusion groups - staff, wholesale, test accounts",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "commercial-calendar",
+      label: "Commercial calendar",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "financial-year",
+      label: "Financial year - start date",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "peak-periods",
+      label: "Peak periods - sale events and date rules",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "campaign-vs-bau",
+      label: "Campaign vs BAU - campaign period flagging",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "channels-activation",
+      label: "Channels and activation",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "channel-defaults",
+      label: "Channel defaults - per-channel opt-in/consent audience",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "suppression-rules",
+      label: "Suppression rules - who gets excluded and why",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "product-catalog",
+      label: "Product and catalog",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "category-taxonomy",
+      label: "Category taxonomy - how products/services are grouped",
+      isCustom: false,
+      text: "",
+      savedText: "",
+      isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+  ]);
+  const [pendingClearCardId, setPendingClearCardId] = useState<string | null>(null);
+
+  const updateCard = (cardId: string, updater: (card: ContextCard) => ContextCard) => {
+    setCards((prev) => prev.map((card) => (card.id === cardId ? updater(card) : card)));
+  };
+
+  const startEditing = (cardId: string) => {
+    updateCard(cardId, (card) => ({ ...card, isEditing: true, isSaved: false, isConfirmed: false }));
+  };
+
+  const updateCardText = (cardId: string, text: string) => {
+    updateCard(cardId, (card) => ({ ...card, text }));
+  };
+
+  const updateCardLabel = (cardId: string, label: string) => {
+    updateCard(cardId, (card) => ({ ...card, label }));
+  };
+
+  const saveCard = (cardId: string) => {
+    updateCard(cardId, (card) => ({ ...card, savedText: card.text, isSaved: true, isConfirmed: false, isEditing: false }));
+  };
+
+  const confirmCard = (cardId: string) => {
+    updateCard(cardId, (card) => ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
+  };
+
+  const clearCard = (cardId: string) => {
+    updateCard(cardId, (card) => ({ ...card, text: "", savedText: "", isSaved: false, isConfirmed: false, isEditing: true }));
+  };
+
+  const addMoreCard = () => {
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setCards((prev) => [
+      ...prev,
+      {
+        id,
+        label: "New context box",
+        isCustom: true,
+        text: "",
+        savedText: "",
+        isEditing: true,
+        isSaved: false,
+        isConfirmed: false,
+      },
+    ]);
+  };
+
+  const saveEntirePage = () => {
+    setCards((prev) => prev.map((card) => ({
+      ...card,
+      savedText: card.text,
+      isSaved: true,
+      isConfirmed: false,
+      isEditing: false,
+    })));
+  };
+
+  const sectionIds = new Set([
+    "brand",
+    "data",
+    "customer-intelligence",
+    "commercial-calendar",
+    "channels-activation",
+    "product-catalog",
+  ]);
+
+  return (
+    <div className="flex h-full flex-col px-6 py-6">
+      <div className="mb-4 flex flex-col gap-1">
+        <h1 className="text-xl font-semibold text-foreground">Context</h1>
+        <p className="text-sm text-foreground-secondary">Capture your business context so Lexer can build your semantic layer.</p>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+          <div className="grid grid-cols-1 gap-4">
+            {cards.map((card) => {
+              if (sectionIds.has(card.id)) {
+                return (
+                  <div key={card.id} className="pt-2">
+                    <h2 className="text-base font-semibold text-foreground">{card.label}</h2>
+                    <div className="mt-2 border-b border-border" />
+                  </div>
+                );
+              }
+
+              const editing = card.isEditing;
+              const saved = card.isSaved;
+              const confirmed = card.isConfirmed;
+              const lockByConfirmation = confirmed && !editing;
+
+              return (
+                <div key={card.id} className="rounded-xl border border-border bg-background p-3">
+                  {card.isCustom ? (
+                    <Input
+                      value={card.label}
+                      readOnly={!editing}
+                      onChange={(e) => updateCardLabel(card.id, e.target.value)}
+                      className="h-8 text-sm font-semibold read-only:cursor-default read-only:bg-muted/25"
+                    />
+                  ) : (
+                    <p className="text-sm font-semibold text-foreground">{card.label}</p>
+                  )}
+
+                  <p className="mt-3 text-[11px] font-semibold text-muted-foreground">Description</p>
+                  <Textarea
+                    rows={4}
+                    value={card.text}
+                    readOnly={!editing}
+                    onChange={(e) => updateCardText(card.id, e.target.value)}
+                    className="mt-1 min-h-20 read-only:cursor-default read-only:bg-muted/25"
+                  />
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!editing || lockByConfirmation}
+                      onClick={() => setPendingClearCardId(card.id)}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => startEditing(card.id)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!editing || lockByConfirmation}
+                      onClick={() => saveCard(card.id)}
+                    >
+                      {saved && !editing ? "Saved" : "Save"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={!editing || lockByConfirmation}
+                      onClick={() => confirmCard(card.id)}
+                    >
+                      {confirmed && !editing ? "Confirmed" : "Confirm"}
+                    </Button>
+                  </div>
+
+                  {saved && !confirmed && !editing && (
+                    <p className="mt-2 text-xs text-foreground-secondary">
+                      Changes have been saved but not approved or applied to your context layer.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+        <Button variant="outline" onClick={addMoreCard}>Add more</Button>
+        <Button onClick={saveEntirePage}>Save</Button>
+      </div>
+
+      <ConfirmDialog
+        open={pendingClearCardId != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingClearCardId(null);
+        }}
+        variant="destructive"
+        icon={RiProhibitedLine}
+        title="Clear this context box?"
+        description="Do you want to clear all of the information in this box? This can not be undone and unsaved work will be lost."
+        confirmLabel="Yes, clear"
+        cancelLabel="Keep content"
+        onConfirm={() => {
+          if (!pendingClearCardId) return;
+          clearCard(pendingClearCardId);
+          setPendingClearCardId(null);
+        }}
+      />
+    </div>
+  );
+}
+
 function IntegrationsPage() {
   type IntegrationStatus = "Connected" | "Available" | "Disconnected";
   type IntegrationRecord = {
@@ -1925,7 +2794,7 @@ function IntegrationsPage() {
         )}
 
         {openIntegration && !panelExpanded && (
-          <div className="relative z-40 w-[39.0625rem] shrink-0 overflow-y-auto rounded-xl border border-border bg-card">
+          <div className="relative z-40 w-[31.25rem] shrink-0 overflow-y-auto rounded-xl border border-border bg-card">
             <div className="sticky top-0 z-10 border-b border-border bg-card px-4 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -2071,7 +2940,7 @@ function IntegrationsPage() {
                       </div>
 
                       <div className="rounded-lg border border-border bg-background p-3">
-                        <p className="text-xs font-medium text-muted-foreground">Connection frame</p>
+                        <p className="text-xs font-medium text-muted-foreground">Sync Log</p>
                         <div className="mt-2">
                           <p className="text-sm text-foreground-secondary">{openIntegration.updated}</p>
                         </div>
@@ -2222,7 +3091,7 @@ function IntegrationsPage() {
                       </div>
 
                       <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
-                        <p className="text-xs font-medium text-muted-foreground">Connection frame</p>
+                        <p className="text-xs font-medium text-muted-foreground">Sync Log</p>
                         <div className="mt-2">
                           <p className="text-sm text-foreground-secondary">{openIntegration.updated}</p>
                         </div>
@@ -2291,6 +3160,8 @@ function Sidebar({
   const inSegments = page === "segments" || page === "segment-detail";
   const inActivations = page === "activations";
   const inIntegrations = page === "integrations";
+  const inContext = page === "context";
+  const inUsers = page === "users";
   const inData = page === "definitions" || page === "metrics" || page === "sources";
   const [activationsOpen, setActivationsOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
@@ -2344,32 +3215,6 @@ function Sidebar({
             <li><NavRow icon={RiAddLine} label="New Chat" main collapsed={collapsed} active={onNewChat} onClick={newChat} /></li>
             <li>
               <NavRow
-                icon={RiGroupLine}
-                label="Segments"
-                collapsed={collapsed}
-                active={inSegments}
-                onClick={() => onNavigate("segments")}
-                trailing={!collapsed ? (
-                  <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-foreground tabular-nums">
-                    {savedSegmentCount}
-                  </span>
-                ) : undefined}
-              />
-            </li>
-            <li><NavRow icon={RiBroadcastLine} label="Activations" collapsed={collapsed} active={collapsed ? inActivations : inActivations && !activationsOpen} onClick={() => onSelectActivationFilter("all")} trailing={!collapsed ? <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-foreground tabular-nums">{state.activations.length}</span> : undefined} trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", activationsOpen && "rotate-90")} /> : undefined} onTrailingToggle={!collapsed ? () => setActivationsOpen((o) => !o) : undefined} trailingToggleLabel="Toggle activation filters" />
-              {!collapsed && activationsOpen && (
-                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
-                  <li><SubNavRow label="All activations" active={inActivations && activationFilter === "all"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.all}</span>} onClick={() => onSelectActivationFilter("all")} /></li>
-                  {activationCount.live > 0 && <li><SubNavRow label="Live" active={inActivations && activationFilter === "live"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.live}</span>} onClick={() => onSelectActivationFilter("live")} /></li>}
-                  {activationCount.scheduled > 0 && <li><SubNavRow label="Scheduled" active={inActivations && activationFilter === "scheduled"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.scheduled}</span>} onClick={() => onSelectActivationFilter("scheduled")} /></li>}
-                  {activationCount["awaiting-approval"] > 0 && <li><SubNavRow label="Awaiting approval" active={inActivations && activationFilter === "awaiting-approval"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount["awaiting-approval"]}</span>} onClick={() => onSelectActivationFilter("awaiting-approval")} /></li>}
-                  {activationCount.sent > 0 && <li><SubNavRow label="Sent" active={inActivations && activationFilter === "sent"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.sent}</span>} onClick={() => onSelectActivationFilter("sent")} /></li>}
-                  {activationCount.completed > 0 && <li><SubNavRow label="Completed" active={inActivations && activationFilter === "completed"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.completed}</span>} onClick={() => onSelectActivationFilter("completed")} /></li>}
-                </ul>
-              )}
-            </li>
-            <li>
-              <NavRow
                 icon={RiDatabase2Line}
                 label="Data"
                 collapsed={collapsed}
@@ -2387,8 +3232,9 @@ function Sidebar({
                 </ul>
               )}
             </li>
+            <li><NavRow icon={RiGroupLine} label="Users" collapsed={collapsed} active={inUsers} onClick={() => onNavigate("users")} /></li>
+            <li><NavRow icon={RiBookOpenLine} label="Context" collapsed={collapsed} active={inContext} onClick={() => onNavigate("context")} /></li>
             <li><NavRow icon={RiPlugLine} label="Integrations" collapsed={collapsed} active={inIntegrations} onClick={() => onNavigate("integrations")} /></li>
-            <li><NavRow icon={RiDashboardLine} label="Dashboards (WIP)" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
             {!collapsed && (
               <li>
                 <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Pinned Chats</div>
@@ -2439,7 +3285,48 @@ function Sidebar({
             )}
           </ul>
         </div>
-        <div className="p-2">
+        <div className="space-y-2 p-2">
+          <ul className="flex list-none flex-col gap-0.5 border-t border-sidebar-border/50 pt-2">
+            <li>
+              <NavRow
+                icon={RiGroupLine}
+                label="Segments"
+                collapsed={collapsed}
+                active={inSegments}
+                onClick={() => onNavigate("segments")}
+                trailing={!collapsed ? (
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-foreground tabular-nums">
+                    {savedSegmentCount}
+                  </span>
+                ) : undefined}
+              />
+            </li>
+            <li>
+              <NavRow
+                icon={RiBroadcastLine}
+                label="Activations"
+                collapsed={collapsed}
+                active={collapsed ? inActivations : inActivations && !activationsOpen}
+                onClick={() => onSelectActivationFilter("all")}
+                trailing={!collapsed ? <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-foreground tabular-nums">{state.activations.length}</span> : undefined}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", activationsOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setActivationsOpen((o) => !o) : undefined}
+                trailingToggleLabel="Toggle activation filters"
+              />
+              {!collapsed && activationsOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="All activations" active={inActivations && activationFilter === "all"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.all}</span>} onClick={() => onSelectActivationFilter("all")} /></li>
+                  {activationCount.live > 0 && <li><SubNavRow label="Live" active={inActivations && activationFilter === "live"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.live}</span>} onClick={() => onSelectActivationFilter("live")} /></li>}
+                  {activationCount.scheduled > 0 && <li><SubNavRow label="Scheduled" active={inActivations && activationFilter === "scheduled"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.scheduled}</span>} onClick={() => onSelectActivationFilter("scheduled")} /></li>}
+                  {activationCount["awaiting-approval"] > 0 && <li><SubNavRow label="Awaiting approval" active={inActivations && activationFilter === "awaiting-approval"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount["awaiting-approval"]}</span>} onClick={() => onSelectActivationFilter("awaiting-approval")} /></li>}
+                  {activationCount.sent > 0 && <li><SubNavRow label="Sent" active={inActivations && activationFilter === "sent"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.sent}</span>} onClick={() => onSelectActivationFilter("sent")} /></li>}
+                  {activationCount.completed > 0 && <li><SubNavRow label="Completed" active={inActivations && activationFilter === "completed"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.completed}</span>} onClick={() => onSelectActivationFilter("completed")} /></li>}
+                </ul>
+              )}
+            </li>
+            <li><NavRow icon={RiDashboardLine} label="Dashboards (WIP)" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
+          </ul>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {collapsed ? (
@@ -2468,6 +3355,8 @@ function Sidebar({
               <DropdownMenuItem onSelect={() => onNavigate("chat")}>Home</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onNavigate("segments")}>Segments</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onSelectActivationFilter("all")}>Activations</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onNavigate("users")}>Users</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onNavigate("context")}>Context</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuSub>
                 <DropdownMenuPrimitive.SubTrigger
