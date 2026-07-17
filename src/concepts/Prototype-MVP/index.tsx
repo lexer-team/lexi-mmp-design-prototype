@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LexerLogo } from "@/components/layout/LexerLogo";
 import { Avatar } from "@/components/ui/Avatar";
@@ -149,6 +149,7 @@ function SegmentV1Inner() {
   const sourcesPanelOpen = isChat && state.openSourcesIds != null;
   // The side panel (segment detail OR sources list) opens beside chat and segments pages.
   const sidePanelOpen = segmentPanelOpen || sourcesPanelOpen;
+  const previousPageRef = useRef<Page>(page);
   useEffect(() => {
     if (state.openSegmentId) setShownPanel({ kind: "segment", id: state.openSegmentId });
     else if (state.openSourcesIds) setShownPanel({ kind: "sources", ids: state.openSourcesIds });
@@ -159,6 +160,25 @@ function SegmentV1Inner() {
   }, [state.openSegmentId]);
 
   useEffect(() => {
+    const previousPage = previousPageRef.current;
+    const enteringChat = page === "chat" && previousPage !== "chat";
+    const leavingChat = previousPage === "chat" && page !== "chat";
+
+    if (enteringChat || leavingChat) {
+      if (state.openSourcesIds) {
+        dispatch({ type: "CLOSE_SOURCES" });
+      }
+      if (state.openSegmentId) {
+        dispatch({ type: "CLOSE_SEGMENT" });
+      }
+      setSegmentPanelFullScreen(false);
+      setShownPanel(null);
+    }
+
+    previousPageRef.current = page;
+  }, [page, state.openSourcesIds, state.openSegmentId, dispatch]);
+
+  useEffect(() => {
     if (page === "chat") return;
 
     let changed = false;
@@ -166,13 +186,9 @@ function SegmentV1Inner() {
       dispatch({ type: "CLOSE_SOURCES" });
       changed = true;
     }
-    if (state.openSegmentId) {
-      dispatch({ type: "CLOSE_SEGMENT" });
-      changed = true;
-    }
     if (changed) {
       setSegmentPanelFullScreen(false);
-      setShownPanel(null);
+      setShownPanel((current) => (current?.kind === "sources" ? null : current));
     }
   }, [page, state.openSourcesIds, state.openSegmentId, dispatch]);
 
@@ -228,6 +244,67 @@ function SegmentV1Inner() {
   function openActivationPage(id: string) {
     setOpenActivationId(id);
     setPage("activations");
+  }
+
+  function kickoffActivationFromSegment(segmentId: string) {
+    const artifact = state.artifacts.get(segmentId);
+    const dummy = DUMMY_SEGMENT_BY_ID[segmentId];
+    const group = BRAIN_GROUPS.find((item) => item.id === segmentId);
+
+    const segmentName = artifact?.name ?? dummy?.name ?? group?.name ?? "Segment";
+    const criteria = artifact?.body?.kind === "segment"
+      ? artifact.body.criteria
+      : (dummy?.validation ?? group?.criteria.map((criterion) => criterion.detail) ?? []);
+    const inferredPopulationFromCriteria = criteria.find((item) => item.toLowerCase().startsWith("population:"))
+      ?.split(":")
+      .slice(1)
+      .join(":")
+      .trim();
+    const population = artifact?.body?.kind === "segment"
+      ? (artifact.body.population ?? inferredPopulationFromCriteria ?? dummy?.population ?? "2,840")
+      : (dummy?.population ?? group?.population.toLocaleString() ?? "2,840");
+    const description = artifact?.body?.kind === "segment"
+      ? (artifact.body.purpose ?? dummy?.summary ?? group?.summary ?? "")
+      : (dummy?.summary ?? group?.summary ?? "");
+    const recommendations = artifact?.body?.kind === "segment"
+      ? artifact.body.recommendations
+      : dummy?.recommendations;
+
+    registerDefs([
+      {
+        id: segmentId,
+        kind: "segment",
+        name: segmentName,
+        entity: "customer",
+        description,
+        stat: { label: "customers", value: population },
+      },
+    ]);
+
+    dispatch({ type: "NEW_CHAT" });
+    dispatch({
+      type: "ADD_ARTIFACT",
+      artifact: {
+        id: segmentId,
+        type: "segment",
+        name: segmentName,
+        status: "saved",
+        body: {
+          kind: "segment",
+          purpose: description,
+          population,
+          criteria,
+          recommendations,
+        },
+      },
+    });
+
+    setPage("chat");
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", {
+        detail: { text: "Build a new activation", mentionIds: [segmentId] },
+      }));
+    }, 40);
   }
 
   function openInsight(id: string) {
@@ -512,8 +589,7 @@ function SegmentV1Inner() {
                 onOpenGroup={openSegment}
                 onBack={() => setPage("segments")}
                 onActivate={(id) => {
-                  setPendingActivationSegmentId(id);
-                  setPage("activations");
+                  kickoffActivationFromSegment(id);
                 }}
               />
             </div>
@@ -635,9 +711,9 @@ function SegmentV1Inner() {
               dispatch({ type: "CLOSE_SEGMENT" });
             }}
             onActivate={(id) => {
-              setPendingActivationSegmentId(id);
-              setPage("activations");
+              kickoffActivationFromSegment(id);
             }}
+            onOpenActivation={openActivationPage}
             onStartResize={startResize}
             fullScreen={segmentPanelFullScreen}
             onToggleFullScreen={() => setSegmentPanelFullScreen((value) => !value)}
@@ -971,16 +1047,16 @@ function ActivationSidePanel({ activationId, onClose, onOpenSegment, onStartResi
 
 // ─── Segment detail side panel (inset, narrow, right) ───────────────────────────
 
-function SegmentSidePanel({ artifactId, onClose, onActivate, onStartResize, fullScreen, onToggleFullScreen }: {
+function SegmentSidePanel({ artifactId, onClose, onActivate, onOpenActivation, onStartResize, fullScreen, onToggleFullScreen }: {
   artifactId: string;
   onClose: () => void;
   onActivate: (id: string) => void;
+  onOpenActivation: (id: string) => void;
   onStartResize: (e: React.MouseEvent) => void;
   fullScreen: boolean;
   onToggleFullScreen: () => void;
 }) {
   const { state } = useSession();
-  const [selectedActivationId, setSelectedActivationId] = useState<string | null>(null);
   const artifact = state.artifacts.get(artifactId);
 
   const matchedDummy = DUMMY_SEGMENT_BY_ID[artifactId];
@@ -993,18 +1069,23 @@ function SegmentSidePanel({ artifactId, onClose, onActivate, onStartResize, full
     ?? matchedDummy?.summary
     ?? artifact?.def?.description
     ?? "Audience definition generated from chat-confirmed assumptions.";
-  const panelPopulation = matchedDummy?.population ?? (artifact?.body?.kind === "segment"
-    ? (artifact.body.population ?? "2,840")
-    : (group?.population.toLocaleString() ?? "2,840"));
+  const inferredPopulationFromCriteria = artifact?.body?.kind === "segment"
+    ? artifact.body.criteria.find((item) => item.toLowerCase().startsWith("population:"))?.split(":").slice(1).join(":").trim()
+    : undefined;
+  const panelPopulation = artifact?.body?.kind === "segment"
+    ? (artifact.body.population ?? inferredPopulationFromCriteria ?? matchedDummy?.population ?? "2,840")
+    : (matchedDummy?.population ?? group?.population.toLocaleString() ?? "2,840");
   const panelCriteria = artifact?.body?.kind === "segment"
     ? artifact.body.criteria
     : (matchedDummy?.validation ?? group?.criteria.map((criterion) => criterion.detail) ?? []);
 
-  const panelRecommendations = matchedDummy?.recommendations ?? [
+  const panelRecommendations = artifact?.body?.kind === "segment" && artifact.body.recommendations && artifact.body.recommendations.length > 0
+    ? artifact.body.recommendations
+    : (matchedDummy?.recommendations ?? [
     "Launch with a narrow first wave and validate conversion quality",
     "Prioritise high-intent windows before broad expansion",
     "Track incremental revenue and suppression impact",
-  ];
+  ]);
 
   const panelCustomers = matchedDummy?.customers ?? [
     { id: "cust-panel-1", name: `${panelName} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
@@ -1130,7 +1211,7 @@ function SegmentSidePanel({ artifactId, onClose, onActivate, onStartResize, full
                     {panelActivations.length > 0 ? panelActivations.map((activation) => (
                       <button
                         key={activation.id}
-                        onClick={() => setSelectedActivationId(activation.id)}
+                        onClick={() => onOpenActivation(activation.id)}
                         className="flex w-full items-center justify-between rounded-lg border border-border/70 bg-background px-3 py-2 text-left hover:bg-accent"
                       >
                         <span className="text-sm font-medium text-foreground">{activation.name}</span>
@@ -1140,9 +1221,6 @@ function SegmentSidePanel({ artifactId, onClose, onActivate, onStartResize, full
                       <p className="text-sm text-muted-foreground">No activations for this segment yet.</p>
                     )}
                   </div>
-                  {selectedActivationId ? (
-                    <p className="mt-3 text-xs text-muted-foreground">Action placeholder selected: {selectedActivationId}</p>
-                  ) : null}
                 </div>
               </TabsContent>
             </Tabs>

@@ -6,6 +6,7 @@ import type { SessionAction } from "./store";
 
 export type ArtifactType =
   | "segment"
+  | "activation"
   | "insight"
   | "recommendation"
   | "workflow"
@@ -69,7 +70,15 @@ export interface ScorecardMetric {
 }
 
 export type ArtifactBody =
-  | { kind: "segment"; criteria: string[]; population?: string; purpose?: string; metrics?: SegmentMetric[] }
+  | {
+      kind: "segment";
+      criteria: string[];
+      population?: string;
+      purpose?: string;
+      metrics?: SegmentMetric[];
+      recommendations?: string[];
+    }
+  | { kind: "activation"; segmentId: string; segmentName: string; sourceMessageId: string; conversationId?: string }
   | { kind: "insight"; finding: string; implication: string }
   | { kind: "recommendation"; steps: RecommendationStep[]; scorecard: { label: string; target: string }[]; inputs: string[] }
   | { kind: "workflow"; description: string }

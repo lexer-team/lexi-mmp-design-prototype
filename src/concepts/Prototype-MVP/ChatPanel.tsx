@@ -346,11 +346,23 @@ function BlockReveal({ skeleton, children }: { skeleton: React.ReactNode; childr
   return <div className="animate-in fade-in-0 duration-300">{children}</div>;
 }
 
+interface ActivationKickoffSegment {
+  id: string;
+  name: string;
+  description?: string;
+  population?: string;
+  criteria?: string[];
+  recommendations?: string[];
+}
+
 function ActivationBuildCard({
   block,
+  sourceMessageId,
 }: {
   block: Extract<ContentBlock, { type: "activationBuild" }>;
+  sourceMessageId: string;
 }) {
+  const { state, dispatch } = useSession();
   const [activationName, setActivationName] = useState(block.activationName);
   const [activationDescription, setActivationDescription] = useState(block.activationDescription);
   const [editingName, setEditingName] = useState(false);
@@ -886,7 +898,66 @@ function ActivationBuildCard({
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={() => setApprovalSent(true)}
+                      onClick={() => {
+                        if (approvalSent) return;
+
+                        const activationId = `ac-${Date.now()}`;
+                        const timestamp = new Date().toISOString();
+                        const dateLabel = new Date().toLocaleDateString("en-AU", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        });
+
+                        dispatch({
+                          type: "ADD_ARTIFACT",
+                          artifact: {
+                            id: `artifact-${activationId}`,
+                            type: "activation",
+                            name: activationName,
+                            status: "saved",
+                            savedAt: timestamp,
+                            body: {
+                              kind: "activation",
+                              segmentId: block.segmentId,
+                              segmentName: block.segmentName,
+                              sourceMessageId,
+                              conversationId: state.activeConversationId ?? undefined,
+                            },
+                          },
+                        });
+
+                        dispatch({
+                          type: "ADD_ACTIVATION",
+                          activation: {
+                            id: activationId,
+                            name: activationName,
+                            context: `From segment: ${block.segmentName}`,
+                            segmentId: block.segmentId,
+                            segmentName: block.segmentName,
+                            channel: selectedSource?.name ?? "Multi-channel",
+                            category: "MVP activation",
+                            skill: "Activation build",
+                            approval: { kind: "approved", by: "Izac", at: dateLabel },
+                            status: "sent",
+                            whenLabel: `Approved and sent · ${dateLabel}`,
+                            result: "Activation approved and sent from MVP build card.",
+                            invocations: [
+                              {
+                                skill: "Activation build",
+                                params: `Segment ${block.segmentName} with ${selectedAccounts.length} selected account(s)` ,
+                                result: "Sent",
+                              },
+                            ],
+                            trail: [
+                              { at: dateLabel, entry: "Activation connection confirmed." },
+                              { at: dateLabel, entry: "Approved and sent from chat activation card." },
+                            ],
+                          },
+                        });
+
+                        setApprovalSent(true);
+                      }}
                       disabled={approvalSent}
                       className={cn(
                         "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
@@ -912,21 +983,25 @@ function ActivationBuildCard({
 
 function PlayedBlockView({
   rb,
+  messageId,
   live,
   reasoningEditSessionActive,
   onActionClick,
   onSegmentOpenPanel,
   onSegmentApprove,
+  onSegmentActivate,
   onConfirmReasoning,
   onRejectReasoning,
   onRequestEditReasoning,
 }: {
   rb: RevealBlock;
+  messageId: string;
   live?: boolean;
   reasoningEditSessionActive?: boolean;
   onActionClick?: (actionId: string, label: string) => void;
   onSegmentOpenPanel?: (payload: SegmentConfirmedPayload) => void;
   onSegmentApprove?: (payload: SegmentConfirmedPayload) => void;
+  onSegmentActivate?: (payload: SegmentConfirmedPayload) => void;
   onConfirmReasoning?: () => void;
   onRejectReasoning?: () => void;
   onRequestEditReasoning?: () => void;
@@ -947,6 +1022,7 @@ function PlayedBlockView({
             live={live}
             onSegmentOpenPanel={onSegmentOpenPanel}
             onSegmentApprove={onSegmentApprove}
+            onSegmentActivate={onSegmentActivate}
             onConfirm={onConfirmReasoning}
             onReject={onRejectReasoning}
             onRequestEdit={onRequestEditReasoning}
@@ -1013,7 +1089,7 @@ function PlayedBlockView({
     case "activationBuild":
       return (
         <BlockReveal skeleton={<Skeleton className="h-56 w-full" />}>
-          <ActivationBuildCard block={block} />
+          <ActivationBuildCard block={block} sourceMessageId={messageId} />
         </BlockReveal>
       );
 
@@ -1071,6 +1147,7 @@ function MessageView({
   onActionClick,
   onSegmentOpenPanel,
   onSegmentApprove,
+  onSegmentActivate,
   onConfirmReasoning,
   onRejectReasoning,
   onRequestEditReasoning,
@@ -1085,6 +1162,7 @@ function MessageView({
   onActionClick?: (actionId: string, label: string) => void;
   onSegmentOpenPanel?: (payload: SegmentConfirmedPayload) => void;
   onSegmentApprove?: (payload: SegmentConfirmedPayload) => void;
+  onSegmentActivate?: (payload: SegmentConfirmedPayload) => void;
   onConfirmReasoning?: () => void;
   onRejectReasoning?: () => void;
   onRequestEditReasoning?: () => void;
@@ -1113,11 +1191,13 @@ function MessageView({
           <PlayedBlockView
             key={rb.id}
             rb={rb}
+            messageId={message.id}
             live={liveReasoning}
             reasoningEditSessionActive={reasoningEditSessionActive}
             onActionClick={onActionClick}
             onSegmentOpenPanel={onSegmentOpenPanel}
             onSegmentApprove={onSegmentApprove}
+            onSegmentActivate={onSegmentActivate}
             onConfirmReasoning={onConfirmReasoning}
             onRejectReasoning={onRejectReasoning}
             onRequestEditReasoning={onRequestEditReasoning}
@@ -1193,20 +1273,45 @@ function StartHero() {
 function StartPrompts({
   prompts,
   onPick,
+  onQuickBuildSegment,
+  onQuickBuildActivation,
 }: {
   prompts: { id: string; text: string }[];
   onPick: (p: { id: string; text: string }) => void;
+  onQuickBuildSegment: () => void;
+  onQuickBuildActivation: () => void;
 }) {
+  const quickStartAnchorPrompt = "Black Friday is in a few weeks and I would like to know about my customers from last year.";
+
   return (
     <div className="mt-3 flex flex-col gap-2 animate-in fade-in-0 duration-300">
       {prompts.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => onPick(p)}
-          className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
-        >
-          “{p.text}”
-        </button>
+        <div key={p.id} className="flex flex-col gap-1.5">
+          <button
+            onClick={() => onPick(p)}
+            className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
+          >
+            “{p.text}”
+          </button>
+          {p.text.trim() === quickStartAnchorPrompt ? (
+            <>
+              <button
+                type="button"
+                onClick={onQuickBuildSegment}
+                className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
+              >
+                "Build a new segment"
+              </button>
+              <button
+                type="button"
+                onClick={onQuickBuildActivation}
+                className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
+              >
+                "Build A New Activation"
+              </button>
+            </>
+          ) : null}
+        </div>
       ))}
     </div>
   );
@@ -1591,7 +1696,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
       const description = dummy?.summary
         ?? (artifact?.body?.kind === "segment" ? (artifact.body.purpose ?? "") : "");
       const population = dummy?.population
-        ?? (artifact?.body?.kind === "segment" ? (artifact.body.population ?? "—") : "—");
+        ?? (artifact?.body?.kind === "segment" ? (artifact.body.population ?? "2,840") : "2,840");
       const validation = dummy?.validation
         ?? (artifact?.body?.kind === "segment" ? (artifact.body.criteria ?? []) : []);
       const recommendations = dummy?.recommendations ?? [
@@ -1827,7 +1932,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         const artifact = segmentId ? state.artifacts.get(segmentId) : undefined;
         const today = new Date().toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" });
         const population = dummy?.population
-          ?? (artifact?.body?.kind === "segment" ? (artifact.body.population ?? "—") : "—");
+          ?? (artifact?.body?.kind === "segment" ? (artifact.body.population ?? "2,840") : "2,840");
         const rules = dummy?.validation
           ?? (artifact?.body?.kind === "segment" ? (artifact.body.criteria ?? []) : []);
 
@@ -2295,6 +2400,20 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   }, []);
 
   useEffect(() => {
+    const onJumpToMessage = (event: Event) => {
+      const detail = (event as CustomEvent<{ messageId?: string }>).detail;
+      const messageId = detail?.messageId;
+      if (!messageId) return;
+      const el = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (!el) return;
+      (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    window.addEventListener("prototype-master:jump-to-message", onJumpToMessage as EventListener);
+    return () => window.removeEventListener("prototype-master:jump-to-message", onJumpToMessage as EventListener);
+  }, []);
+
+  useEffect(() => {
     setAwaitingMvpSegmentKind(false);
     setAwaitingReasoningEditTarget(null);
     setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
@@ -2416,6 +2535,23 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
     }
   }
 
+  const quickStartNewSegmentChat = useCallback(() => {
+    dispatch({ type: "NEW_CHAT" });
+    window.setTimeout(() => {
+      submitRef.current("Build a new segment", []);
+      window.setTimeout(() => {
+        submitRef.current("High value customers who shopped Black Friday last year", []);
+      }, 60);
+    }, 40);
+  }, [dispatch]);
+
+  const quickStartNewActivationChat = useCallback(() => {
+    dispatch({ type: "NEW_CHAT" });
+    window.setTimeout(() => {
+      submitRef.current("Build a new activation", []);
+    }, 40);
+  }, [dispatch]);
+
   const promptForSegmentClarification = useCallback(() => {
     const clarificationText = "What would you like to do next?";
     setMessages((ms) => [
@@ -2497,7 +2633,15 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   const assumptionsToCriteria = (items: ReasoningAssumption[]) =>
     items.map((item) => `${item.label}: ${item.value}`);
 
-  const upsertSegmentArtifactFromPayload = useCallback((payload: SegmentConfirmedPayload, save: boolean) => {
+  const upsertSegmentArtifactFromPayload = useCallback((
+    payload: SegmentConfirmedPayload,
+    save: boolean,
+    recommendations?: string[],
+  ) => {
+    const existingArtifact = state.artifacts.get(payload.id);
+    const existingRecommendations = existingArtifact?.body?.kind === "segment"
+      ? existingArtifact.body.recommendations
+      : undefined;
     const artifact: Artifact = {
       id: payload.id,
       type: "segment",
@@ -2508,29 +2652,71 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         purpose: payload.description,
         population: payload.population,
         criteria: assumptionsToCriteria(payload.assumptions),
+        recommendations: recommendations ?? existingRecommendations,
       },
     };
     dispatch({ type: "ADD_ARTIFACT", artifact });
     if (save) {
       dispatch({ type: "SAVE_ARTIFACT", id: payload.id });
     }
-  }, [dispatch]);
+  }, [dispatch, state.artifacts]);
 
   const handleOpenSegmentPanel = useCallback((payload: SegmentConfirmedPayload) => {
     upsertSegmentArtifactFromPayload(payload, false);
     dispatch({ type: "OPEN_SEGMENT", id: payload.id });
   }, [dispatch, upsertSegmentArtifactFromPayload]);
 
+  const launchActivationFromSegment = useCallback((segment: ActivationKickoffSegment) => {
+    registerDefs([
+      {
+        id: segment.id,
+        kind: "segment",
+        name: segment.name,
+        entity: "customer",
+        description: segment.description ?? "",
+        stat: { label: "customers", value: segment.population ?? "2,840" },
+      },
+    ]);
+
+    dispatch({ type: "NEW_CHAT" });
+    dispatch({
+      type: "ADD_ARTIFACT",
+      artifact: {
+        id: segment.id,
+        type: "segment",
+        name: segment.name,
+        status: "saved",
+        body: {
+          kind: "segment",
+          purpose: segment.description,
+          population: segment.population ?? "2,840",
+          criteria: segment.criteria ?? [],
+          recommendations: segment.recommendations,
+        },
+      },
+    });
+
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", {
+        detail: { text: "Build a new activation", mentionIds: [segment.id] },
+      }));
+    }, 40);
+  }, [dispatch]);
+
   const handleSegmentApproved = useCallback((payload: SegmentConfirmedPayload) => {
-    upsertSegmentArtifactFromPayload(payload, true);
+    const recommendationItems = [
+      "Nudge near-miss customers (1 purchase, high engagement) into the segment before BF with a targeted offer",
+      "Time reactivation sends to the 90-180 day window, where conversion peaks",
+      "Front-load your BF campaign into the first 48 hours, where most conversion activity happens",
+      "Potential ROI: Nudging near-miss customers into this segment could add an estimated $15K-25K in BF revenue, based on last year's repeat-customer value gap.",
+    ];
+
+    upsertSegmentArtifactFromPayload(payload, true, recommendationItems);
     dispatch({ type: "OPEN_SEGMENT", id: payload.id });
 
     const recommendationText = [
       `Great, ${payload.name} is approved and saved.`,
-      "- Nudge near-miss customers (1 purchase, high engagement) into the segment before BF with a targeted offer",
-      "- Time reactivation sends to the 90-180 day window, where conversion peaks",
-      "- Front-load your BF campaign into the first 48 hours, where most conversion activity happens",
-      "Potential ROI: Nudging near-miss customers into this segment could add an estimated $15K-25K in BF revenue, based on last year's repeat-customer value gap.",
+      ...recommendationItems.map((item, index) => (index < 3 ? `- ${item}` : item)),
     ].join("\n");
 
     setMessages((ms) => [
@@ -2561,9 +2747,35 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
     ]);
   }, [dispatch, upsertSegmentArtifactFromPayload]);
 
+  const handleSegmentActivate = useCallback((payload: SegmentConfirmedPayload) => {
+    launchActivationFromSegment({
+      id: payload.id,
+      name: payload.name,
+      description: payload.description,
+      population: payload.population,
+      criteria: assumptionsToCriteria(payload.assumptions),
+    });
+  }, [launchActivationFromSegment]);
+
   const handleMvpActionClick = useCallback((actionId: string, label: string) => {
     if (actionId === "segment-activate") {
-      const response = "Activation started. I'll track performance and call out early movement in the first 48 hours.";
+      const mostRecentSavedSegment = [...state.artifacts.values()]
+        .reverse()
+        .find((artifact) => artifact.type === "segment" && artifact.status === "saved");
+
+      if (mostRecentSavedSegment?.body?.kind === "segment") {
+        launchActivationFromSegment({
+          id: mostRecentSavedSegment.id,
+          name: mostRecentSavedSegment.name,
+          description: mostRecentSavedSegment.body.purpose,
+          population: mostRecentSavedSegment.body.population,
+          criteria: mostRecentSavedSegment.body.criteria,
+          recommendations: mostRecentSavedSegment.body.recommendations,
+        });
+        return;
+      }
+
+      const response = "Please select a segment first, then I can start activation setup immediately.";
       setMessages((ms) => [
         ...ms,
         { id: nextId(), role: "user", text: label },
@@ -2864,7 +3076,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         },
       ]);
     }
-  }, [bfInsightFollowups, handleSubmit, state.activeConversationId]);
+  }, [bfInsightFollowups, handleSubmit, launchActivationFromSegment, state.activeConversationId, state.artifacts]);
 
   return (
     <div className={cn("flex h-full flex-col bg-background", narrow && "border-l border-border")}>
@@ -2903,6 +3115,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
                     onActionClick={handleMvpActionClick}
                     onSegmentOpenPanel={handleOpenSegmentPanel}
                     onSegmentApprove={handleSegmentApproved}
+                    onSegmentActivate={handleSegmentActivate}
                     onConfirmReasoning={
                       i === lastIdx && pendingVerify && nextTurn
                         ? () => {
@@ -2963,7 +3176,12 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
             enableMentions={false}
           />
           {empty ? (
-            <StartPrompts prompts={startPrompts} onPick={pickStart} />
+            <StartPrompts
+              prompts={startPrompts}
+              onPick={pickStart}
+              onQuickBuildSegment={quickStartNewSegmentChat}
+              onQuickBuildActivation={quickStartNewActivationChat}
+            />
           ) : (
             <button
               onClick={() => !busy && dispatch({ type: "SELECT_CONVERSATION", id: state.activeConversationId ?? DEFAULT_CONVERSATION_ID, autoStart: false })}

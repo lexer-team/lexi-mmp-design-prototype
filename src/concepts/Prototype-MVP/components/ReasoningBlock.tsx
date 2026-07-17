@@ -10,6 +10,17 @@ export interface SegmentConfirmedPayload {
   assumptions: ReasoningAssumption[];
 }
 
+function derivePopulationFromAssumptions(assumptions: ReasoningAssumption[], isEarlyAccessFlow: boolean): string {
+  const assumptionPopulation = assumptions.find((assumption) => {
+    const label = assumption.label.toLowerCase();
+    return label.includes("population") || label.includes("audience size") || label.includes("audience");
+  })?.value;
+
+  if (assumptionPopulation) return assumptionPopulation;
+  if (isEarlyAccessFlow) return "3,420";
+  return "2,840";
+}
+
 interface ReasoningBlockProps {
   goal: string;
   assumptions: ReasoningAssumption[];
@@ -23,6 +34,7 @@ interface ReasoningBlockProps {
   editSessionActive?: boolean;
   onSegmentOpenPanel?: (payload: SegmentConfirmedPayload) => void;
   onSegmentApprove?: (payload: SegmentConfirmedPayload) => void;
+  onSegmentActivate?: (payload: SegmentConfirmedPayload) => void;
 }
 
 /**
@@ -42,6 +54,7 @@ export function ReasoningBlock({
   editSessionActive,
   onSegmentOpenPanel,
   onSegmentApprove,
+  onSegmentActivate,
 }: ReasoningBlockProps) {
   const isEarlyAccessFlow = useMemo(() => {
     const all = `${goal} ${assumptions.map((a) => `${a.label} ${a.value}`).join(" ")}`.toLowerCase();
@@ -103,14 +116,7 @@ export function ReasoningBlock({
   }, [description, descriptionEdited]);
 
   const populationValue = useMemo(() => {
-    const assumptionPopulation = currentAssumptions.find((assumption) => {
-      const label = assumption.label.toLowerCase();
-      return label.includes("population") || label.includes("audience size");
-    })?.value;
-
-    if (assumptionPopulation) return assumptionPopulation;
-    if (isEarlyAccessFlow) return "3,420";
-    return "Not provided";
+    return derivePopulationFromAssumptions(currentAssumptions, isEarlyAccessFlow);
   }, [currentAssumptions, isEarlyAccessFlow]);
 
   const approveValidation = () => {
@@ -159,10 +165,7 @@ export function ReasoningBlock({
   if (mode === "confirmation") {
     const inferredName = currentAssumptions.find((a) => a.label.toLowerCase() === "segment name")?.value ?? inferSmartSegmentName(currentAssumptions, goal);
     const inferredDescription = currentAssumptions.find((a) => a.label.toLowerCase() === "segment description")?.value ?? "";
-    const inferredPopulation = currentAssumptions.find((a) => {
-      const label = a.label.toLowerCase();
-      return label === "population" || label.includes("audience size") || label.includes("population");
-    })?.value ?? (isEarlyAccessFlow ? "3,420" : "Not provided");
+    const inferredPopulation = derivePopulationFromAssumptions(currentAssumptions, isEarlyAccessFlow);
     return (
       <div className="rounded-xl border border-border bg-background p-3.5">
         <div className="flex items-center justify-between gap-2">
@@ -207,9 +210,16 @@ export function ReasoningBlock({
       {/* Goal — what Lexi is optimising for */}
       <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">{goal}</p>
 
+      <div className="mt-2 rounded-lg border border-border/70 bg-background px-3 py-2">
+        <p className="text-xs font-medium text-foreground-secondary">Population</p>
+        <p className="mt-0.5 text-sm font-semibold text-foreground tabular-nums">{populationValue}</p>
+      </div>
+
       {/* Editable assumptions */}
       <dl className="mt-2.5 space-y-1.5">
-        {currentAssumptions.map((a) => (
+        {currentAssumptions
+          .filter((a) => !a.label.toLowerCase().includes("population") && !a.label.toLowerCase().includes("audience"))
+          .map((a) => (
           <div key={a.id} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <dt className="text-sm font-medium text-foreground-secondary">{a.label}</dt>
             <dd className="text-sm text-foreground">{a.value}</dd>
@@ -390,7 +400,10 @@ export function ReasoningBlock({
             {finalApproved ? (
               <button
                 type="button"
-                onClick={() => setActivated(true)}
+                onClick={() => {
+                  setActivated(true);
+                  onSegmentActivate?.(payload);
+                }}
                 disabled={activated}
                 className={[
                   "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
