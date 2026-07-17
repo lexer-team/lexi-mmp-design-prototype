@@ -72,7 +72,6 @@ export function ReasoningBlock({
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionEdited, setDescriptionEdited] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
   const [activated, setActivated] = useState(false);
 
   useEffect(() => {
@@ -82,6 +81,19 @@ export function ReasoningBlock({
   const description = useMemo(() => {
     if (isEarlyAccessFlow) {
       return "Black Friday customers targeted early-access sequencing and premium bundles before broad discount sends";
+    }
+
+    const hasOrderDateRecent = currentAssumptions.some((a) => {
+      const label = a.label.toLowerCase();
+      const value = a.value.toLowerCase();
+      return label === "order date" && value.includes("within last 180 days");
+    });
+    const hasFrequency = currentAssumptions.some((a) => a.label.toLowerCase() === "frequency" && a.value.toLowerCase().includes("4+ orders lifetime"));
+    const hasTotalSpend = currentAssumptions.some((a) => a.label.toLowerCase() === "total spend" && a.value.replace(/\s+/g, "") === "$5000");
+    const hasLoyaltyTier = currentAssumptions.some((a) => a.label.toLowerCase() === "loyalty tier" && a.value.toLowerCase() === "gold");
+
+    if (hasOrderDateRecent && hasFrequency && hasTotalSpend && hasLoyaltyTier) {
+      return "Your most consistently valuable customers - Top 15-20% lifetime spenders with 4+ purchases, and have purchased in the last 180 days. This segment is worth premium experiences over broad promos.";
     }
 
     const highValue = currentAssumptions.find((a) => a.label.toLowerCase() === "high value")?.value;
@@ -154,13 +166,8 @@ export function ReasoningBlock({
   };
 
   const rejectFromVerifyCard = () => {
-    const shouldCancel = window.confirm("Are you sure you want to cancel? Segment build will be lost.");
-    if (!shouldCancel) return;
-    setDismissed(true);
     onReject?.();
   };
-
-  if (dismissed) return null;
 
   if (mode === "confirmation") {
     const inferredName = currentAssumptions.find((a) => a.label.toLowerCase() === "segment name")?.value ?? inferSmartSegmentName(currentAssumptions, goal);
@@ -210,22 +217,14 @@ export function ReasoningBlock({
       {/* Goal — what Lexi is optimising for */}
       <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">{goal}</p>
 
-      <div className="mt-2 rounded-lg border border-border/70 bg-background px-3 py-2">
-        <p className="text-xs font-medium text-foreground-secondary">Population</p>
-        <p className="mt-0.5 text-sm font-semibold text-foreground tabular-nums">{populationValue}</p>
-      </div>
-
-      {/* Editable assumptions */}
-      <dl className="mt-2.5 space-y-1.5">
-        {currentAssumptions
-          .filter((a) => !a.label.toLowerCase().includes("population") && !a.label.toLowerCase().includes("audience"))
-          .map((a) => (
-          <div key={a.id} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <dt className="text-sm font-medium text-foreground-secondary">{a.label}</dt>
-            <dd className="text-sm text-foreground">{a.value}</dd>
-          </div>
+      <p className="mt-2.5 text-xs font-semibold uppercase tracking-[0.02em] text-foreground-secondary">Validated assumptions</p>
+      <ul className="mt-2 list-disc space-y-1.5 pl-5">
+        {currentAssumptions.map((a) => (
+          <li key={a.id} className="text-sm text-foreground">
+            <span className="font-medium text-foreground-secondary">{a.label}</span>: {a.value}
+          </li>
         ))}
-      </dl>
+      </ul>
 
       <div className="mt-3 flex justify-end gap-2">
         <button
@@ -437,6 +436,15 @@ export function ReasoningBlock({
 
 function inferSmartSegmentName(assumptions: ReasoningAssumption[], goal: string): string {
   const all = `${goal} ${assumptions.map((a) => `${a.label} ${a.value}`).join(" ")}`.toLowerCase();
+  const hasVipLoyalistsPattern =
+    all.includes("order date")
+    && (all.includes("within last 180 days") || all.includes("purchased within last 180 days"))
+    && all.includes("frequency")
+    && all.includes("4+ orders lifetime")
+    && all.includes("total spend")
+    && all.includes("$5000")
+    && all.includes("loyalty tier")
+    && all.includes("gold");
   const isEarlyAccessCardView =
     all.includes("early access card view")
     || (all.includes("early access") && all.includes("black friday"))
@@ -445,6 +453,7 @@ function inferSmartSegmentName(assumptions: ReasoningAssumption[], goal: string)
   const hasBf = all.includes("november") || all.includes("black friday") || all.includes("bf");
   const hasCountry = all.includes("country") || all.includes("australia");
 
+  if (hasVipLoyalistsPattern) return "VIP Loyalists";
   if (isEarlyAccessCardView) return "Early Access Customers for Black Friday";
 
   if (hasHighValue && hasBf && hasCountry) return "High-Value Black Friday Customers (AU)";

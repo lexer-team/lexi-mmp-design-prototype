@@ -65,6 +65,7 @@ export type SessionAction =
   | { type: "RESTORE_ARTIFACT"; id: string }
   | { type: "ADD_ARTIFACT"; artifact: Artifact }
   | { type: "ADD_ACTIVATION"; activation: Activation }
+  | { type: "UPDATE_ACTIVATION_STATUS"; id: string; status: Activation["status"] }
   | { type: "UPDATE_ACTIVATION_CATEGORY"; id: string; category: string }
   | { type: "BULK_UPDATE_ACTIVATION_CATEGORY"; ids: string[]; category: string }
   | { type: "DELETE_ACTIVATIONS"; ids: string[] }
@@ -131,6 +132,16 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
     }
     case "ADD_ACTIVATION": {
       return { ...state, activations: [action.activation, ...state.activations] };
+    }
+    case "UPDATE_ACTIVATION_STATUS": {
+      return {
+        ...state,
+        activations: state.activations.map((activation) => (
+          activation.id === action.id
+            ? { ...activation, status: action.status }
+            : activation
+        )),
+      };
     }
     case "UPDATE_ACTIVATION_CATEGORY": {
       return {

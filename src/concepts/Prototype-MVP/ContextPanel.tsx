@@ -89,6 +89,27 @@ interface ContextPanelProps {
 
 export function ContextPanel({ open }: ContextPanelProps) {
   const { state, dispatch } = useSession();
+  const conversationScopedPins = state.activeConversationId ? state.pins : [];
+
+  const focusArtifactInChat = useCallback((artifactId: string) => {
+    const matchingConversationId = Object.entries(state.conversationSnapshots)
+      .find(([, snapshot]) => snapshot.artifacts.has(artifactId))?.[0];
+
+    if (matchingConversationId) {
+      dispatch({ type: "SELECT_CONVERSATION", id: matchingConversationId, autoStart: false });
+    }
+
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("prototype-master:focus-artifact", {
+        detail: { artifactId },
+      }));
+
+      const artifact = state.artifacts.get(artifactId);
+      if (artifact?.type === "segment") {
+        dispatch({ type: "OPEN_SEGMENT", id: artifactId });
+      }
+    }, matchingConversationId ? 90 : 0);
+  }, [dispatch, state.artifacts, state.conversationSnapshots]);
 
   const savedArtifacts = useMemo(
     () => Array.from(state.artifacts.values()).filter((a) => a.status === "saved"),
@@ -120,8 +141,11 @@ export function ContextPanel({ open }: ContextPanelProps) {
                 <HoverItem key={a.id} def={a.def} artifact={a}>
                   <button
                     onClick={() => {
+                      dispatch({ type: "CLOSE_SOURCES" });
+                      dispatch({ type: "CLOSE_SEGMENT" });
+
                       if (a.type === "segment") {
-                        dispatch({ type: "OPEN_SEGMENT", id: a.id });
+                        focusArtifactInChat(a.id);
                         return;
                       }
 
@@ -129,12 +153,18 @@ export function ContextPanel({ open }: ContextPanelProps) {
                         if (a.body.conversationId) {
                           dispatch({ type: "SELECT_CONVERSATION", id: a.body.conversationId, autoStart: false });
                         }
-                        window.setTimeout(() => {
-                          window.dispatchEvent(new CustomEvent("prototype-master:jump-to-message", {
-                            detail: { messageId: a.body?.sourceMessageId },
-                          }));
-                        }, 60);
+
+                        if (a.body.sourceMessageId) {
+                          window.setTimeout(() => {
+                            window.dispatchEvent(new CustomEvent("prototype-master:jump-to-message", {
+                              detail: { messageId: a.body.sourceMessageId },
+                            }));
+                          }, 60);
+                          return;
+                        }
                       }
+
+                      focusArtifactInChat(a.id);
                     }}
                     className={cn(
                       "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors w-full",
@@ -171,11 +201,11 @@ export function ContextPanel({ open }: ContextPanelProps) {
         icon={RiPushpinLine}
         title="Pinned"
         tooltip="Fragments you highlighted from Lexi's responses"
-        empty={state.pins.length === 0}
+        empty={conversationScopedPins.length === 0}
       >
         <div className="flex flex-col gap-1.5">
-          {state.pins.length > 0 ? (
-            state.pins.map((p) => (
+          {conversationScopedPins.length > 0 ? (
+            conversationScopedPins.map((p) => (
               <button
                 key={p.id}
                 type="button"

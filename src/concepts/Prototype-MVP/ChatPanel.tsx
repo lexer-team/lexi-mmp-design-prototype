@@ -2,7 +2,7 @@ import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { LexiMark } from "@/components/chat/LexiMark";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { RiCheckLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line } from "@remixicon/react";
+import { RiCheckLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonalLine } from "@remixicon/react";
 import { useSession } from "./store";
 import { RichText, MentionText, stripMentions } from "./components/RichText";
 import { ProposedBlock } from "./components/ProposedBlock";
@@ -134,6 +134,7 @@ type ActivationBuildState = {
   segmentId?: string;
   segmentName?: string;
 };
+type ReasoningCancelMode = "pending-verify" | "restart";
 
 const IDLE_ACTIVATION_BUILD_STATE: ActivationBuildState = { stage: "idle" };
 
@@ -372,6 +373,7 @@ function ActivationBuildCard({
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [connectionConfirmed, setConnectionConfirmed] = useState(false);
   const [approvalSent, setApprovalSent] = useState(false);
+  const [confirmationExpanded, setConfirmationExpanded] = useState(true);
   const [sendTiming, setSendTiming] = useState<"send-now" | "schedule-send">("send-now");
   const [sendCadence, setSendCadence] = useState<"once-off" | "re-occurring">("once-off");
   const [recurringHasEndDate, setRecurringHasEndDate] = useState<"yes" | "no">("no");
@@ -826,8 +828,20 @@ function ActivationBuildCard({
             {connectionConfirmed ? (
               <>
                 <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation confirmation</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation confirmation</p>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmationExpanded((value) => !value)}
+                      className="inline-flex size-7 items-center justify-center rounded-lg border border-border bg-background text-foreground transition-colors hover:bg-accent"
+                      title={confirmationExpanded ? "Collapse confirmation" : "Expand confirmation"}
+                      aria-label={confirmationExpanded ? "Collapse confirmation" : "Expand confirmation"}
+                    >
+                      <RiExpandDiagonalLine className="size-4" />
+                    </button>
+                  </div>
 
+                  {confirmationExpanded ? (
                   <div className="mt-2 space-y-2 text-sm">
                     <p className="text-foreground">
                       <span className="font-medium">Activation name:</span>{" "}
@@ -876,6 +890,16 @@ function ActivationBuildCard({
                       <span className="font-medium">Cadence:</span>{" "}
                       {sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off"}
                     </p>
+                    <p className="text-foreground">
+                      <span className="font-medium">Date range:</span>{" "}
+                      {sendTiming === "schedule-send"
+                        ? (sendCadence === "re-occurring"
+                          ? (recurringHasEndDate === "yes"
+                            ? `${scheduledStartDate || "Not selected"} to ${scheduledEndDate || "Not selected"}`
+                            : `${scheduledStartDate || "Not selected"} to No End Date`)
+                          : (scheduledStartDate || "Not selected"))
+                        : "Not applicable"}
+                    </p>
 
                     {sendTiming === "schedule-send" ? (
                       <>
@@ -892,6 +916,7 @@ function ActivationBuildCard({
                       </>
                     ) : null}
                   </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-3 rounded-xl border border-border bg-background p-3">
@@ -908,6 +933,7 @@ function ActivationBuildCard({
                           month: "short",
                           year: "numeric",
                         });
+                        const activationStatus = sendTiming === "schedule-send" ? "scheduled" : "sent";
 
                         dispatch({
                           type: "ADD_ARTIFACT",
@@ -931,6 +957,7 @@ function ActivationBuildCard({
                           type: "ADD_ACTIVATION",
                           activation: {
                             id: activationId,
+                            createdAt: timestamp,
                             name: activationName,
                             context: `From segment: ${block.segmentName}`,
                             segmentId: block.segmentId,
@@ -939,8 +966,17 @@ function ActivationBuildCard({
                             category: "MVP activation",
                             skill: "Activation build",
                             approval: { kind: "approved", by: "Izac", at: dateLabel },
-                            status: "sent",
+                            status: activationStatus,
                             whenLabel: `Approved and sent · ${dateLabel}`,
+                            scheduledDate: sendTiming === "schedule-send"
+                              ? (scheduledStartDate || undefined)
+                              : undefined,
+                            recurringStartDate: sendCadence === "re-occurring"
+                              ? ((sendTiming === "schedule-send" ? scheduledStartDate : undefined) || undefined)
+                              : undefined,
+                            recurringEndDate: sendCadence === "re-occurring" && recurringHasEndDate === "yes"
+                              ? (scheduledEndDate || undefined)
+                              : undefined,
                             result: "Activation approved and sent from MVP build card.",
                             invocations: [
                               {
@@ -953,8 +989,34 @@ function ActivationBuildCard({
                               { at: dateLabel, entry: "Activation connection confirmed." },
                               { at: dateLabel, entry: "Approved and sent from chat activation card." },
                             ],
+                            mvpDetails: {
+                              population: block.population,
+                              activationName,
+                              activationDefinition: activationDescription,
+                              segmentName: block.segmentName,
+                              dataSource: selectedSource?.name ?? "Not selected",
+                              accounts: selectedSourceAccounts
+                                .filter((account) => selectedAccounts.includes(account.id))
+                                .map((account) => account.name),
+                              fieldMapping: fieldRows.map((row) => {
+                                const fieldLabel = fieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType;
+                                const matchLabel = (fieldMatchOptions[row.fieldType] ?? []).find((option) => option.value === row.selectedMatch)?.label ?? row.selectedMatch;
+                                return `${fieldLabel} -> ${matchLabel}`;
+                              }),
+                              timing: sendTiming === "schedule-send" ? "Schedule Send" : "Send Now",
+                              cadence: sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off",
+                              customers: [
+                                { id: `${activationId}-cust-1`, name: `${block.segmentName} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
+                                { id: `${activationId}-cust-2`, name: `${block.segmentName} - Liam Nguyen`, meta: "AOV $129 · Last purchase 49 days ago" },
+                                { id: `${activationId}-cust-3`, name: `${block.segmentName} - Mia Rodriguez`, meta: "AOV $151 · Last purchase 62 days ago" },
+                              ],
+                            },
                           },
                         });
+
+                        window.dispatchEvent(new CustomEvent("prototype-master:open-activation-panel", {
+                          detail: { activationId },
+                        }));
 
                         setApprovalSent(true);
                       }}
@@ -1275,11 +1337,13 @@ function StartPrompts({
   onPick,
   onQuickBuildSegment,
   onQuickBuildActivation,
+  onQuickSegmentActivationSingleChat,
 }: {
   prompts: { id: string; text: string }[];
   onPick: (p: { id: string; text: string }) => void;
   onQuickBuildSegment: () => void;
   onQuickBuildActivation: () => void;
+  onQuickSegmentActivationSingleChat: () => void;
 }) {
   const quickStartAnchorPrompt = "Black Friday is in a few weeks and I would like to know about my customers from last year.";
 
@@ -1308,6 +1372,13 @@ function StartPrompts({
                 className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
               >
                 "Build A New Activation"
+              </button>
+              <button
+                type="button"
+                onClick={onQuickSegmentActivationSingleChat}
+                className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
+              >
+                "Segment and Activation - single chat"
               </button>
             </>
           ) : null}
@@ -1377,7 +1448,37 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   const [turnIndex, setTurnIndex] = useState(0);
   const [awaitingMvpSegmentKind, setAwaitingMvpSegmentKind] = useState(false);
   const [awaitingReasoningEditTarget, setAwaitingReasoningEditTarget] = useState<ReasoningEditTarget | null>(null);
+  const [reasoningCancelMode, setReasoningCancelMode] = useState<ReasoningCancelMode | null>(null);
   const [activationBuildState, setActivationBuildState] = useState<ActivationBuildState>(IDLE_ACTIVATION_BUILD_STATE);
+  const [pendingActivationCancelId, setPendingActivationCancelId] = useState<string | null>(null);
+    const promptReasoningCancelInChat = useCallback(() => {
+      const response = "Are you sure you want to cancel? Segment build will be lost.";
+      setMessages((ms) => [
+        ...ms,
+        {
+          id: `pm-${++idRef.current}`,
+          role: "lexi",
+          blocks: [
+            {
+              id: `pb-${++idRef.current}`,
+              block: { type: "text", content: response },
+              revealed: words(response).length,
+            },
+            {
+              id: `pb-${++idRef.current}`,
+              block: {
+                type: "actions",
+                actions: [
+                  { id: "reasoning-cancel-yes", label: "Yes" },
+                  { id: "reasoning-cancel-no", label: "No" },
+                ],
+              },
+              revealed: 1,
+            },
+          ],
+        },
+      ]);
+    }, []);
   const bfInsightFollowupIndexRef = useRef(0);
 
   const idRef = useRef(0);
@@ -1648,6 +1749,96 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   function handleSubmit(text: string, mentionIds: string[]) {
     const activationPrompt = "Select the segment you would you like to activate from the chat";
     const confirmationPrompt = "Is this the right segment to activate?";
+
+    if (pendingActivationCancelId) {
+      const normalizedCancelDecision = stripMentions(text)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const confirmsCancel = normalizedCancelDecision === "yes" || normalizedCancelDecision.includes("yes");
+      const declinesCancel = normalizedCancelDecision === "no"
+        || normalizedCancelDecision.startsWith("no")
+        || normalizedCancelDecision.includes(" no ");
+
+      if (confirmsCancel) {
+        const activation = state.activations.find((item) => item.id === pendingActivationCancelId)
+          ?? getActivation(pendingActivationCancelId);
+        dispatch({ type: "UPDATE_ACTIVATION_STATUS", id: pendingActivationCancelId, status: "cancelled" });
+        setPendingActivationCancelId(null);
+
+        const confirmText = activation
+          ? `Activation ${activation.name} is now cancelled.`
+          : "The activation is now cancelled.";
+        setMessages((ms) => [
+          ...ms,
+          { id: nextId(), role: "user", text },
+          {
+            id: nextId(),
+            role: "lexi",
+            blocks: [
+              {
+                id: `pb-${++idRef.current}`,
+                block: { type: "text", content: confirmText },
+                revealed: words(confirmText).length,
+              },
+            ],
+          },
+        ]);
+        return;
+      }
+
+      if (declinesCancel) {
+        setPendingActivationCancelId(null);
+        const keepText = "No problem. I will keep the activation running.";
+        setMessages((ms) => [
+          ...ms,
+          { id: nextId(), role: "user", text },
+          {
+            id: nextId(),
+            role: "lexi",
+            blocks: [
+              {
+                id: `pb-${++idRef.current}`,
+                block: { type: "text", content: keepText },
+                revealed: words(keepText).length,
+              },
+            ],
+          },
+        ]);
+        return;
+      }
+
+      const reprompt = "Please answer Yes or No.";
+      setMessages((ms) => [
+        ...ms,
+        { id: nextId(), role: "user", text },
+        {
+          id: nextId(),
+          role: "lexi",
+          blocks: [
+            {
+              id: `pb-${++idRef.current}`,
+              block: { type: "text", content: reprompt },
+              revealed: words(reprompt).length,
+            },
+            {
+              id: `pb-${++idRef.current}`,
+              block: {
+                type: "actions",
+                actions: [
+                  { id: "activation-cancel-yes", label: "Yes" },
+                  { id: "activation-cancel-no", label: "No" },
+                ],
+              },
+              revealed: 1,
+            },
+          ],
+        },
+      ]);
+      return;
+    }
 
     const findMentionedSegment = (): { id: string; name: string } | null => {
       for (const id of mentionIds) {
@@ -1930,7 +2121,6 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         const segmentName = activationBuildState.segmentName ?? "Selected segment";
         const dummy = segmentId ? DUMMY_SEGMENT_BY_ID[segmentId] : undefined;
         const artifact = segmentId ? state.artifacts.get(segmentId) : undefined;
-        const today = new Date().toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" });
         const population = dummy?.population
           ?? (artifact?.body?.kind === "segment" ? (artifact.body.population ?? "2,840") : "2,840");
         const rules = dummy?.validation
@@ -1952,7 +2142,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
                   segmentName,
                   population,
                   rules,
-                  activationName: `${segmentName} Activation ${today}`,
+                  activationName: `${segmentName} Activation`,
                   activationDescription: `Activation from Segment: ${segmentName}`,
                 },
                 revealed: 1,
@@ -2300,19 +2490,24 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
           goal: `Validate assumptions for segment: ${segmentIntent}`,
           assumptions: [
             {
-              id: "assumption-high-value",
-              label: "High Value",
-              value: "total lifetime spend over $1000",
-            },
-            {
               id: "assumption-order-date-window",
               label: "Order Date",
-              value: "less than 180 days ago",
+              value: "Purchased within last 180 days",
             },
             {
-              id: "assumption-order-date-bf-range",
-              label: "Order Date",
-              value: "22 November 2025-24 November 2025",
+              id: "assumption-frequency",
+              label: "Frequency",
+              value: "4+ orders lifetime",
+            },
+            {
+              id: "assumption-total-spend",
+              label: "Total Spend",
+              value: "$5000",
+            },
+            {
+              id: "assumption-loyalty-tier",
+              label: "Loyalty Tier",
+              value: "Gold",
             },
           ],
         },
@@ -2400,6 +2595,48 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   }, []);
 
   useEffect(() => {
+    const onCancelActivationRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ activationId?: string }>).detail;
+      const activationId = detail?.activationId;
+      if (!activationId) return;
+
+      const activation = state.activations.find((item) => item.id === activationId) ?? getActivation(activationId);
+      const activationName = activation?.name ?? "this activation";
+      const prompt = "Are you sure you want to cancel the activation? Sends to the activation platform may be incomplete and will need to run the activation again.";
+
+      setPendingActivationCancelId(activationId);
+      setMessages((ms) => [
+        ...ms,
+        {
+          id: nextId(),
+          role: "lexi",
+          blocks: [
+            {
+              id: `pb-${++idRef.current}`,
+              block: { type: "text", content: `${activationName}: ${prompt}` },
+              revealed: words(`${activationName}: ${prompt}`).length,
+            },
+            {
+              id: `pb-${++idRef.current}`,
+              block: {
+                type: "actions",
+                actions: [
+                  { id: "activation-cancel-yes", label: "Yes" },
+                  { id: "activation-cancel-no", label: "No" },
+                ],
+              },
+              revealed: 1,
+            },
+          ],
+        },
+      ]);
+    };
+
+    window.addEventListener("prototype-master:cancel-activation-request", onCancelActivationRequest as EventListener);
+    return () => window.removeEventListener("prototype-master:cancel-activation-request", onCancelActivationRequest as EventListener);
+  }, [state.activations]);
+
+  useEffect(() => {
     const onJumpToMessage = (event: Event) => {
       const detail = (event as CustomEvent<{ messageId?: string }>).detail;
       const messageId = detail?.messageId;
@@ -2414,9 +2651,57 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   }, []);
 
   useEffect(() => {
+    const onFocusArtifact = (event: Event) => {
+      const detail = (event as CustomEvent<{ artifactId?: string }>).detail;
+      const artifactId = detail?.artifactId;
+      if (!artifactId) return;
+
+      const artifact = state.artifacts.get(artifactId);
+      if (!artifact) return;
+
+      const lexiMessages = messages.filter((message): message is Extract<PlayedMessage, { role: "lexi" }> => message.role === "lexi");
+      const targetLexiMessage = [...lexiMessages].reverse().find((message) => (
+        message.blocks.some((block) => {
+          if (block.block.type === "proposed" || block.block.type === "summary") {
+            return block.block.artifactId === artifactId;
+          }
+
+          if (block.block.type === "activationBuild") {
+            return block.block.segmentId === artifactId || block.block.segmentName === artifact.name;
+          }
+
+          if (block.block.type === "reasoning") {
+            const hasSegmentNameAssumption = block.block.assumptions.some((assumption) => (
+              assumption.label.toLowerCase() === "segment name" && assumption.value === artifact.name
+            ));
+            const goalMentionsArtifactName = block.block.goal.toLowerCase().includes(artifact.name.toLowerCase());
+            return hasSegmentNameAssumption || goalMentionsArtifactName;
+          }
+
+          if (block.block.type === "text") {
+            return block.block.content.includes(`${artifact.name} is approved and saved.`);
+          }
+
+          return false;
+        })
+      ));
+
+      if (!targetLexiMessage) return;
+      const el = document.querySelector(`[data-message-id="${targetLexiMessage.id}"]`);
+      if (!el) return;
+      (el as HTMLElement).scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    window.addEventListener("prototype-master:focus-artifact", onFocusArtifact as EventListener);
+    return () => window.removeEventListener("prototype-master:focus-artifact", onFocusArtifact as EventListener);
+  }, [messages, state.artifacts]);
+
+  useEffect(() => {
     setAwaitingMvpSegmentKind(false);
     setAwaitingReasoningEditTarget(null);
+    setReasoningCancelMode(null);
     setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
+    setPendingActivationCancelId(null);
     bfInsightFollowupIndexRef.current = 0;
   }, [state.activeConversationId]);
 
@@ -2549,6 +2834,16 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
     dispatch({ type: "NEW_CHAT" });
     window.setTimeout(() => {
       submitRef.current("Build a new activation", []);
+    }, 40);
+  }, [dispatch]);
+
+  const quickStartSegmentActivationSingleChat = useCallback(() => {
+    dispatch({ type: "NEW_CHAT" });
+    window.setTimeout(() => {
+      submitRef.current("Build a new segment", []);
+      window.setTimeout(() => {
+        submitRef.current("VIP Loyalists", []);
+      }, 60);
     }, 40);
   }, [dispatch]);
 
@@ -2704,11 +2999,11 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   }, [dispatch]);
 
   const handleSegmentApproved = useCallback((payload: SegmentConfirmedPayload) => {
+    const isVipLoyalistsSegment = payload.name.toLowerCase().includes("vip loyalists");
     const recommendationItems = [
-      "Nudge near-miss customers (1 purchase, high engagement) into the segment before BF with a targeted offer",
-      "Time reactivation sends to the 90-180 day window, where conversion peaks",
-      "Front-load your BF campaign into the first 48 hours, where most conversion activity happens",
-      "Potential ROI: Nudging near-miss customers into this segment could add an estimated $15K-25K in BF revenue, based on last year's repeat-customer value gap.",
+      "Early access / exclusive product preview - rewards loyalty without discounting; roughly 1,630-2,760 converting customers (6.8-8.9% of 24K-31K reach), likely highest-margin since there's no discount cost",
+      "Loyalty-tier upgrade or surprise perk - ROI is retention-driven rather than immediate sales; track repeat-purchase rate over the following 90 days as the real signal",
+      "Personalised VIP-only bundle/recommendation - biggest potential upside, directly testing the 18-27% revenue-per-recipient uplift on 24K-31K recipients; run against a holdout first since this assumption is most likely to be inflated by novelty",
     ];
 
     upsertSegmentArtifactFromPayload(payload, true, recommendationItems);
@@ -2716,7 +3011,8 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
 
     const recommendationText = [
       `Great, ${payload.name} is approved and saved.`,
-      ...recommendationItems.map((item, index) => (index < 3 ? `- ${item}` : item)),
+      "Recommended actions:",
+      ...recommendationItems.map((item) => `- ${item}`),
     ].join("\n");
 
     setMessages((ms) => [
@@ -2737,6 +3033,9 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
               actions: [
                 { id: "segment-explore-near-miss", label: "Explore near-miss customer cohort" },
                 { id: "segment-explore-timing", label: "Explore campaign timing opportunities" },
+                ...(isVipLoyalistsSegment
+                  ? [{ id: "segment-activate-chat-test", label: "Activate in Chat (test)" }]
+                  : []),
                 { id: "segment-activate", label: "Activate" },
               ],
             },
@@ -2758,6 +3057,67 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   }, [launchActivationFromSegment]);
 
   const handleMvpActionClick = useCallback((actionId: string, label: string) => {
+    if (actionId === "segment-activate-chat-test") {
+      dispatch({ type: "CLOSE_SOURCES" });
+      dispatch({ type: "CLOSE_SEGMENT" });
+
+      const mostRecentSavedSegment = [...state.artifacts.values()]
+        .reverse()
+        .find((artifact) => artifact.type === "segment" && artifact.status === "saved");
+
+      if (mostRecentSavedSegment?.body?.kind === "segment") {
+        const segmentId = mostRecentSavedSegment.id;
+        const segmentName = mostRecentSavedSegment.name;
+        const population = mostRecentSavedSegment.body.population ?? "2,840";
+        const rules = mostRecentSavedSegment.body.criteria ?? [];
+
+        setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
+
+        setMessages((ms) => [
+          ...ms,
+          { id: nextId(), role: "user", text: label },
+          {
+            id: nextId(),
+            role: "lexi",
+            blocks: [
+              {
+                id: `pb-${++idRef.current}`,
+                block: {
+                  type: "activationBuild",
+                  segmentId,
+                  segmentName,
+                  population,
+                  rules,
+                  activationName: `${segmentName} Activation`,
+                  activationDescription: `Activation from Segment: ${segmentName}`,
+                },
+                revealed: 1,
+              },
+            ],
+          },
+        ]);
+        return;
+      }
+
+      const response = "Please select a segment first, then I can start the activation build card.";
+      setMessages((ms) => [
+        ...ms,
+        { id: nextId(), role: "user", text: label },
+        {
+          id: nextId(),
+          role: "lexi",
+          blocks: [
+            {
+              id: `pb-${++idRef.current}`,
+              block: { type: "text", content: response },
+              revealed: words(response).length,
+            },
+          ],
+        },
+      ]);
+      return;
+    }
+
     if (actionId === "segment-activate") {
       const mostRecentSavedSegment = [...state.artifacts.values()]
         .reverse()
@@ -2816,6 +3176,49 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
 
     if (actionId === "activation-cancel-confirm-no") {
       handleSubmit("No", []);
+      return;
+    }
+
+    if (actionId === "activation-cancel-yes") {
+      handleSubmit("Yes", []);
+      return;
+    }
+
+    if (actionId === "activation-cancel-no") {
+      handleSubmit("No", []);
+      return;
+    }
+
+    if (actionId === "reasoning-cancel-yes") {
+      const mode = reasoningCancelMode;
+      setReasoningCancelMode(null);
+      setAwaitingReasoningEditTarget(null);
+      if (mode === "pending-verify") {
+        promptForSegmentClarification();
+      } else {
+        restartSegmentBuildPrompt();
+      }
+      return;
+    }
+
+    if (actionId === "reasoning-cancel-no") {
+      setReasoningCancelMode(null);
+      const response = "No problem. We can continue with this segment.";
+      setMessages((ms) => [
+        ...ms,
+        { id: nextId(), role: "user", text: label },
+        {
+          id: nextId(),
+          role: "lexi",
+          blocks: [
+            {
+              id: `pb-${++idRef.current}`,
+              block: { type: "text", content: response },
+              revealed: words(response).length,
+            },
+          ],
+        },
+      ]);
       return;
     }
 
@@ -3076,7 +3479,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         },
       ]);
     }
-  }, [bfInsightFollowups, handleSubmit, launchActivationFromSegment, state.activeConversationId, state.artifacts]);
+  }, [bfInsightFollowups, dispatch, handleSubmit, launchActivationFromSegment, promptForSegmentClarification, reasoningCancelMode, restartSegmentBuildPrompt, state.activeConversationId, state.artifacts]);
 
   return (
     <div className={cn("flex h-full flex-col bg-background", narrow && "border-l border-border")}>
@@ -3128,12 +3531,12 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
                       i === lastIdx && m.role === "lexi" && m.blocks.some((b) => b.block.type === "reasoning")
                         ? (pendingVerify
                             ? () => {
-                                setAwaitingReasoningEditTarget(null);
-                                promptForSegmentClarification();
+                                setReasoningCancelMode("pending-verify");
+                                promptReasoningCancelInChat();
                               }
                             : () => {
-                                setAwaitingReasoningEditTarget(null);
-                                restartSegmentBuildPrompt();
+                                setReasoningCancelMode("restart");
+                                promptReasoningCancelInChat();
                               })
                         : undefined
                     }
@@ -3181,6 +3584,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
               onPick={pickStart}
               onQuickBuildSegment={quickStartNewSegmentChat}
               onQuickBuildActivation={quickStartNewActivationChat}
+              onQuickSegmentActivationSingleChat={quickStartSegmentActivationSingleChat}
             />
           ) : (
             <button

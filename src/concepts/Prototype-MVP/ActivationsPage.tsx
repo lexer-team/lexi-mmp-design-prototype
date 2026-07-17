@@ -139,6 +139,72 @@ export function ActivationsPage({
       (matches(a.name) || matches(a.context)),
   );
 
+  const formatIsoDate = (value?: string) => {
+    if (!value) return null;
+    const ymd = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (ymd) {
+      return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    const dd = String(parsed.getDate()).padStart(2, "0");
+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+    const yyyy = String(parsed.getFullYear());
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  const activationFrequency = (activation: Activation) => {
+    if (activation.mvpDetails?.timing) return activation.mvpDetails.timing;
+    if (activation.recurringStartDate || activation.scheduledDate) return "Schedule Send";
+    return "Send Now";
+  };
+
+  const activationCadence = (activation: Activation) => {
+    const baseCadence = activation.mvpDetails?.cadence
+      ?? (activation.recurringStartDate ? "Re-Occuring" : "Once Off");
+    return baseCadence;
+  };
+
+  const activationWhen = (activation: Activation) => {
+    const frequency = activationFrequency(activation);
+    const cadence = activation.mvpDetails?.cadence
+      ?? (activation.recurringStartDate ? "Re-Occuring" : "Once Off");
+
+    const isRecurring = cadence.toLowerCase().includes("re-occ");
+    const isScheduled = frequency === "Schedule Send";
+
+    const createdDate = formatIsoDate(activation.recurringStartDate)
+      ?? formatIsoDate(activation.scheduledDate)
+      ?? formatIsoDate(activation.createdAt);
+    const sendDate = formatIsoDate(activation.scheduledDate) ?? formatIsoDate(activation.recurringStartDate);
+    const endDate = formatIsoDate(activation.recurringEndDate);
+
+    // Send now + re-occurring -> date created to (end date|no end date)
+    if (!isScheduled && isRecurring) {
+      const start = createdDate ?? "Date created";
+      return `${start} to ${endDate ?? "No End Date"}`;
+    }
+
+    // Scheduled send + once off -> date of send
+    if (isScheduled && !isRecurring) {
+      return sendDate ?? activation.whenLabel;
+    }
+
+    // Scheduled send + re-occurring -> date of send to end date; if no end, date created to no end date
+    if (isScheduled && isRecurring) {
+      if (endDate) {
+        const start = sendDate ?? createdDate ?? "Date created";
+        return `${start} to ${endDate}`;
+      }
+      const created = createdDate ?? "Date created";
+      return `${created} to No End Date`;
+    }
+
+    // Fallback for other combinations (e.g. send now + once off)
+    return createdDate ?? activation.whenLabel;
+  };
+
   const shownIds = useMemo(() => shown.map((activation) => activation.id), [shown]);
   const allShownSelected = shownIds.length > 0 && shownIds.every((id) => selectedIds.has(id));
   const someShownSelected = !allShownSelected && shownIds.some((id) => selectedIds.has(id));
@@ -325,6 +391,8 @@ export function ActivationsPage({
                 <TableHead>Activation</TableHead>
                 <TableHead>Context</TableHead>
                 <TableHead className="w-36">Channel</TableHead>
+                <TableHead className="w-32">Frequency</TableHead>
+                <TableHead className="w-56">Cadence</TableHead>
                 <TableHead className="w-40">Status</TableHead>
                 <TableHead className="w-32">When</TableHead>
               </TableRow>
@@ -353,13 +421,15 @@ export function ActivationsPage({
                     </TableCell>
                     <TableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">{a.context}</TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{a.channel}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{activationFrequency(a)}</TableCell>
+                    <TableCell className="max-w-[18rem] truncate text-sm text-foreground-secondary">{activationCadence(a)}</TableCell>
                     <TableCell><Badge variant={s.variant} size="sm">{s.label}</Badge></TableCell>
-                    <TableCell className="text-sm text-foreground-secondary">{a.whenLabel}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{activationWhen(a)}</TableCell>
                   </TableRow>
                 );
               })}
               {shown.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

@@ -4,7 +4,10 @@ import { LexerLogo } from "@/components/layout/LexerLogo";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Input } from "@/components/ui/Input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { ConfirmDialog } from "@/components/ui/Dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,10 +35,16 @@ import {
   RiPlanetLine,
   RiBroadcastLine,
   RiDashboardLine,
+  RiPlugLine,
+  RiSearchLine,
+  RiArrowLeftCircleLine,
+  RiArrowRightCircleLine,
+  RiArrowLeftRightLine,
   RiArrowDownSLine,
   RiSendPlane2Line,
   RiSubtractLine,
   RiPlayCircleLine,
+  RiProhibitedLine,
   RiExpandDiagonalLine,
   RiPushpinLine,
   RiFullscreenLine,
@@ -59,7 +68,7 @@ import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "activations";
+type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
 import { registerDefs } from "@/data/def-registry";
@@ -470,10 +479,11 @@ function SegmentV1Inner() {
     : page === "calendar" ? "Calendar"
     : page === "insights" ? "Insights"
     : page === "sources" ? "Sources"
+    : page === "integrations" ? "Integrations"
     : page === "activations" ? "Activations"
     : (activeConv?.title ?? "New chat");
   const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail";
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources";
+  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
   const inSpace = page === "space" || page === "space-detail";
   const inActivations = page === "activations";
   const HeaderIcon = isChat ? RiMessage2Line : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
@@ -588,9 +598,6 @@ function SegmentV1Inner() {
                   : undefined}
                 onOpenGroup={openSegment}
                 onBack={() => setPage("segments")}
-                onActivate={(id) => {
-                  kickoffActivationFromSegment(id);
-                }}
               />
             </div>
           ) : page === "segments" ? (
@@ -653,6 +660,10 @@ function SegmentV1Inner() {
           ) : page === "sources" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <SourcesPage />
+            </div>
+          ) : page === "integrations" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <IntegrationsPage />
             </div>
           ) : page === "space" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
@@ -1352,6 +1363,911 @@ function SourcesPage() {
   );
 }
 
+function IntegrationsPage() {
+  type IntegrationStatus = "Connected" | "Available" | "Disconnected";
+  type IntegrationRecord = {
+    id: string;
+    name: string;
+    category: string;
+    status: IntegrationStatus;
+    summary: string;
+    updated: string;
+  };
+  type AccountDraft = {
+    accountName: string;
+    username: string;
+    password: string;
+    apiKey: string;
+    secretKey: string;
+  };
+  type ConnectedAccount = AccountDraft & { id: string };
+
+  const [query, setQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [openIntegrationId, setOpenIntegrationId] = useState<string | null>(null);
+  const [panelExpanded, setPanelExpanded] = useState(false);
+  const [showAccountFrame, setShowAccountFrame] = useState(false);
+  const [accountFrameExpanded, setAccountFrameExpanded] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [pendingDisconnectIntegrationId, setPendingDisconnectIntegrationId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<"name" | "category" | "syncDirection" | "summary" | "updated" | "status">("category");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const accountFrameRef = useRef<HTMLDivElement | null>(null);
+
+  const INITIAL_INTEGRATIONS: IntegrationRecord[] = [
+    { id: "lexer-api", name: "Lexer API", category: "API", status: "Connected", summary: "Core Lexer platform endpoints and webhooks are healthy.", updated: "Synced just now" },
+    { id: "shopify", name: "Shopify", category: "Transactions", status: "Connected", summary: "Orders, products, and customers sync continuously.", updated: "Synced 4 min ago" },
+    { id: "stripe", name: "Stripe", category: "Transactions", status: "Available", summary: "Payment, refund, and dispute events are mapped.", updated: "Not connected" },
+    { id: "bigcommerce", name: "BigCommerce", category: "Transactions", status: "Available", summary: "Catalog webhook signature check needs renewal.", updated: "Not connected" },
+    { id: "klaviyo", name: "Klaviyo", category: "Email", status: "Connected", summary: "Campaign and list engagement events are available.", updated: "Synced 9 min ago" },
+    { id: "mailchimp", name: "Mailchimp", category: "Email", status: "Available", summary: "Audience segments and sends are synced daily.", updated: "Not connected" },
+    { id: "sendgrid", name: "SendGrid", category: "Email", status: "Disconnected", summary: "Delivery and bounce feeds are temporarily paused.", updated: "Disconnected 1 hr ago" },
+    { id: "attentive", name: "Attentive", category: "SMS", status: "Available", summary: "Subscriber opt-in and campaign clickstream is flowing.", updated: "Not connected" },
+    { id: "postscript", name: "Postscript", category: "SMS", status: "Available", summary: "SMS conversion attribution is enabled.", updated: "Not connected" },
+    { id: "meta-ads", name: "Meta Ads", category: "Paid ads", status: "Available", summary: "Spend, reach, and conversion performance is ingested.", updated: "Not connected" },
+    { id: "google-ads", name: "Google Ads", category: "Paid ads", status: "Disconnected", summary: "One account lost token scope for cost imports.", updated: "Disconnected 2 hr ago" },
+    { id: "tiktok-ads", name: "TikTok Ads", category: "Paid ads", status: "Available", summary: "Creative and ad group metrics sync hourly.", updated: "Not connected" },
+    { id: "ga4", name: "Google Analytics", category: "Web analytics", status: "Available", summary: "Session, source, and funnel events are unified.", updated: "Not connected" },
+    { id: "segment", name: "Segment", category: "CDP", status: "Available", summary: "Event routing to warehouse and activation tools is healthy.", updated: "Not connected" },
+    { id: "snowflake", name: "Snowflake", category: "Warehouse", status: "Connected", summary: "Modeled tables refresh every 30 minutes.", updated: "Synced 15 min ago" },
+  ];
+
+  const buildDefaultAccount = (integration: IntegrationRecord): AccountDraft => {
+    const id = integration.id.replace(/-/g, "_");
+    return {
+      accountName: `${integration.name} primary account`,
+      username: `demo_${id}@lexer.local`,
+      password: "DemoPass_2026!",
+      apiKey: `lxr_pk_${id}_a1b2c3d4`,
+      secretKey: `lxr_sk_${id}_9x8y7z6w`,
+    };
+  };
+
+  const [integrations, setIntegrations] = useState<IntegrationRecord[]>(INITIAL_INTEGRATIONS);
+  const [accountDrafts, setAccountDrafts] = useState<Record<string, AccountDraft>>({});
+  const [connectedAccountsByIntegration, setConnectedAccountsByIntegration] = useState<Record<string, ConnectedAccount[]>>(() => {
+    const seeded: Record<string, ConnectedAccount[]> = {};
+    for (const integration of INITIAL_INTEGRATIONS) {
+      if (integration.status !== "Connected" && integration.status !== "Disconnected") continue;
+      seeded[integration.id] = [{ id: `acc-seed-${integration.id}`, ...buildDefaultAccount(integration) }];
+    }
+    return seeded;
+  });
+  const [activeAccountIdByIntegration, setActiveAccountIdByIntegration] = useState<Record<string, string | null>>(() => {
+    const seeded: Record<string, string | null> = {};
+    for (const integration of INITIAL_INTEGRATIONS) {
+      seeded[integration.id] = integration.status === "Connected" || integration.status === "Disconnected" ? `acc-seed-${integration.id}` : null;
+    }
+    return seeded;
+  });
+
+  const defaultAccountForIntegration = (integration: IntegrationRecord): AccountDraft => {
+    return buildDefaultAccount(integration);
+  };
+
+  const getAccountDraft = (integration: IntegrationRecord): AccountDraft => {
+    return accountDrafts[integration.id] ?? defaultAccountForIntegration(integration);
+  };
+
+  const createNewAccountDraft = (integration: IntegrationRecord): AccountDraft => {
+    const nextOrdinal = (connectedAccountsByIntegration[integration.id]?.length ?? 0) + 1;
+    return {
+      accountName: `${integration.name} account ${nextOrdinal}`,
+      username: "",
+      password: "",
+      apiKey: "",
+      secretKey: "",
+    };
+  };
+
+  const updateAccountDraft = (integrationId: string, field: keyof AccountDraft, value: string) => {
+    setAccountDrafts((prev) => {
+      const integration = integrations.find((item) => item.id === integrationId);
+      const current = prev[integrationId] ?? (integration ? defaultAccountForIntegration(integration) : {
+        accountName: "",
+        username: "",
+        password: "",
+        apiKey: "",
+        secretKey: "",
+      });
+      return {
+        ...prev,
+        [integrationId]: {
+          ...current,
+          [field]: value,
+        },
+      };
+    });
+  };
+
+  const saveAccountDraft = (integrationId: string) => {
+    const integration = integrations.find((item) => item.id === integrationId);
+    if (!integration) return;
+    const draft = getAccountDraft(integration);
+    const activeId = activeAccountIdByIntegration[integrationId];
+    if (!activeId) return;
+    setConnectedAccountsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((account) => (
+        account.id === activeId ? { ...account, ...draft } : account
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const connectIntegration = (integrationId: string) => {
+    const integration = integrations.find((item) => item.id === integrationId);
+    if (!integration) return;
+    const draft = getAccountDraft(integration);
+    const activeId = activeAccountIdByIntegration[integrationId] ?? null;
+    const current = connectedAccountsByIntegration[integrationId] ?? [];
+    const existing = activeId ? current.find((account) => account.id === activeId) : null;
+    const targetId = existing?.id ?? `acc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const nextAccounts = existing
+      ? current.map((account) => (account.id === targetId ? { ...account, ...draft } : account))
+      : [...current, { id: targetId, ...draft }];
+
+    setConnectedAccountsByIntegration((prev) => ({ ...prev, [integrationId]: nextAccounts }));
+    setActiveAccountIdByIntegration((prev) => ({ ...prev, [integrationId]: targetId }));
+    setIntegrations((prev) => prev.map((item) => (
+      item.id === integrationId
+        ? { ...item, status: "Connected", updated: "Synced just now" }
+        : item
+    )));
+  };
+
+  const disconnectIntegration = (integrationId: string) => {
+    setConnectedAccountsByIntegration((prev) => ({ ...prev, [integrationId]: [] }));
+    setActiveAccountIdByIntegration((prev) => ({ ...prev, [integrationId]: null }));
+
+    setIntegrations((prev) => prev.map((item) => (
+      item.id === integrationId
+        ? { ...item, status: "Available", updated: "Not connected" }
+        : item
+    )));
+  };
+
+  const confirmDisconnectIntegration = () => {
+    if (!pendingDisconnectIntegrationId) return;
+    disconnectIntegration(pendingDisconnectIntegrationId);
+    setPendingDisconnectIntegrationId(null);
+  };
+
+  const handleAddNewAccount = (integration: IntegrationRecord) => {
+    setShowAccountFrame(true);
+    setAccountFrameExpanded(false);
+    setActiveAccountIdByIntegration((prev) => ({ ...prev, [integration.id]: null }));
+    setAccountDrafts((prev) => ({ ...prev, [integration.id]: createNewAccountDraft(integration) }));
+  };
+
+  const selectConnectedAccount = (integration: IntegrationRecord, accountId: string) => {
+    const accounts = connectedAccountsByIntegration[integration.id] ?? [];
+    const selected = accounts.find((account) => account.id === accountId);
+    if (!selected) return;
+
+    setShowAccountFrame(true);
+    setAccountFrameExpanded(false);
+    setActiveAccountIdByIntegration((prev) => ({ ...prev, [integration.id]: accountId }));
+    setAccountDrafts((prev) => ({
+      ...prev,
+      [integration.id]: {
+        accountName: selected.accountName,
+        username: selected.username,
+        password: selected.password,
+        apiKey: selected.apiKey,
+        secretKey: selected.secretKey,
+      },
+    }));
+  };
+
+  const categories = [
+    "All",
+    "Available sources",
+    "Connected sources",
+    "Disconnected sources",
+    ...Array.from(new Set(integrations.map((integration) => integration.category))).sort((a, b) => a.localeCompare(b)),
+  ];
+
+  const syncDirectionForCategory = (category: string): "Inbound" | "Outbound" | "Bidirectional" => {
+    if (category === "Transactions") return "Inbound";
+    if (category === "Paid ads") return "Outbound";
+    if (category === "Web analytics") return "Inbound";
+    return "Bidirectional";
+  };
+
+  const syncDirectionIcon = (direction: "Inbound" | "Outbound" | "Bidirectional") => {
+    if (direction === "Inbound") return <RiArrowLeftCircleLine className="size-4" />;
+    if (direction === "Outbound") return <RiArrowRightCircleLine className="size-4" />;
+    return <RiArrowLeftRightLine className="size-4" />;
+  };
+
+  const q = query.trim().toLowerCase();
+  const filtered = integrations.filter((integration) => {
+    const availableOnly = selectedCategory === "Available sources";
+    const connectedOnly = selectedCategory === "Connected sources";
+    const disconnectedOnly = selectedCategory === "Disconnected sources";
+    const categoryMatch = availableOnly || connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
+    const statusMatch = (availableOnly && integration.status === "Available")
+      || (connectedOnly && integration.status === "Connected")
+      || (disconnectedOnly && integration.status === "Disconnected")
+      || (!availableOnly && !connectedOnly && !disconnectedOnly);
+    const nameMatch = q === "" || integration.name.toLowerCase().includes(q);
+    return categoryMatch && statusMatch && nameMatch;
+  });
+
+  const pinnedIntegration = filtered.find((integration) => integration.id === "lexer-api");
+  const filteredWithoutPinned = filtered.filter((integration) => integration.id !== "lexer-api");
+
+  const sortValue = (
+    integration: IntegrationRecord,
+    key: "name" | "category" | "syncDirection" | "summary" | "updated" | "status",
+  ) => {
+    if (key === "syncDirection") return syncDirectionForCategory(integration.category).toLowerCase();
+    return integration[key].toLowerCase();
+  };
+
+  const onSort = (key: "name" | "category" | "syncDirection" | "summary" | "updated" | "status") => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  };
+
+  const sorted = [...filteredWithoutPinned].sort((a, b) => {
+    const left = sortValue(a, sortKey);
+    const right = sortValue(b, sortKey);
+    const result = left.localeCompare(right);
+    if (result === 0) return a.name.localeCompare(b.name);
+    return sortDir === "asc" ? result : -result;
+  });
+
+  const openIntegration = openIntegrationId ? integrations.find((integration) => integration.id === openIntegrationId) : null;
+
+  useEffect(() => {
+    setShowAccountFrame(false);
+    setAccountFrameExpanded(false);
+  }, [openIntegrationId]);
+
+  useEffect(() => {
+    if (!showAccountFrame) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      const frame = accountFrameRef.current;
+      if (!frame) return;
+      if (frame.contains(event.target as Node)) return;
+      setShowAccountFrame(false);
+      setAccountFrameExpanded(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [showAccountFrame]);
+
+  const countFor = (category: string) => {
+    if (category === "Available sources") return integrations.filter((integration) => integration.status === "Available").length;
+    if (category === "Connected sources") return integrations.filter((integration) => integration.status === "Connected").length;
+    if (category === "Disconnected sources") return integrations.filter((integration) => integration.status === "Disconnected").length;
+    if (category === "All") return integrations.length;
+    return integrations.filter((integration) => integration.category === category).length;
+  };
+
+  const SortHeader = ({ label, keyName, className }: { label: string; keyName: "name" | "category" | "syncDirection" | "summary" | "updated" | "status"; className?: string }) => {
+    const active = sortKey === keyName;
+    return (
+      <TableHead className={className}>
+        <button
+          onClick={() => onSort(keyName)}
+          className="inline-flex items-center gap-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span>{label}</span>
+          {active ? <RiArrowDownSLine className={cn("size-4", sortDir === "asc" && "rotate-180")} /> : <RiArrowUpDownLine className="size-3.5" />}
+        </button>
+      </TableHead>
+    );
+  };
+
+  const renderAccountEditor = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
+    const draft = getAccountDraft(integration);
+    const inputBgClass = mode === "docked" ? "bg-card" : "bg-background";
+    const activeAccountId = activeAccountIdByIntegration[integration.id] ?? null;
+    const connected = activeAccountId != null && (connectedAccountsByIntegration[integration.id] ?? []).some((account) => account.id === activeAccountId);
+    const isDisconnectedIntegration = integration.status === "Disconnected";
+    const isReconnectAction = isDisconnectedIntegration && connected;
+    const connectButtonDisabled = connected && !isReconnectAction;
+
+    return (
+      <>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground">Account Name</p>
+          <Input
+            value={draft.accountName}
+            onChange={(e) => updateAccountDraft(integration.id, "accountName", e.target.value)}
+            className={cn("mt-0.5 h-8", inputBgClass)}
+          />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground">Username</p>
+          <Input
+            value={draft.username}
+            onChange={(e) => updateAccountDraft(integration.id, "username", e.target.value)}
+            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+          />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground">Password</p>
+          <Input
+            type="password"
+            value={draft.password}
+            onChange={(e) => updateAccountDraft(integration.id, "password", e.target.value)}
+            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+          />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground">API key</p>
+          <Input
+            value={draft.apiKey}
+            onChange={(e) => updateAccountDraft(integration.id, "apiKey", e.target.value)}
+            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+          />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground">Secret key</p>
+          <Input
+            value={draft.secretKey}
+            onChange={(e) => updateAccountDraft(integration.id, "secretKey", e.target.value)}
+            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+          />
+        </div>
+
+        <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3">
+          <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>
+          {connected ? (
+            <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setPendingDisconnectIntegrationId(integration.id)}>Remove</Button>
+          ) : (
+            <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setCancelConfirmOpen(true)}>Cancel</Button>
+          )}
+          <Button
+            size={mode === "docked" ? "sm" : undefined}
+            className={cn("bg-emerald-600 text-white hover:bg-emerald-700", connectButtonDisabled && "pointer-events-none opacity-60")}
+            disabled={connectButtonDisabled}
+            onClick={() => connectIntegration(integration.id)}
+          >
+            {isReconnectAction ? "Reconnect" : connected ? "Connected" : "Connect"}
+          </Button>
+        </div>
+      </>
+    );
+  };
+
+  const renderAddAccountFrame = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
+    const connectedAccounts = connectedAccountsByIntegration[integration.id] ?? [];
+    const activeAccountId = activeAccountIdByIntegration[integration.id] ?? null;
+    const frameClass = mode === "docked"
+      ? "rounded-lg border border-border bg-background p-3"
+      : "rounded-xl border border-border bg-card p-4";
+    const buttonSize = mode === "docked" ? "sm" : undefined;
+
+    return (
+      <div className={frameClass}>
+        <p className="text-xs font-medium text-muted-foreground">Add account</p>
+        <Button size={buttonSize} className="mt-3 w-full" variant="outline" onClick={() => handleAddNewAccount(integration)}>
+          {`Add New ${integration.name} Account`}
+        </Button>
+
+        {connectedAccounts.length > 0 && (
+          <div className="mt-3 rounded-lg border border-border bg-muted/20 p-2">
+            <p className="px-1 text-[11px] font-semibold text-muted-foreground">Connected accounts</p>
+            <div className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+              {connectedAccounts.map((account) => (
+                <button
+                  key={account.id}
+                  onClick={() => selectConnectedAccount(integration, account.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                    activeAccountId === account.id
+                      ? "bg-accent text-foreground"
+                      : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <span className="truncate pr-2">{account.accountName}</span>
+                  {integration.status === "Disconnected" ? (
+                    <RiCloseLine className="size-3.5 shrink-0 text-red-600" />
+                  ) : (
+                    <RiCheckLine className="size-3.5 shrink-0 text-emerald-600" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderIntegrationRow = (integration: IntegrationRecord) => (
+    <TableRow
+      key={integration.id}
+      onClick={() => setOpenIntegrationId(integration.id)}
+      className={cn("cursor-pointer", openIntegrationId === integration.id && "bg-accent/40")}
+    >
+      <TableCell>
+        <div className="inline-flex items-center gap-2">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <RiPlugLine className="size-4" />
+          </span>
+          <span className="font-medium text-foreground">{integration.name}</span>
+          {integration.id === "lexer-api" && <Badge variant="default" size="sm">Pinned</Badge>}
+        </div>
+      </TableCell>
+      <TableCell><Badge variant="default" size="sm">{integration.category}</Badge></TableCell>
+      <TableCell>
+        <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
+          {syncDirectionIcon(syncDirectionForCategory(integration.category))}
+          <span>{syncDirectionForCategory(integration.category)}</span>
+        </span>
+      </TableCell>
+      <TableCell className="border-r border-border text-sm text-foreground-secondary">{integration.summary}</TableCell>
+      <TableCell>
+        <Badge
+          variant={integration.status === "Connected" ? "success" : "outline"}
+          size="sm"
+          className={cn(
+            integration.status === "Available" && "bg-foreground/70 text-background ring-foreground/30",
+            integration.status === "Disconnected" && "border-red-200 bg-red-50 text-red-700 ring-red-200",
+          )}
+        >
+          {integration.status}
+        </Badge>
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">{integration.updated}</TableCell>
+    </TableRow>
+  );
+
+  const groupedRows: React.ReactNode[] = [];
+  let currentCategory: string | null = null;
+
+  if (pinnedIntegration) groupedRows.push(renderIntegrationRow(pinnedIntegration));
+  for (const integration of sorted) {
+    if (integration.category !== currentCategory) {
+      currentCategory = integration.category;
+      groupedRows.push(
+        <TableRow key={`category-${currentCategory}`}>
+          <TableCell colSpan={6} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
+            {currentCategory}
+          </TableCell>
+        </TableRow>,
+      );
+    }
+    groupedRows.push(renderIntegrationRow(integration));
+  }
+
+  return (
+    <div className="flex h-full flex-col px-6 py-6">
+      <div className="mb-4 flex flex-col gap-1">
+        <h1 className="text-xl font-semibold text-foreground">Integrations</h1>
+        <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>
+      </div>
+
+      <div className="min-h-0 flex flex-1 gap-4 overflow-hidden">
+        <aside className="w-56 shrink-0 overflow-y-auto rounded-xl border border-border bg-card p-2">
+          <p className="px-2 pb-2 pt-1 text-xs font-semibold text-muted-foreground">Categories</p>
+          <ul className="flex list-none flex-col gap-1">
+            {categories.map((category) => {
+              const active = category === selectedCategory;
+              return (
+                <li key={category}>
+                  <button
+                    onClick={() => setSelectedCategory(category)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                      active ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <span className="truncate">{category}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
+                  </button>
+                  {category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
+                </li>
+              );
+            })}
+          </ul>
+        </aside>
+
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mb-3">
+            <div className="relative max-w-md">
+              <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search integration names"
+                className="h-9 pl-8"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortHeader label="Integration" keyName="name" />
+                  <SortHeader label="Category" keyName="category" className="w-40" />
+                  <SortHeader label="Sync direction" keyName="syncDirection" className="w-44" />
+                  <SortHeader label="Description" keyName="summary" className="border-r border-border" />
+                  <SortHeader label="Status" keyName="status" className="w-40" />
+                  <SortHeader label="Last sync" keyName="updated" className="w-40" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {groupedRows}
+                {groupedRows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                      No integrations match this search and category.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+
+        {openIntegration && !panelExpanded && (
+          <button
+            className="fixed inset-0 z-30 cursor-default bg-transparent"
+            aria-label="Close integration panel"
+            onClick={() => setOpenIntegrationId(null)}
+          />
+        )}
+
+        {openIntegration && !panelExpanded && (
+          <div className="relative z-40 w-[39.0625rem] shrink-0 overflow-y-auto rounded-xl border border-border bg-card">
+            <div className="sticky top-0 z-10 border-b border-border bg-card px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground">Integration details</p>
+                  <h2 className="mt-0.5 truncate text-sm font-semibold text-foreground">{openIntegration.name}</h2>
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPanelExpanded(true)}
+                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="Expand panel"
+                      aria-label="Expand panel"
+                    >
+                      <RiExpandDiagonalLine className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => setOpenIntegrationId(null)}
+                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="Close panel"
+                      aria-label="Close panel"
+                    >
+                      <RiCloseLine className="size-4" />
+                    </button>
+                  </div>
+                  <Badge
+                    variant={openIntegration.status === "Connected" ? "success" : "outline"}
+                    size="sm"
+                    className={cn(
+                      openIntegration.status === "Available" && "bg-foreground/70 text-background ring-foreground/30",
+                      openIntegration.status === "Disconnected" && "border-red-200 bg-red-50 text-red-700 ring-red-200",
+                    )}
+                  >
+                    {openIntegration.status}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4">
+              {(() => {
+                return (
+                  <>
+                    <div className="grid grid-cols-1 gap-3">
+                      {openIntegration.status === "Disconnected" && (
+                        <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                          This account has disconnected and needs to be reconnected to avoid disruption.
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-lg border border-border bg-background p-3">
+                            <p className="text-[11px] font-semibold text-muted-foreground">Category</p>
+                            <p className="mt-0.5 text-sm text-foreground">{openIntegration.category}</p>
+                          </div>
+                          <div className="rounded-lg border border-border bg-background p-3">
+                            <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
+                            <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
+                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
+                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {showAccountFrame ? (
+                        accountFrameExpanded ? (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div ref={accountFrameRef} className="col-span-2 flex h-full flex-col rounded-lg border border-border bg-background p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setAccountFrameExpanded(false)}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Collapse account frame"
+                                    aria-label="Collapse account frame"
+                                  >
+                                    <RiFullscreenExitLine className="size-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setShowAccountFrame(false);
+                                      setAccountFrameExpanded(false);
+                                    }}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Close account frame"
+                                    aria-label="Close account frame"
+                                  >
+                                    <RiCloseLine className="size-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="mt-2 space-y-2">
+                                {renderAccountEditor(openIntegration, "docked")}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-3">
+                            {renderAddAccountFrame(openIntegration, "docked")}
+                            <div ref={accountFrameRef} className="flex h-full flex-col rounded-lg border border-border bg-background p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setAccountFrameExpanded(true)}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Expand account frame"
+                                    aria-label="Expand account frame"
+                                  >
+                                    <RiExpandDiagonalLine className="size-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setShowAccountFrame(false);
+                                      setAccountFrameExpanded(false);
+                                    }}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Close account frame"
+                                    aria-label="Close account frame"
+                                  >
+                                    <RiCloseLine className="size-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="mt-2 space-y-2">
+                                {renderAccountEditor(openIntegration, "docked")}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="col-span-2">{renderAddAccountFrame(openIntegration, "docked")}</div>
+                        </div>
+                      )}
+
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs font-medium text-muted-foreground">Description</p>
+                        <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
+                      </div>
+
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs font-medium text-muted-foreground">Connection frame</p>
+                        <div className="mt-2">
+                          <p className="text-sm text-foreground-secondary">{openIntegration.updated}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {openIntegration && panelExpanded && (
+          <div className="fixed inset-0 z-50 bg-background">
+            <div className="flex h-full flex-col">
+              <div className="border-b border-border px-6 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground">Integration details</p>
+                    <h2 className="mt-0.5 truncate text-base font-semibold text-foreground">{openIntegration.name}</h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPanelExpanded(false)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground-secondary transition-colors hover:bg-muted hover:text-foreground"
+                      title="Collapse panel"
+                      aria-label="Collapse panel"
+                    >
+                      <RiFullscreenExitLine className="size-4" />
+                      <span>Collapse</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPanelExpanded(false);
+                        setOpenIntegrationId(null);
+                      }}
+                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="Close panel"
+                      aria-label="Close panel"
+                    >
+                      <RiCloseLine className="size-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                {(() => {
+                  return (
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      {openIntegration.status === "Disconnected" && (
+                        <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
+                          This account has disconnected and needs to be reconnected to avoid disruption.
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="rounded-xl border border-border bg-card p-4">
+                            <p className="text-[11px] font-semibold text-muted-foreground">Category</p>
+                            <p className="mt-0.5 text-sm text-foreground">{openIntegration.category}</p>
+                          </div>
+                          <div className="rounded-xl border border-border bg-card p-4">
+                            <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
+                            <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
+                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
+                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {showAccountFrame ? (
+                        accountFrameExpanded ? (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div ref={accountFrameRef} className="col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setAccountFrameExpanded(false)}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Collapse account frame"
+                                    aria-label="Collapse account frame"
+                                  >
+                                    <RiFullscreenExitLine className="size-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setShowAccountFrame(false);
+                                      setAccountFrameExpanded(false);
+                                    }}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Close account frame"
+                                    aria-label="Close account frame"
+                                  >
+                                    <RiCloseLine className="size-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="mt-2 space-y-2">
+                                {renderAccountEditor(openIntegration, "expanded")}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-4">
+                            {renderAddAccountFrame(openIntegration, "expanded")}
+                            <div ref={accountFrameRef} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setAccountFrameExpanded(true)}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Expand account frame"
+                                    aria-label="Expand account frame"
+                                  >
+                                    <RiExpandDiagonalLine className="size-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setShowAccountFrame(false);
+                                      setAccountFrameExpanded(false);
+                                    }}
+                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                    title="Close account frame"
+                                    aria-label="Close account frame"
+                                  >
+                                    <RiCloseLine className="size-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="mt-2 space-y-2">
+                                {renderAccountEditor(openIntegration, "expanded")}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        <div className="lg:col-span-2">{renderAddAccountFrame(openIntegration, "expanded")}</div>
+                      )}
+
+                      <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+                        <p className="text-xs font-medium text-muted-foreground">Description</p>
+                        <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
+                      </div>
+
+                      <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+                        <p className="text-xs font-medium text-muted-foreground">Connection frame</p>
+                        <div className="mt-2">
+                          <p className="text-sm text-foreground-secondary">{openIntegration.updated}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={cancelConfirmOpen}
+        onOpenChange={setCancelConfirmOpen}
+        variant="destructive"
+        icon={RiProhibitedLine}
+        title="Cancel and close integration setup?"
+        description="If you cancel now, the panel will close and your work will not be saved."
+        confirmLabel="Cancel and close"
+        cancelLabel="Keep editing"
+        onConfirm={() => {
+          setPanelExpanded(false);
+          setOpenIntegrationId(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingDisconnectIntegrationId != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDisconnectIntegrationId(null);
+        }}
+        variant="destructive"
+        icon={RiProhibitedLine}
+        title="Remove account?"
+        description="Are you sure you want to remove this account? This will cause a data disruption until the account is connected again."
+        confirmLabel="Yes, remove"
+        cancelLabel="Keep account"
+        onConfirm={confirmDisconnectIntegration}
+      />
+    </div>
+  );
+}
+
 // ─── Sidebar ───────────────────────────────────────────────────────────────────
 
 function Sidebar({
@@ -1374,7 +2290,10 @@ function Sidebar({
   const { state, dispatch } = useSession();
   const inSegments = page === "segments" || page === "segment-detail";
   const inActivations = page === "activations";
+  const inIntegrations = page === "integrations";
+  const inData = page === "definitions" || page === "metrics" || page === "sources";
   const [activationsOpen, setActivationsOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const savedSegmentCount = Array.from(state.artifacts.values()).filter(
     (artifact) => artifact.type === "segment" && artifact.status === "saved",
   ).length;
@@ -1418,7 +2337,7 @@ function Sidebar({
     <div className={cn("flex h-full shrink-0 flex-col overflow-hidden bg-sidebar p-2 transition-[width] duration-200", collapsed ? "w-14" : "w-[16rem]")}>
       <div className="flex h-full flex-col overflow-hidden rounded-lg bg-sidebar">
         <div className={cn("flex items-center p-2", collapsed && "justify-center")}>
-          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype-mvp" />
+          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype onboarding" />
         </div>
         <div className={cn("flex flex-1 flex-col gap-4 overflow-y-auto py-2", collapsed ? "px-0" : "px-2")}>
           <ul className="flex list-none flex-col gap-0.5">
@@ -1449,6 +2368,26 @@ function Sidebar({
                 </ul>
               )}
             </li>
+            <li>
+              <NavRow
+                icon={RiDatabase2Line}
+                label="Data"
+                collapsed={collapsed}
+                active={collapsed ? inData : inData && !dataOpen}
+                onClick={() => onNavigate("definitions")}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", dataOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setDataOpen((o) => !o) : undefined}
+                trailingToggleLabel="Toggle data destinations"
+              />
+              {!collapsed && dataOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
+                  <li><SubNavRow label="Metrics" active={page === "metrics"} onClick={() => onNavigate("metrics")} /></li>
+                  <li><SubNavRow label="Sources" active={page === "sources"} onClick={() => onNavigate("sources")} /></li>
+                </ul>
+              )}
+            </li>
+            <li><NavRow icon={RiPlugLine} label="Integrations" collapsed={collapsed} active={inIntegrations} onClick={() => onNavigate("integrations")} /></li>
             <li><NavRow icon={RiDashboardLine} label="Dashboards (WIP)" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
             {!collapsed && (
               <li>

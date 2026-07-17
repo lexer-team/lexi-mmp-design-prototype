@@ -12,7 +12,7 @@
  */
 
 export type ActivationStatus =
-  | "live" | "scheduled" | "awaiting-approval" | "sent" | "completed" | "failed";
+  | "live" | "scheduled" | "awaiting-approval" | "sent" | "completed" | "failed" | "cancelled";
 
 /** Approval state of an activation. */
 export type Approval =
@@ -31,6 +31,8 @@ export interface SkillInvocation {
 export interface Activation {
   id: string;
   name: string;
+  /** ISO timestamp when activation record was created. */
+  createdAt?: string;
   /** plain-text campaign/plan this belongs to (non-navigable) */
   context: string;
   segmentId?: string;
@@ -53,6 +55,19 @@ export interface Activation {
   invocations: SkillInvocation[];
   /** chronological audit log entries */
   trail: { at: string; entry: string }[];
+  /** Optional payload captured from MVP activation build in chat. */
+  mvpDetails?: {
+    population: string;
+    activationName: string;
+    activationDefinition: string;
+    segmentName: string;
+    dataSource: string;
+    accounts: string[];
+    fieldMapping: string[];
+    timing: string;
+    cadence: string;
+    customers: Array<{ id: string; name: string; meta: string }>;
+  };
 }
 
 // ─── Labels ────────────────────────────────────────────────────────────────
@@ -67,6 +82,7 @@ export const ACTIVATION_STATUS_META: Record<
   sent: { label: "Sent", variant: "secondary" },
   completed: { label: "Completed", variant: "secondary" },
   failed: { label: "Failed", variant: "danger" },
+  cancelled: { label: "Cancelled", variant: "danger" },
 };
 
 export function approvalLabel(a: Approval): string {
