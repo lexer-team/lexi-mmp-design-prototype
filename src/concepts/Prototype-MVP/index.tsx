@@ -43,6 +43,7 @@ import {
   RiArrowLeftRightLine,
   RiArrowDownSLine,
   RiSendPlane2Line,
+  RiListUnordered,
   RiSubtractLine,
   RiPlayCircleLine,
   RiProhibitedLine,
@@ -513,6 +514,7 @@ function SegmentV1Inner() {
         <Sidebar
           collapsed={sidebarCollapsed}
           page={page}
+          playbookSection={playbookSection}
           activationFilter={activationNavFilter}
           pinnedChatIds={pinnedChatIds}
           onTogglePinnedChat={(id) => {
@@ -523,6 +525,14 @@ function SegmentV1Inner() {
           onSelectActivationFilter={(filter) => {
             setActivationNavFilter(filter);
             setPage("activations");
+          }}
+          onOpenGlossary={() => {
+            setPlaybookSection("glossary");
+            setPage("playbook");
+          }}
+          onOpenRules={() => {
+            setPlaybookSection("rules");
+            setPage("playbook");
           }}
           onNavigate={setPage}
         />
@@ -1347,28 +1357,315 @@ function SourceRow({ def }: { def: import("@/data/def-registry").DefRef }) {
 }
 
 function SourcesPage() {
-  const { state } = useSession();
-  const defs = state.definitionIds
-    .map((id) => getDef(id))
-    .filter((d): d is NonNullable<typeof d> => Boolean(d));
+  const [source, setSource] = useState<"shopify" | "klaviyo">("shopify");
+  const [sourceTab, setSourceTab] = useState<"data" | "logs" | "dataset">("data");
+
+  const sourceMeta = {
+    shopify: {
+      label: "Shopify",
+      description: "Transactional commerce datasets synced from Shopify storefront and order APIs.",
+      datasets: [
+        {
+          id: "shopify-customers",
+          name: "Customers",
+          records: "182,430",
+          dailyDelta: "2,914",
+          linkValue: "customer_id",
+          linkType: "Primary key",
+          processingTime: "2m 18s",
+          updated: "Synced 5 min ago",
+          fields: "customer_id, email, first_order_date, lifetime_value",
+          sampleColumns: ["customer_id", "email", "first_order_date", "lifetime_value"],
+          sampleRows: [
+            ["cust_10294", "sophia.nguyen@demo.com", "2023-11-04", "$2,180"],
+            ["cust_10312", "liam.carter@demo.com", "2025-02-18", "$740"],
+          ],
+        },
+        {
+          id: "shopify-orders",
+          name: "Orders",
+          records: "1,084,219",
+          dailyDelta: "18,340",
+          linkValue: "order_id",
+          linkType: "Primary key",
+          processingTime: "3m 04s",
+          updated: "Synced 2 min ago",
+          fields: "order_id, customer_id, created_at, total_price, discount_amount",
+          sampleColumns: ["order_id", "customer_id", "created_at", "total_price", "discount_amount"],
+          sampleRows: [
+            ["ord_77812", "cust_10294", "2026-07-18 09:22", "$129.00", "$10.00"],
+            ["ord_77844", "cust_10312", "2026-07-18 09:18", "$74.00", "$0.00"],
+          ],
+        },
+        {
+          id: "shopify-products",
+          name: "Products",
+          records: "12,912",
+          dailyDelta: "104",
+          linkValue: "product_id",
+          linkType: "Primary key",
+          processingTime: "1m 12s",
+          updated: "Synced 14 min ago",
+          fields: "product_id, sku, product_type, vendor, status",
+          sampleColumns: ["product_id", "sku", "product_type", "vendor", "status"],
+          sampleRows: [
+            ["prd_10092", "BI-JEANS-08", "Denim", "Blue Illusion", "Active"],
+            ["prd_10218", "BI-SCARF-12", "Accessories", "Blue Illusion", "Active"],
+          ],
+        },
+      ],
+    },
+    klaviyo: {
+      label: "Klaviyo",
+      description: "Email engagement and profile datasets synced from Klaviyo marketing events.",
+      datasets: [
+        {
+          id: "klaviyo-profiles",
+          name: "Profiles",
+          records: "209,881",
+          dailyDelta: "3,102",
+          linkValue: "profile_id",
+          linkType: "Primary key",
+          processingTime: "2m 26s",
+          updated: "Synced 6 min ago",
+          fields: "profile_id, email, consent_status, sms_opt_in, predicted_clv",
+          sampleColumns: ["profile_id", "email", "consent_status", "sms_opt_in", "predicted_clv"],
+          sampleRows: [
+            ["prf_22091", "sophia.nguyen@demo.com", "Subscribed", "true", "$2,430"],
+            ["prf_22387", "liam.carter@demo.com", "Subscribed", "false", "$810"],
+          ],
+        },
+        {
+          id: "klaviyo-events",
+          name: "Events",
+          records: "5,940,311",
+          dailyDelta: "192,441",
+          linkValue: "event_id",
+          linkType: "Primary key",
+          processingTime: "4m 51s",
+          updated: "Synced 1 min ago",
+          fields: "event_id, profile_id, event_name, timestamp, campaign_id",
+          sampleColumns: ["event_id", "profile_id", "event_name", "timestamp", "campaign_id"],
+          sampleRows: [
+            ["evt_eml_11920", "prf_22091", "email_opened", "2026-07-18 09:10", "cmp_9812"],
+            ["evt_eml_11763", "prf_22387", "email_clicked", "2026-07-18 09:06", "cmp_9812"],
+          ],
+        },
+        {
+          id: "klaviyo-campaigns",
+          name: "Campaign performance",
+          records: "18,204",
+          dailyDelta: "322",
+          linkValue: "campaign_id",
+          linkType: "Foreign key",
+          processingTime: "1m 38s",
+          updated: "Synced 11 min ago",
+          fields: "campaign_id, send_time, opens, clicks, attributed_revenue",
+          sampleColumns: ["campaign_id", "send_time", "opens", "clicks", "attributed_revenue"],
+          sampleRows: [
+            ["cmp_9812", "2026-07-17 18:00", "28,410", "6,114", "$48,920"],
+            ["cmp_9745", "2026-07-15 17:30", "19,223", "3,087", "$27,330"],
+          ],
+        },
+      ],
+    },
+  } as const;
+
+  const sourceLogs = {
+    shopify: [
+      { id: "log-sh-1", dataset: "Orders", loadType: "Incremental", startedAt: "2026-07-18 09:16", duration: "3m 04s", rows: "18,340", status: "Success" },
+      { id: "log-sh-2", dataset: "Customers", loadType: "Incremental", startedAt: "2026-07-18 09:12", duration: "2m 18s", rows: "2,914", status: "Success" },
+      { id: "log-sh-3", dataset: "Products", loadType: "Incremental", startedAt: "2026-07-18 09:09", duration: "1m 12s", rows: "104", status: "Success" },
+    ],
+    klaviyo: [
+      { id: "log-kl-1", dataset: "Events", loadType: "Incremental", startedAt: "2026-07-18 09:14", duration: "4m 51s", rows: "192,441", status: "Success" },
+      { id: "log-kl-2", dataset: "Profiles", loadType: "Incremental", startedAt: "2026-07-18 09:10", duration: "2m 26s", rows: "3,102", status: "Success" },
+      { id: "log-kl-3", dataset: "Campaign performance", loadType: "Snapshot", startedAt: "2026-07-18 08:58", duration: "1m 38s", rows: "322", status: "Success" },
+    ],
+  } as const;
+
+  const current = sourceMeta[source];
+  const logs = sourceLogs[source];
 
   return (
-    <div className="flex h-full flex-col px-6 py-6">
+    <div className="relative flex h-full flex-col px-6 py-6">
       <div className="mb-4 flex flex-col gap-1">
         <h1 className="text-xl font-semibold text-foreground">Sources</h1>
-        <p className="text-sm text-foreground-secondary">Definitions and governed terms referenced in this session.</p>
+        <p className="text-sm text-foreground-secondary">Toggle between Shopify and Klaviyo to inspect each source's datasets independently.</p>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {defs.length > 0 ? (
-          <div className="flex flex-col gap-2.5">
-            {defs.map((def) => <SourceRow key={def.id} def={def} />)}
+        <div className="flex min-h-0 gap-4">
+          <aside className="w-56 shrink-0 rounded-xl border border-border bg-card p-3">
+            <p className="text-xs font-semibold text-muted-foreground">Integrations</p>
+            <div className="mt-2 flex flex-col gap-2">
+              <Button
+                size="sm"
+                variant={source === "shopify" ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => setSource("shopify")}
+              >
+                Shopify
+              </Button>
+              <Button
+                size="sm"
+                variant={source === "klaviyo" ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => setSource("klaviyo")}
+              >
+                Klaviyo
+              </Button>
+            </div>
+          </aside>
+
+          <div className="min-w-0 flex-1 rounded-xl border border-border bg-card p-4">
+            <div className="rounded-lg border border-border bg-background p-3">
+              <p className="text-sm font-medium text-foreground">{current.label} datasets</p>
+              <p className="mt-1 text-sm text-foreground-secondary">{current.description}</p>
+            </div>
+
+            <Tabs value={sourceTab} onValueChange={(value) => setSourceTab(value as "data" | "logs" | "dataset")} className="mt-3">
+              <TabsList variant="underline" className="w-full">
+                <TabsTrigger value="data">Data</TabsTrigger>
+                <TabsTrigger value="dataset">Dataset</TabsTrigger>
+                <TabsTrigger value="logs">Logs</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="dataset" className="space-y-3">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dataset</TableHead>
+                      <TableHead className="w-32">Records</TableHead>
+                      <TableHead className="w-40">Deltas sent daily</TableHead>
+                      <TableHead className="w-32">Link value</TableHead>
+                      <TableHead className="w-32">Link type</TableHead>
+                      <TableHead className="w-36">Processing time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {current.datasets.map((dataset) => (
+                      <TableRow key={`${dataset.id}-summary`}>
+                        <TableCell className="text-sm font-medium text-foreground">{dataset.name}</TableCell>
+                        <TableCell className="tabular-nums text-foreground">{dataset.records}</TableCell>
+                        <TableCell className="tabular-nums text-foreground">{dataset.dailyDelta}</TableCell>
+                        <TableCell className="font-mono text-xs text-foreground-secondary">{dataset.linkValue}</TableCell>
+                        <TableCell className="text-sm text-foreground-secondary">{dataset.linkType}</TableCell>
+                        <TableCell className="text-sm text-foreground-secondary">{dataset.processingTime}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <div className="flex flex-col gap-2.5">
+                  {current.datasets.map((dataset) => (
+                    <div key={`${dataset.id}-dataset-sample`} className="rounded-lg border border-border bg-background p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{dataset.name} sample data</p>
+                          <p className="mt-0.5 text-xs text-foreground-secondary">{dataset.fields}</p>
+                        </div>
+                        <p className="shrink-0 text-xs text-muted-foreground">{dataset.updated}</p>
+                      </div>
+
+                      <div className="mt-2">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              {dataset.sampleColumns.map((column) => (
+                                <TableHead key={`${dataset.id}-dataset-${column}`} className="font-mono text-[11px]">{column}</TableHead>
+                              ))}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {dataset.sampleRows.map((row, rowIndex) => (
+                              <TableRow key={`${dataset.id}-dataset-row-${rowIndex}`}>
+                                {row.map((value, colIndex) => (
+                                  <TableCell key={`${dataset.id}-dataset-cell-${rowIndex}-${colIndex}`} className="font-mono text-xs text-foreground-secondary">
+                                    {value}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="data" className="space-y-3">
+                <div className="flex flex-col gap-2.5">
+                  {current.datasets.map((dataset) => (
+                    <div key={dataset.id} className="rounded-lg border border-border bg-background p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{dataset.name}</p>
+                          <p className="mt-0.5 text-xs text-foreground-secondary">{dataset.fields}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-xs font-medium text-foreground">{dataset.records} rows</p>
+                          <p className="text-xs text-muted-foreground">{dataset.updated}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-2">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              {dataset.sampleColumns.map((column) => (
+                                <TableHead key={`${dataset.id}-${column}`} className="font-mono text-[11px]">{column}</TableHead>
+                              ))}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {dataset.sampleRows.map((row, rowIndex) => (
+                              <TableRow key={`${dataset.id}-row-${rowIndex}`}>
+                                {row.map((value, colIndex) => (
+                                  <TableCell key={`${dataset.id}-cell-${rowIndex}-${colIndex}`} className="font-mono text-xs text-foreground-secondary">
+                                    {value}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="logs" className="space-y-3">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dataset load</TableHead>
+                      <TableHead className="w-32">Type</TableHead>
+                      <TableHead className="w-44">Started</TableHead>
+                      <TableHead className="w-32">Timing</TableHead>
+                      <TableHead className="w-28">Rows</TableHead>
+                      <TableHead className="w-28">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="text-sm font-medium text-foreground">{log.dataset}</TableCell>
+                        <TableCell className="text-sm text-foreground-secondary">{log.loadType}</TableCell>
+                        <TableCell className="text-sm text-foreground-secondary">{log.startedAt}</TableCell>
+                        <TableCell className="tabular-nums text-foreground">{log.duration}</TableCell>
+                        <TableCell className="tabular-nums text-foreground">{log.rows}</TableCell>
+                        <TableCell><Badge variant="success" size="sm">{log.status}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TabsContent>
+            </Tabs>
           </div>
-        ) : (
-          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-8 text-sm text-muted-foreground">
-            No sources captured yet. Ask Lexi a question to surface definitions here.
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -2283,6 +2580,16 @@ function IntegrationsPage() {
     secretKey: string;
   };
   type ConnectedAccount = AccountDraft & { id: string };
+  type OfflineEventSetDraft = {
+    id: string;
+    title: string;
+    expanded: boolean;
+    conversionTracking: string;
+    dataset: string;
+    trackingPixelId: string;
+    saved: boolean;
+    disconnected: boolean;
+  };
 
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
@@ -2294,7 +2601,15 @@ function IntegrationsPage() {
   const [pendingDisconnectIntegrationId, setPendingDisconnectIntegrationId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<"name" | "category" | "syncDirection" | "summary" | "updated" | "status">("category");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [offlineEventSetsByIntegration, setOfflineEventSetsByIntegration] = useState<Record<string, OfflineEventSetDraft[]>>({});
+  const [onlineEventSetsByIntegration, setOnlineEventSetsByIntegration] = useState<Record<string, OfflineEventSetDraft[]>>({});
   const accountFrameRef = useRef<HTMLDivElement | null>(null);
+  const CAPI_DATASETS = [
+    "CAPI Purchases Dataset",
+    "CAPI Leads Dataset",
+    "CAPI Store Visits Dataset",
+  ];
+  const DUMMY_TRACKING_PIXEL_IDS = ["482910374615", "731640928154", "960182745308"];
 
   const INITIAL_INTEGRATIONS: IntegrationRecord[] = [
     { id: "lexer-api", name: "Lexer API", category: "API", status: "Connected", summary: "Core Lexer platform endpoints and webhooks are healthy.", updated: "Synced just now" },
@@ -2379,6 +2694,170 @@ function IntegrationsPage() {
           [field]: value,
         },
       };
+    });
+  };
+
+  const createOfflineEventSetDraft = (currentLength: number): OfflineEventSetDraft => {
+    return {
+      id: `offline-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: "New Offline Event Set",
+      expanded: true,
+      conversionTracking: "Meta - Conversion API",
+      dataset: CAPI_DATASETS[currentLength % CAPI_DATASETS.length],
+      trackingPixelId: DUMMY_TRACKING_PIXEL_IDS[currentLength % DUMMY_TRACKING_PIXEL_IDS.length],
+      saved: false,
+      disconnected: false,
+    };
+  };
+
+  const addOfflineEventSet = (integrationId: string) => {
+    setOfflineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = createOfflineEventSetDraft(current.length);
+      return { ...prev, [integrationId]: [...current, next] };
+    });
+  };
+
+  const updateOfflineEventSet = (
+    integrationId: string,
+    setId: string,
+    field: "conversionTracking" | "dataset" | "trackingPixelId",
+    value: string,
+  ) => {
+    setOfflineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId
+          ? { ...item, [field]: value, saved: false, disconnected: false }
+          : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const toggleOfflineEventSetExpanded = (integrationId: string, setId: string) => {
+    setOfflineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId ? { ...item, expanded: !item.expanded } : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const saveOfflineEventSet = (integrationId: string, setId: string) => {
+    setOfflineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId
+          ? {
+            ...item,
+            saved: true,
+            title: item.conversionTracking.trim() || item.title,
+          }
+          : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const disconnectOfflineEventSet = (integrationId: string, setId: string) => {
+    setOfflineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId ? { ...item, disconnected: true } : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const removeOfflineEventSet = (integrationId: string, setId: string) => {
+    setOfflineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.filter((item) => item.id !== setId);
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const createOnlineEventSetDraft = (currentLength: number): OfflineEventSetDraft => {
+    return {
+      id: `online-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: "New Online Event Set",
+      expanded: true,
+      conversionTracking: "Meta - Conversion API",
+      dataset: CAPI_DATASETS[currentLength % CAPI_DATASETS.length],
+      trackingPixelId: DUMMY_TRACKING_PIXEL_IDS[currentLength % DUMMY_TRACKING_PIXEL_IDS.length],
+      saved: false,
+      disconnected: false,
+    };
+  };
+
+  const addOnlineEventSet = (integrationId: string) => {
+    setOnlineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = createOnlineEventSetDraft(current.length);
+      return { ...prev, [integrationId]: [...current, next] };
+    });
+  };
+
+  const updateOnlineEventSet = (
+    integrationId: string,
+    setId: string,
+    field: "conversionTracking" | "dataset" | "trackingPixelId",
+    value: string,
+  ) => {
+    setOnlineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId
+          ? { ...item, [field]: value, saved: false, disconnected: false }
+          : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const toggleOnlineEventSetExpanded = (integrationId: string, setId: string) => {
+    setOnlineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId ? { ...item, expanded: !item.expanded } : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const saveOnlineEventSet = (integrationId: string, setId: string) => {
+    setOnlineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId
+          ? {
+            ...item,
+            saved: true,
+            title: item.conversionTracking.trim() || item.title,
+          }
+          : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const disconnectOnlineEventSet = (integrationId: string, setId: string) => {
+    setOnlineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.map((item) => (
+        item.id === setId ? { ...item, disconnected: true } : item
+      ));
+      return { ...prev, [integrationId]: next };
+    });
+  };
+
+  const removeOnlineEventSet = (integrationId: string, setId: string) => {
+    setOnlineEventSetsByIntegration((prev) => {
+      const current = prev[integrationId] ?? [];
+      const next = current.filter((item) => item.id !== setId);
+      return { ...prev, [integrationId]: next };
     });
   };
 
@@ -2533,6 +3012,30 @@ function IntegrationsPage() {
   }, [openIntegrationId]);
 
   useEffect(() => {
+    if (openIntegrationId !== "meta-ads" || !showAccountFrame) return;
+    setOfflineEventSetsByIntegration((prev) => {
+      const current = prev["meta-ads"] ?? [];
+      if (current.length > 0) return prev;
+      return {
+        ...prev,
+        "meta-ads": [createOfflineEventSetDraft(0)],
+      };
+    });
+  }, [openIntegrationId, showAccountFrame]);
+
+  useEffect(() => {
+    if (openIntegrationId !== "meta-ads" || !showAccountFrame) return;
+    setOnlineEventSetsByIntegration((prev) => {
+      const current = prev["meta-ads"] ?? [];
+      if (current.length > 0) return prev;
+      return {
+        ...prev,
+        "meta-ads": [createOnlineEventSetDraft(0)],
+      };
+    });
+  }, [openIntegrationId, showAccountFrame]);
+
+  useEffect(() => {
     if (!showAccountFrame) return;
 
     const onPointerDown = (event: MouseEvent) => {
@@ -2575,6 +3078,12 @@ function IntegrationsPage() {
   const renderAccountEditor = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
     const draft = getAccountDraft(integration);
     const inputBgClass = mode === "docked" ? "bg-card" : "bg-background";
+    const showApiCredentials = integration.id !== "meta-ads";
+    const showOfflineEventSets = integration.id === "meta-ads";
+    const offlineEventSets = offlineEventSetsByIntegration[integration.id] ?? [];
+    const canAddOfflineEventSet = offlineEventSets.some((eventSet) => eventSet.saved);
+    const onlineEventSets = onlineEventSetsByIntegration[integration.id] ?? [];
+    const canAddOnlineEventSet = onlineEventSets.some((eventSet) => eventSet.saved);
     const activeAccountId = activeAccountIdByIntegration[integration.id] ?? null;
     const connected = activeAccountId != null && (connectedAccountsByIntegration[integration.id] ?? []).some((account) => account.id === activeAccountId);
     const isDisconnectedIntegration = integration.status === "Disconnected";
@@ -2583,64 +3092,260 @@ function IntegrationsPage() {
 
     return (
       <>
-        <div>
-          <p className="text-[11px] font-semibold text-muted-foreground">Account Name</p>
-          <Input
-            value={draft.accountName}
-            onChange={(e) => updateAccountDraft(integration.id, "accountName", e.target.value)}
-            className={cn("mt-0.5 h-8", inputBgClass)}
-          />
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold text-muted-foreground">Username</p>
-          <Input
-            value={draft.username}
-            onChange={(e) => updateAccountDraft(integration.id, "username", e.target.value)}
-            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-          />
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold text-muted-foreground">Password</p>
-          <Input
-            type="password"
-            value={draft.password}
-            onChange={(e) => updateAccountDraft(integration.id, "password", e.target.value)}
-            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-          />
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold text-muted-foreground">API key</p>
-          <Input
-            value={draft.apiKey}
-            onChange={(e) => updateAccountDraft(integration.id, "apiKey", e.target.value)}
-            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-          />
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold text-muted-foreground">Secret key</p>
-          <Input
-            value={draft.secretKey}
-            onChange={(e) => updateAccountDraft(integration.id, "secretKey", e.target.value)}
-            className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-          />
+        <div className="space-y-2 rounded-lg border border-border bg-background p-2.5">
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground">Account Name</p>
+            <Input
+              value={draft.accountName}
+              onChange={(e) => updateAccountDraft(integration.id, "accountName", e.target.value)}
+              className={cn("mt-0.5 h-8", inputBgClass)}
+            />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground">Username</p>
+            <Input
+              value={draft.username}
+              onChange={(e) => updateAccountDraft(integration.id, "username", e.target.value)}
+              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+            />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground">Password</p>
+            <Input
+              type="password"
+              value={draft.password}
+              onChange={(e) => updateAccountDraft(integration.id, "password", e.target.value)}
+              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+            />
+          </div>
+          {showApiCredentials ? (
+            <>
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground">API key</p>
+                <Input
+                  value={draft.apiKey}
+                  onChange={(e) => updateAccountDraft(integration.id, "apiKey", e.target.value)}
+                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+                />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground">Secret key</p>
+                <Input
+                  value={draft.secretKey}
+                  onChange={(e) => updateAccountDraft(integration.id, "secretKey", e.target.value)}
+                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+                />
+              </div>
+            </>
+          ) : null}
+
+          <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
+            <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>
+            {connected ? (
+              <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setPendingDisconnectIntegrationId(integration.id)}>Remove</Button>
+            ) : (
+              <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setCancelConfirmOpen(true)}>Cancel</Button>
+            )}
+            <Button
+              size={mode === "docked" ? "sm" : undefined}
+              className={cn("bg-emerald-600 text-white hover:bg-emerald-700", connectButtonDisabled && "pointer-events-none opacity-60")}
+              disabled={connectButtonDisabled}
+              onClick={() => connectIntegration(integration.id)}
+            >
+              {isReconnectAction ? "Reconnect" : connected ? "Connected" : "Connect"}
+            </Button>
+          </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3">
-          <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>
-          {connected ? (
-            <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setPendingDisconnectIntegrationId(integration.id)}>Remove</Button>
-          ) : (
-            <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setCancelConfirmOpen(true)}>Cancel</Button>
-          )}
-          <Button
-            size={mode === "docked" ? "sm" : undefined}
-            className={cn("bg-emerald-600 text-white hover:bg-emerald-700", connectButtonDisabled && "pointer-events-none opacity-60")}
-            disabled={connectButtonDisabled}
-            onClick={() => connectIntegration(integration.id)}
-          >
-            {isReconnectAction ? "Reconnect" : connected ? "Connected" : "Connect"}
-          </Button>
-        </div>
+        {showOfflineEventSets ? (
+          <div className="space-y-2 rounded-lg border border-border bg-background p-2.5">
+            <p className="text-[11px] font-semibold text-muted-foreground">Offline event sets</p>
+
+            {offlineEventSets.map((eventSet) => (
+              <div key={eventSet.id} className="rounded-lg border border-border bg-card">
+                <button
+                  type="button"
+                  onClick={() => toggleOfflineEventSetExpanded(integration.id, eventSet.id)}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left"
+                >
+                  <span className="text-xs font-medium text-foreground">{eventSet.title}</span>
+                  <RiArrowDownSLine className={cn("size-4 text-muted-foreground transition-transform", eventSet.expanded && "rotate-180")} />
+                </button>
+
+                {eventSet.expanded ? (
+                  <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground">Conversion tracking</p>
+                      <Input
+                        value={eventSet.conversionTracking}
+                        onChange={(e) => updateOfflineEventSet(integration.id, eventSet.id, "conversionTracking", e.target.value)}
+                        className={cn("mt-0.5 h-8", inputBgClass)}
+                      />
+                    </div>
+
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground">Dataset</p>
+                      <select
+                        value={eventSet.dataset}
+                        onChange={(e) => updateOfflineEventSet(integration.id, eventSet.id, "dataset", e.target.value)}
+                        className={cn(
+                          "mt-0.5 h-8 w-full rounded-md border border-border px-2 text-xs text-foreground outline-none ring-offset-background",
+                          "focus:ring-2 focus:ring-ring focus:ring-offset-1",
+                          inputBgClass,
+                        )}
+                      >
+                        {CAPI_DATASETS.map((dataset) => (
+                          <option key={dataset} value={dataset}>{dataset}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground">Tracking/Pixel ID</p>
+                      <Input
+                        value={eventSet.trackingPixelId}
+                        onChange={(e) => updateOfflineEventSet(integration.id, eventSet.id, "trackingPixelId", e.target.value)}
+                        className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+                      />
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
+                      <Button
+                        variant="outline"
+                        size={mode === "docked" ? "sm" : undefined}
+                        disabled={!eventSet.saved}
+                        onClick={() => disconnectOfflineEventSet(integration.id, eventSet.id)}
+                      >
+                        {eventSet.disconnected ? "Disconnected" : "Disconnect"}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size={mode === "docked" ? "sm" : undefined}
+                        disabled={!eventSet.saved}
+                        onClick={() => removeOfflineEventSet(integration.id, eventSet.id)}
+                      >
+                        Remove
+                      </Button>
+                      <Button
+                        size={mode === "docked" ? "sm" : undefined}
+                        disabled={eventSet.saved}
+                        onClick={() => saveOfflineEventSet(integration.id, eventSet.id)}
+                      >
+                        {eventSet.saved ? "Saved!" : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+
+            {canAddOfflineEventSet ? (
+              <Button
+                variant="outline"
+                size={mode === "docked" ? "sm" : undefined}
+                className="w-full"
+                onClick={() => addOfflineEventSet(integration.id)}
+              >
+                New Offline Event Set
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showOfflineEventSets ? (
+          <div className="space-y-2 rounded-lg border border-border bg-background p-2.5">
+            <p className="text-[11px] font-semibold text-muted-foreground">Online event sets</p>
+
+            {onlineEventSets.map((eventSet) => (
+              <div key={eventSet.id} className="rounded-lg border border-border bg-card">
+                <button
+                  type="button"
+                  onClick={() => toggleOnlineEventSetExpanded(integration.id, eventSet.id)}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left"
+                >
+                  <span className="text-xs font-medium text-foreground">{eventSet.title}</span>
+                  <RiArrowDownSLine className={cn("size-4 text-muted-foreground transition-transform", eventSet.expanded && "rotate-180")} />
+                </button>
+
+                {eventSet.expanded ? (
+                  <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground">Conversion tracking</p>
+                      <Input
+                        value={eventSet.conversionTracking}
+                        onChange={(e) => updateOnlineEventSet(integration.id, eventSet.id, "conversionTracking", e.target.value)}
+                        className={cn("mt-0.5 h-8", inputBgClass)}
+                      />
+                    </div>
+
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground">Dataset</p>
+                      <select
+                        value={eventSet.dataset}
+                        onChange={(e) => updateOnlineEventSet(integration.id, eventSet.id, "dataset", e.target.value)}
+                        className={cn(
+                          "mt-0.5 h-8 w-full rounded-md border border-border px-2 text-xs text-foreground outline-none ring-offset-background",
+                          "focus:ring-2 focus:ring-ring focus:ring-offset-1",
+                          inputBgClass,
+                        )}
+                      >
+                        {CAPI_DATASETS.map((dataset) => (
+                          <option key={dataset} value={dataset}>{dataset}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground">Tracking/Pixel ID</p>
+                      <Input
+                        value={eventSet.trackingPixelId}
+                        onChange={(e) => updateOnlineEventSet(integration.id, eventSet.id, "trackingPixelId", e.target.value)}
+                        className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
+                      />
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
+                      <Button
+                        variant="outline"
+                        size={mode === "docked" ? "sm" : undefined}
+                        disabled={!eventSet.saved}
+                        onClick={() => disconnectOnlineEventSet(integration.id, eventSet.id)}
+                      >
+                        {eventSet.disconnected ? "Disconnected" : "Disconnect"}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size={mode === "docked" ? "sm" : undefined}
+                        disabled={!eventSet.saved}
+                        onClick={() => removeOnlineEventSet(integration.id, eventSet.id)}
+                      >
+                        Remove
+                      </Button>
+                      <Button
+                        size={mode === "docked" ? "sm" : undefined}
+                        disabled={eventSet.saved}
+                        onClick={() => saveOnlineEventSet(integration.id, eventSet.id)}
+                      >
+                        {eventSet.saved ? "Saved!" : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+
+            {canAddOnlineEventSet ? (
+              <Button
+                variant="outline"
+                size={mode === "docked" ? "sm" : undefined}
+                className="w-full"
+                onClick={() => addOnlineEventSet(integration.id)}
+              >
+                New Online Event Set
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </>
     );
   };
@@ -2894,18 +3599,23 @@ function IntegrationsPage() {
                         </div>
                       </div>
 
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs font-medium text-muted-foreground">Description</p>
+                        <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
+                      </div>
+
                       {showAccountFrame ? (
                         accountFrameExpanded ? (
                           <div className="grid grid-cols-2 gap-3">
                             <div ref={accountFrameRef} className="col-span-2 flex h-full flex-col rounded-lg border border-border bg-background p-3">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
                                 <div className="flex items-center gap-1">
                                   <button
                                     onClick={() => setAccountFrameExpanded(false)}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Collapse account frame"
-                                    aria-label="Collapse account frame"
+                                    title="Collapse account details"
+                                    aria-label="Collapse account details"
                                   >
                                     <RiFullscreenExitLine className="size-4" />
                                   </button>
@@ -2915,8 +3625,8 @@ function IntegrationsPage() {
                                       setAccountFrameExpanded(false);
                                     }}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account frame"
-                                    aria-label="Close account frame"
+                                    title="Close account details"
+                                    aria-label="Close account details"
                                   >
                                     <RiCloseLine className="size-4" />
                                   </button>
@@ -2932,13 +3642,13 @@ function IntegrationsPage() {
                             {renderAddAccountFrame(openIntegration, "docked")}
                             <div ref={accountFrameRef} className="flex h-full flex-col rounded-lg border border-border bg-background p-3">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
                                 <div className="flex items-center gap-1">
                                   <button
                                     onClick={() => setAccountFrameExpanded(true)}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Expand account frame"
-                                    aria-label="Expand account frame"
+                                    title="Expand account details"
+                                    aria-label="Expand account details"
                                   >
                                     <RiExpandDiagonalLine className="size-4" />
                                   </button>
@@ -2948,8 +3658,8 @@ function IntegrationsPage() {
                                       setAccountFrameExpanded(false);
                                     }}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account frame"
-                                    aria-label="Close account frame"
+                                    title="Close account details"
+                                    aria-label="Close account details"
                                   >
                                     <RiCloseLine className="size-4" />
                                   </button>
@@ -2968,11 +3678,6 @@ function IntegrationsPage() {
                       )}
 
                       <div className="rounded-lg border border-border bg-background p-3">
-                        <p className="text-xs font-medium text-muted-foreground">Description</p>
-                        <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
-                      </div>
-
-                      <div className="rounded-lg border border-border bg-background p-3">
                         <p className="text-xs font-medium text-muted-foreground">Sync Log</p>
                         <div className="mt-2">
                           <p className="text-sm text-foreground-secondary">{openIntegration.updated}</p>
@@ -2988,7 +3693,7 @@ function IntegrationsPage() {
         )}
 
         {openIntegration && panelExpanded && (
-          <div className="fixed inset-0 z-50 bg-background">
+          <div className="absolute inset-0 z-50 bg-background">
             <div className="flex h-full flex-col">
               <div className="border-b border-border px-6 py-4">
                 <div className="flex items-start justify-between gap-3">
@@ -3047,18 +3752,23 @@ function IntegrationsPage() {
                         </div>
                       </div>
 
+                      <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+                        <p className="text-xs font-medium text-muted-foreground">Description</p>
+                        <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
+                      </div>
+
                       {showAccountFrame ? (
                         accountFrameExpanded ? (
-                          <div className="grid grid-cols-2 gap-4">
-                            <div ref={accountFrameRef} className="col-span-2 flex h-full flex-col rounded-xl border border-border bg-card p-4">
+                          <div className="grid grid-cols-1 gap-4 lg:col-span-2">
+                            <div ref={accountFrameRef} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
                                 <div className="flex items-center gap-1">
                                   <button
                                     onClick={() => setAccountFrameExpanded(false)}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Collapse account frame"
-                                    aria-label="Collapse account frame"
+                                    title="Collapse account details"
+                                    aria-label="Collapse account details"
                                   >
                                     <RiFullscreenExitLine className="size-4" />
                                   </button>
@@ -3068,8 +3778,8 @@ function IntegrationsPage() {
                                       setAccountFrameExpanded(false);
                                     }}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account frame"
-                                    aria-label="Close account frame"
+                                    title="Close account details"
+                                    aria-label="Close account details"
                                   >
                                     <RiCloseLine className="size-4" />
                                   </button>
@@ -3081,17 +3791,17 @@ function IntegrationsPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 gap-4 lg:col-span-2">
                             {renderAddAccountFrame(openIntegration, "expanded")}
                             <div ref={accountFrameRef} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account frame</p>
+                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
                                 <div className="flex items-center gap-1">
                                   <button
                                     onClick={() => setAccountFrameExpanded(true)}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Expand account frame"
-                                    aria-label="Expand account frame"
+                                    title="Expand account details"
+                                    aria-label="Expand account details"
                                   >
                                     <RiExpandDiagonalLine className="size-4" />
                                   </button>
@@ -3101,8 +3811,8 @@ function IntegrationsPage() {
                                       setAccountFrameExpanded(false);
                                     }}
                                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account frame"
-                                    aria-label="Close account frame"
+                                    title="Close account details"
+                                    aria-label="Close account details"
                                   >
                                     <RiCloseLine className="size-4" />
                                   </button>
@@ -3117,11 +3827,6 @@ function IntegrationsPage() {
                       ) : (
                         <div className="lg:col-span-2">{renderAddAccountFrame(openIntegration, "expanded")}</div>
                       )}
-
-                      <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
-                        <p className="text-xs font-medium text-muted-foreground">Description</p>
-                        <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
-                      </div>
 
                       <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
                         <p className="text-xs font-medium text-muted-foreground">Sync Log</p>
@@ -3175,18 +3880,24 @@ function IntegrationsPage() {
 function Sidebar({
   collapsed,
   page,
+  playbookSection,
   activationFilter,
   pinnedChatIds,
   onTogglePinnedChat,
   onSelectActivationFilter,
+  onOpenGlossary,
+  onOpenRules,
   onNavigate,
 }: {
   collapsed: boolean;
   page: Page;
+  playbookSection: PlaybookSection;
   activationFilter: ActivationNavFilter;
   pinnedChatIds: string[];
   onTogglePinnedChat: (id: string) => void;
   onSelectActivationFilter: (status: ActivationNavFilter) => void;
+  onOpenGlossary: () => void;
+  onOpenRules: () => void;
   onNavigate: (p: Page) => void;
 }) {
   const { state, dispatch } = useSession();
@@ -3195,7 +3906,7 @@ function Sidebar({
   const inIntegrations = page === "integrations";
   const inContext = page === "context";
   const inUsers = page === "users";
-  const inData = page === "definitions" || page === "metrics" || page === "sources";
+  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources";
   const [activationsOpen, setActivationsOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const savedSegmentCount = Array.from(state.artifacts.values()).filter(
@@ -3259,8 +3970,10 @@ function Sidebar({
               />
               {!collapsed && dataOpen && (
                 <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
-                  <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
-                  <li><SubNavRow label="Metrics" active={page === "metrics"} onClick={() => onNavigate("metrics")} /></li>
+                  <li><SubNavRow label="Source Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
+                  <li><SubNavRow label="Calculated Defintions" active={page === "metrics"} onClick={() => onNavigate("metrics")} /></li>
+                  <li><SubNavRow label="Custom Definitions" active={page === "playbook" && playbookSection === "glossary"} onClick={onOpenGlossary} /></li>
+                  <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
                   <li><SubNavRow label="Sources" active={page === "sources"} onClick={() => onNavigate("sources")} /></li>
                 </ul>
               )}
@@ -3411,8 +4124,10 @@ function Sidebar({
                       "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
                     )}
                   >
-                    <DropdownMenuItem onSelect={() => onNavigate("definitions")}>Definitions</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onNavigate("metrics")}>Metrics</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigate("definitions")}>Source Definitions</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigate("metrics")}>Calculated Defintions</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={onOpenGlossary}>Custom Definitions</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={onOpenRules}>Rules</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onNavigate("sources")}>Sources</DropdownMenuItem>
                   </DropdownMenuPrimitive.SubContent>
                 </DropdownMenuPrimitive.Portal>

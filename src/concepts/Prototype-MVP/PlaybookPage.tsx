@@ -49,7 +49,7 @@ type CalendarEntry = CalendarEvent & {
 };
 
 const TAB_META: { value: PlaybookTab; label: string; icon: RemixiconComponentType }[] = [
-  { value: "glossary", label: "Glossary", icon: RiBookOpenLine },
+  { value: "glossary", label: "Custom Definitions", icon: RiBookOpenLine },
   { value: "rules", label: "Rules", icon: RiScales3Line },
   { value: "calendar", label: "Calendar", icon: RiCalendarEventLine },
   { value: "documents", label: "Documents", icon: RiFileTextLine },
@@ -137,6 +137,13 @@ function buildActivationCalendarDummies(baseDate: Date): CalendarEntry[] {
 export function PlaybookPage({ initialTab = "glossary" }: { initialTab?: PlaybookTab }) {
   const { state } = useSession();
   const [tab, setTab] = useState<PlaybookTab>(initialTab);
+  const pageTitle = tab === "glossary" ? "Custom Definitions" : tab === "rules" ? "Rules" : "Playbook";
+  const visibleTabs = initialTab === "rules"
+    ? TAB_META.filter((section) => section.value === "rules")
+    : initialTab === "glossary"
+      ? TAB_META.filter((section) => section.value === "glossary")
+      : TAB_META;
+  const showSectionNav = visibleTabs.length > 1;
   const [selected, setSelected] = useState<Selection | null>(null);
   // Documents are lifted here so uploads are visible to both the grid and the drawer.
   const [docs, setDocs] = useState<PlaybookDoc[]>(DOCUMENTS);
@@ -220,7 +227,7 @@ export function PlaybookPage({ initialTab = "glossary" }: { initialTab?: Playboo
     <div className="flex h-full flex-col">
       <div className="flex flex-col gap-1 px-6 pt-6">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold text-foreground">Playbook</h1>
+          <h1 className="text-xl font-semibold text-foreground">{pageTitle}</h1>
           <p className="max-w-2xl text-sm text-foreground-secondary">
             The shared vocabulary, rules, key dates and documents that govern how Lexi interprets a request before it builds anything.
           </p>
@@ -228,26 +235,28 @@ export function PlaybookPage({ initialTab = "glossary" }: { initialTab?: Playboo
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-56 shrink-0 flex-col pl-6">
-          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2 pt-5">
-            <span className="px-2 pb-1 text-xs font-medium text-foreground-secondary">Section</span>
-            {TAB_META.map((section) => (
-              <button
-                key={section.value}
-                onClick={() => setTab(section.value)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
-                  tab === section.value
-                    ? "bg-accent font-medium text-foreground"
-                    : "text-foreground-secondary hover:bg-accent/50 hover:text-foreground",
-                )}
-              >
-                <section.icon className="size-3.5 shrink-0" />
-                <span className="flex-1 truncate">{section.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
+        {showSectionNav ? (
+          <div className="flex w-56 shrink-0 flex-col pl-6">
+            <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2 pt-5">
+              <span className="px-2 pb-1 text-xs font-medium text-foreground-secondary">Section</span>
+              {visibleTabs.map((section) => (
+                <button
+                  key={section.value}
+                  onClick={() => setTab(section.value)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                    tab === section.value
+                      ? "bg-accent font-medium text-foreground"
+                      : "text-foreground-secondary hover:bg-accent/50 hover:text-foreground",
+                  )}
+                >
+                  <section.icon className="size-3.5 shrink-0" />
+                  <span className="flex-1 truncate">{section.label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+        ) : null}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {tab === "glossary" && <GlossaryView onOpen={(id) => setSelected({ kind: "glossary", id })} />}
@@ -280,45 +289,270 @@ export function PlaybookPage({ initialTab = "glossary" }: { initialTab?: Playboo
 // ─── Glossary ─────────────────────────────────────────────────────────────────
 
 function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
+  type ManagedGlossaryTerm = GlossaryTerm & {
+    whyThisDefinition?: string;
+    generatedFromLexi?: boolean;
+  };
+
+  type LexiDefinitionInterpretation = {
+    term: string;
+    definition: string;
+    category: GlossaryTerm["category"];
+  };
+
   const [query, setQuery] = useState("");
+  const [definitionPrompt, setDefinitionPrompt] = useState("");
+  const [terms, setTerms] = useState<ManagedGlossaryTerm[]>(GLOSSARY);
+  const [lexiInterpretation, setLexiInterpretation] = useState<LexiDefinitionInterpretation | null>(null);
+  const [definitionSaved, setDefinitionSaved] = useState(false);
+  const [activeTermId, setActiveTermId] = useState<string | null>(null);
+  const [isNewDefinitionCollapsed, setIsNewDefinitionCollapsed] = useState(false);
+
   const q = query.trim().toLowerCase();
-  const shown = GLOSSARY.filter((t) =>
+  const shown = terms.filter((t) =>
     q === "" || t.term.toLowerCase().includes(q) || t.definition.toLowerCase().includes(q) ||
     (t.aka ?? []).some((a) => a.toLowerCase().includes(q)));
 
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
-      <FilterBar>
-        <div className="relative">
-          <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search terms" className="h-9 w-64 pl-8" />
-        </div>
-      </FilterBar>
+  const activeTerm = activeTermId ? terms.find((t) => t.id === activeTermId) ?? null : null;
 
-      <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border">
-        {shown.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => onOpen(t.id)}
-            className="flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50"
+  const inferCategory = (input: string): GlossaryTerm["category"] => {
+    const text = input.toLowerCase();
+    if (text.includes("vip") || text.includes("spend") || text.includes("tier")) return "Value";
+    if (text.includes("click") || text.includes("open") || text.includes("engage")) return "Engagement";
+    if (text.includes("campaign") || text.includes("trade") || text.includes("promo")) return "Trade";
+    return "Lifecycle";
+  };
+
+  const inferTermName = (input: string) => {
+    const text = input.toLowerCase();
+    if (text.includes("vip")) return "VIP customer";
+    if (text.includes("lapsed")) return "Lapsed customer";
+    if (text.includes("new customer")) return "New customer";
+    if (text.includes("returning")) return "Returning customer";
+    return "New custom definition";
+  };
+
+  const generateInterpretation = () => {
+    const input = definitionPrompt.trim();
+    if (!input) return;
+    setDefinitionSaved(false);
+
+    const term = inferTermName(input);
+    const category = inferCategory(input);
+
+    setLexiInterpretation({
+      term,
+      category,
+      definition: `Definition for ${term.toLowerCase()} based on governed business language and existing customer behavior signals.`,
+    });
+  };
+
+  const saveDefinitionDraft = () => {
+    if (!lexiInterpretation) return;
+    const id = `gl-user-${Date.now()}`;
+    const today = new Date().toISOString().slice(0, 10);
+    const created: ManagedGlossaryTerm = {
+      id,
+      term: lexiInterpretation.term.trim() || "New custom definition",
+      definition: lexiInterpretation.definition,
+      category: lexiInterpretation.category,
+      updatedAt: today,
+      generatedFromLexi: true,
+    };
+    setTerms((prev) => [created, ...prev]);
+    setActiveTermId(id);
+    setDefinitionSaved(true);
+  };
+
+  return (
+    <div className="flex min-w-0 flex-1 gap-4 overflow-y-auto px-6 py-4">
+      {isNewDefinitionCollapsed ? (
+        <aside className="w-11 shrink-0 rounded-xl border border-border bg-card p-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsNewDefinitionCollapsed(false)}
+            aria-label="Expand new definition frame"
+            className="size-8"
           >
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <RiBookOpenLine className="size-4" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-foreground">{t.term}</span>
-                <Badge variant="secondary" size="sm">{t.category}</Badge>
-              </div>
-              <p className="mt-0.5 line-clamp-2 text-sm text-foreground-secondary">{t.definition}</p>
+            <RiArrowRightSLine className="size-4" />
+          </Button>
+        </aside>
+      ) : (
+        <aside className="w-80 shrink-0 rounded-xl border border-border bg-card p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-foreground">New Definition</p>
+              <p className="mt-1 text-xs text-foreground-secondary">
+                Describe the business term in plain language. Lexi will generate a governed definition for review.
+              </p>
             </div>
-          </button>
-        ))}
-        {shown.length === 0 && (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">No terms match your search.</p>
-        )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsNewDefinitionCollapsed(true)}
+              aria-label="Collapse new definition frame"
+              className="size-8"
+            >
+              <RiArrowLeftSLine className="size-4" />
+            </Button>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            <p className="text-[11px] font-semibold text-muted-foreground">Definition request</p>
+            <Textarea
+              value={definitionPrompt}
+              onChange={(e) => setDefinitionPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  generateInterpretation();
+                }
+              }}
+              placeholder="Example: Define VIP customer for lifecycle campaigns using spend and purchase recency."
+              className="min-h-28"
+            />
+          </div>
+
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setDefinitionPrompt(""); setLexiInterpretation(null); setDefinitionSaved(false); }}>
+              Clear
+            </Button>
+            <Button size="sm" onClick={generateInterpretation} disabled={definitionPrompt.trim() === ""}>
+              Ask Lexi
+            </Button>
+          </div>
+
+          {lexiInterpretation ? (
+            <div className="mt-3 rounded-lg border border-border bg-background p-3">
+              <p className="text-[11px] font-semibold text-muted-foreground">Lexi interpretation</p>
+
+              <div className="mt-2 space-y-2">
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Term</p>
+                  <Input
+                    value={lexiInterpretation.term}
+                    onChange={(e) => {
+                      const term = e.target.value;
+                      setLexiInterpretation((prev) => (prev ? { ...prev, term } : prev));
+                      setDefinitionSaved(false);
+                    }}
+                    className="mt-1 h-8"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Description</p>
+                  <p className="mt-1 text-sm leading-relaxed text-foreground-secondary">{lexiInterpretation.definition}</p>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Category</p>
+                  <select
+                    value={lexiInterpretation.category}
+                    onChange={(e) => {
+                      const category = e.target.value as GlossaryTerm["category"];
+                      setLexiInterpretation((prev) => (prev ? { ...prev, category } : prev));
+                      setDefinitionSaved(false);
+                    }}
+                    className="mt-1 h-8 w-full rounded-lg border border-input-border bg-input px-2 text-sm text-foreground"
+                  >
+                    <option value="Lifecycle">Lifecycle</option>
+                    <option value="Value">Value</option>
+                    <option value="Engagement">Engagement</option>
+                    <option value="Trade">Trade</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-2">
+                <Button size="sm" onClick={saveDefinitionDraft} disabled={definitionSaved}>
+                  {definitionSaved ? "Saved" : "Save definition"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </aside>
+      )}
+
+      <div className="min-w-0 flex-1 flex-col gap-3">
+        <FilterBar>
+          <div className="relative">
+            <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search terms" className="h-9 w-64 pl-8" />
+          </div>
+        </FilterBar>
+
+        <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border">
+          {shown.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                if (t.generatedFromLexi) {
+                  setActiveTermId(t.id);
+                  return;
+                }
+                onOpen(t.id);
+              }}
+              className="flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50"
+            >
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <RiBookOpenLine className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{t.term}</span>
+                  <Badge variant="secondary" size="sm">{t.category}</Badge>
+                </div>
+                <p className="mt-0.5 line-clamp-2 text-sm text-foreground-secondary">{t.definition}</p>
+              </div>
+            </button>
+          ))}
+          {shown.length === 0 && (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">No terms match your search.</p>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">Displaying {shown.length} of {terms.length} terms</p>
       </div>
-      <p className="text-sm text-muted-foreground">Displaying {shown.length} of {GLOSSARY.length} terms</p>
+
+      <div
+        className={cn(
+          "flex shrink-0 overflow-hidden border-l border-border/60 bg-background transition-[width,opacity] duration-300 ease-out",
+          activeTerm ? "w-[360px] opacity-100" : "w-0 opacity-0",
+        )}
+      >
+        {activeTerm ? (
+          <div className="flex h-full w-full flex-col">
+            <div className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground-secondary">Definition details</p>
+                <h2 className="truncate text-sm font-semibold text-foreground">{activeTerm.term}</h2>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setActiveTermId(null)}>Close</Button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+              <div className="rounded-lg border border-border bg-card p-3">
+                <p className="text-xs font-medium text-foreground-secondary">Description</p>
+                <p className="mt-1 text-sm text-foreground-secondary">{activeTerm.definition}</p>
+              </div>
+
+              {activeTerm.whyThisDefinition ? (
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-xs font-medium text-foreground-secondary">Why this definition</p>
+                  <p className="mt-1 text-sm text-foreground-secondary">{activeTerm.whyThisDefinition}</p>
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border border-border bg-card p-3">
+                <p className="text-xs font-medium text-foreground-secondary">Metadata</p>
+                <p className="mt-1 text-sm text-foreground"><span className="font-medium">Category:</span> {activeTerm.category}</p>
+                <p className="mt-1 text-sm text-foreground"><span className="font-medium">Updated:</span> {fmtFull(activeTerm.updatedAt)}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -326,44 +560,306 @@ function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
 // ─── Rules ─────────────────────────────────────────────────────────────────────
 
 function RulesView({ onOpen }: { onOpen: (id: string) => void }) {
+  type ManagedRule = PlaybookRule & {
+    logicPreview?: string;
+    fieldsUsed?: string[];
+    generatedFromLexi?: boolean;
+  };
+
+  type LexiInterpretation = {
+    name: string;
+    description: string;
+    logicPreview: string;
+    fieldsUsed: string[];
+    whyThisRule: string;
+  };
+
   const [query, setQuery] = useState("");
+  const [rulePrompt, setRulePrompt] = useState("");
+  const [lexiInterpretation, setLexiInterpretation] = useState<LexiInterpretation | null>(null);
+  const [ruleSaved, setRuleSaved] = useState(false);
+  const [rules, setRules] = useState<ManagedRule[]>(RULES);
+  const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
+  const [isNewRuleCollapsed, setIsNewRuleCollapsed] = useState(false);
   const q = query.trim().toLowerCase();
-  const shown = RULES.filter((r) =>
+  const shown = rules.filter((r) =>
     q === "" || r.name.toLowerCase().includes(q) || r.statement.toLowerCase().includes(q));
 
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
-      <FilterBar>
-        <div className="relative">
-          <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search rules" className="h-9 w-64 pl-8" />
-        </div>
-      </FilterBar>
+  const activeRule = activeRuleId ? rules.find((rule) => rule.id === activeRuleId) ?? null : null;
 
-      <div className="flex flex-col gap-2">
-        {shown.map((r) => (
-          <button
-            key={r.id}
-            onClick={() => onOpen(r.id)}
-            className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:shadow-sm"
+  const inferRuleName = (input: string) => {
+    const text = input.toLowerCase();
+    if (text.includes("vip")) return "VIP customer";
+    if (text.includes("exclude") || text.includes("suppress")) return "Exclusion rule";
+    if (text.includes("email") && text.includes("week")) return "Email frequency cap";
+    if (text.includes("churn") || text.includes("lapsed")) return "Churn classification rule";
+    if (text.includes("spend") || text.match(/\$\s*[0-9]/)) return "Spend threshold rule";
+    return "New customer rule";
+  };
+
+  const generateInterpretation = () => {
+    const input = rulePrompt.trim();
+    if (!input) return;
+    setRuleSaved(false);
+
+    const amountMatch = input.match(/\$\s*([0-9][0-9,\.]*)|([0-9][0-9,\.]*)\s*dollars?/i);
+    const threshold = amountMatch
+      ? `$${(amountMatch[1] ?? amountMatch[2] ?? "500").replace(/,/g, "")}`
+      : "$500";
+    const windowLabel = "last 12 months";
+    const inferredName = inferRuleName(input);
+
+    setLexiInterpretation({
+      name: inferredName,
+      description: `A customer who has spent more than ${threshold} in the ${windowLabel}, based on purchase history.`,
+      logicPreview: `Total Spend (L12M) > ${threshold}`,
+      fieldsUsed: [
+        "Calculated metric: Total Spend (L12M)",
+        "Source definition: Customer ID",
+        "Core dataset: Purchase history (Orders)",
+      ],
+      whyThisRule: "",
+    });
+  };
+
+  const saveRuleDraft = () => {
+    if (!lexiInterpretation) return;
+    const id = `rl-user-${Date.now()}`;
+    const today = new Date().toISOString().slice(0, 10);
+    const createdRule: ManagedRule = {
+      id,
+      name: lexiInterpretation.name.trim() || "New customer rule",
+      statement: lexiInterpretation.description,
+      rationale: lexiInterpretation.whyThisRule.trim() || undefined,
+      source: "Lexi interpretation",
+      updatedAt: today,
+      logicPreview: lexiInterpretation.logicPreview,
+      fieldsUsed: lexiInterpretation.fieldsUsed,
+      generatedFromLexi: true,
+    };
+    setRules((prev) => [createdRule, ...prev]);
+    setActiveRuleId(id);
+    setRuleSaved(true);
+  };
+
+  return (
+    <div className="flex min-w-0 flex-1 gap-4 overflow-y-auto px-6 py-4">
+      {isNewRuleCollapsed ? (
+        <aside className="w-11 shrink-0 rounded-xl border border-border bg-card p-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsNewRuleCollapsed(false)}
+            aria-label="Expand new rule frame"
+            className="size-8"
           >
-            <div className="flex items-center gap-2">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <RiScales3Line className="size-4" />
-              </span>
-              <span className="text-sm font-semibold text-foreground">{r.name}</span>
+            <RiArrowRightSLine className="size-4" />
+          </Button>
+        </aside>
+      ) : (
+        <aside className="w-80 shrink-0 rounded-xl border border-border bg-card p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-foreground">New Rule</p>
+              <p className="mt-1 text-xs text-foreground-secondary">
+                Describe your rule in plain language. Lexi will generate an interpretation for review before saving.
+              </p>
             </div>
-            <p className="text-sm leading-relaxed text-foreground-secondary">{r.statement}</p>
-            {r.source && <p className="text-xs text-muted-foreground">{r.source}</p>}
-          </button>
-        ))}
-        {shown.length === 0 && (
-          <p className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
-            No rules match your search.
-          </p>
-        )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsNewRuleCollapsed(true)}
+              aria-label="Collapse new rule frame"
+              className="size-8"
+            >
+              <RiArrowLeftSLine className="size-4" />
+            </Button>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            <p className="text-[11px] font-semibold text-muted-foreground">Rule request</p>
+            <Textarea
+              value={rulePrompt}
+              onChange={(e) => setRulePrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  generateInterpretation();
+                }
+              }}
+              placeholder="Example: Exclude customers with unresolved chargebacks from paid activation audiences for 30 days."
+              className="min-h-28"
+            />
+          </div>
+
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setRulePrompt(""); setLexiInterpretation(null); setRuleSaved(false); }}>
+              Clear
+            </Button>
+            <Button size="sm" onClick={generateInterpretation} disabled={rulePrompt.trim() === ""}>
+              Ask Lexi
+            </Button>
+          </div>
+
+          {lexiInterpretation ? (
+            <div className="mt-3 rounded-lg border border-border bg-background p-3">
+              <p className="text-[11px] font-semibold text-muted-foreground">Lexi interpretation</p>
+
+              <div className="mt-2 space-y-2">
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Name</p>
+                  <Input
+                    value={lexiInterpretation.name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setLexiInterpretation((prev) => (prev ? { ...prev, name } : prev));
+                      setRuleSaved(false);
+                    }}
+                    className="mt-1 h-8"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Description</p>
+                  <p className="mt-1 text-sm leading-relaxed text-foreground-secondary">{lexiInterpretation.description}</p>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Why this rule</p>
+                  <Input
+                    value={lexiInterpretation.whyThisRule}
+                    onChange={(e) => {
+                      const whyThisRule = e.target.value;
+                      setLexiInterpretation((prev) => (prev ? { ...prev, whyThisRule } : prev));
+                      setRuleSaved(false);
+                    }}
+                    placeholder="Explain why this rule should exist"
+                    className="mt-1 h-8"
+                  />
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Logic preview</p>
+                  <p className="mt-1 rounded-md bg-muted px-2 py-1.5 font-mono text-xs text-foreground-secondary">{lexiInterpretation.logicPreview}</p>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-muted-foreground">Field(s) used</p>
+                  <ul className="mt-1 space-y-1">
+                    {lexiInterpretation.fieldsUsed.map((field) => (
+                      <li key={field} className="text-sm text-foreground-secondary">• {field}</li>
+                    ))}
+                  </ul>
+                </div>
+
+              </div>
+
+              <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-2">
+                <Button size="sm" onClick={saveRuleDraft} disabled={ruleSaved}>
+                  {ruleSaved ? "Saved" : "Save rule"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </aside>
+      )}
+
+      <div className="min-w-0 flex-1 flex-col gap-3">
+        <FilterBar>
+          <div className="relative">
+            <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search rules" className="h-9 w-64 pl-8" />
+          </div>
+        </FilterBar>
+
+        <div className="mt-3 flex flex-col gap-2">
+          {shown.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => {
+                if ((r as ManagedRule).generatedFromLexi) {
+                  setActiveRuleId(r.id);
+                  return;
+                }
+                onOpen(r.id);
+              }}
+              className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <RiScales3Line className="size-4" />
+                </span>
+                <span className="text-sm font-semibold text-foreground">{r.name}</span>
+              </div>
+              <p className="text-sm leading-relaxed text-foreground-secondary">{r.statement}</p>
+              {r.source && <p className="text-xs text-muted-foreground">{r.source}</p>}
+            </button>
+          ))}
+          {shown.length === 0 && (
+            <p className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+              No rules match your search.
+            </p>
+          )}
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">Displaying {shown.length} of {rules.length} rules</p>
       </div>
-      <p className="text-sm text-muted-foreground">Displaying {shown.length} of {RULES.length} rules</p>
+
+      <div
+        className={cn(
+          "flex shrink-0 overflow-hidden border-l border-border/60 bg-background transition-[width,opacity] duration-300 ease-out",
+          activeRule ? "w-[360px] opacity-100" : "w-0 opacity-0",
+        )}
+      >
+        {activeRule ? (
+          <div className="flex h-full w-full flex-col">
+            <div className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground-secondary">Rule details</p>
+                <h2 className="truncate text-sm font-semibold text-foreground">{activeRule.name}</h2>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setActiveRuleId(null)}>Close</Button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+              <div className="rounded-lg border border-border bg-card p-3">
+                <p className="text-xs font-medium text-foreground-secondary">Description</p>
+                <p className="mt-1 text-sm text-foreground-secondary">{activeRule.statement}</p>
+              </div>
+
+              {activeRule.logicPreview ? (
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-xs font-medium text-foreground-secondary">Logic preview</p>
+                  <p className="mt-1 rounded-md bg-muted px-2 py-1.5 font-mono text-xs text-foreground-secondary">{activeRule.logicPreview}</p>
+                </div>
+              ) : null}
+
+              {activeRule.fieldsUsed && activeRule.fieldsUsed.length > 0 ? (
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-xs font-medium text-foreground-secondary">Fields used</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {activeRule.fieldsUsed.map((field) => (
+                      <li key={field} className="text-sm text-foreground-secondary">• {field}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {activeRule.rationale ? (
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-xs font-medium text-foreground-secondary">Why this rule</p>
+                  <p className="mt-1 text-sm text-foreground-secondary">{activeRule.rationale}</p>
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border border-border bg-card p-3">
+                <p className="text-xs font-medium text-foreground-secondary">Metadata</p>
+                <p className="mt-1 text-sm text-foreground"><span className="font-medium">Source:</span> {activeRule.source ?? "-"}</p>
+                <p className="mt-1 text-sm text-foreground"><span className="font-medium">Updated:</span> {fmtFull(activeRule.updatedAt)}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

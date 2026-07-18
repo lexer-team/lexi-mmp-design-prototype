@@ -608,16 +608,55 @@ function EntitySidebar({
 }
 
 export function DefinitionsPage() {
-  const [entity, setEntity] = useState<EntityType>("customer");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | EntityType>("all");
+  const [sortKey, setSortKey] = useState<"name" | "dataType" | "entity" | "detail">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const source = sourceFields(entity);
-  const rows: DefRow[] = source;
+  const rows: DefRow[] = ENTITY_ORDER.flatMap((e) => sourceFields(e));
 
   const q = query.trim().toLowerCase();
   const matches = (s: string) => q === "" || s.toLowerCase().includes(q);
-  const shown = rows.filter((r) => matches(r.name) || matches(r.description) || matches(r.detail));
+  const filtered = rows.filter((r) => (
+    matches(r.name)
+    || matches(r.description)
+    || matches(r.detail)
+    || matches(DEF_ENTITY_LABEL[r.entity])
+  )).filter((r) => (categoryFilter === "all" ? true : r.entity === categoryFilter));
+
+  const sorted = [...filtered].sort((a, b) => {
+    const left = sortKey === "entity"
+      ? DEF_ENTITY_LABEL[a.entity]
+      : sortKey === "dataType"
+        ? a.dataType
+        : sortKey === "detail"
+          ? a.detail
+          : a.name;
+    const right = sortKey === "entity"
+      ? DEF_ENTITY_LABEL[b.entity]
+      : sortKey === "dataType"
+        ? b.dataType
+        : sortKey === "detail"
+          ? b.detail
+          : b.name;
+    const result = left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+    if (result === 0) return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    return sortDir === "asc" ? result : -result;
+  });
+
+  const toggleSort = (key: "name" | "dataType" | "entity" | "detail") => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  };
+
+  const sortState = (key: "name" | "dataType" | "entity" | "detail") => (
+    sortKey === key ? sortDir : false
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -631,42 +670,54 @@ export function DefinitionsPage() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <EntitySidebar entity={entity} onSelect={setEntity} />
-
         <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
           <FilterBar>
             <div className="relative">
               <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search definitions" className="h-9 w-64 pl-8" />
             </div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as "all" | EntityType)}
+              className="h-9 rounded-lg border border-input-border bg-input px-3 text-sm text-foreground"
+            >
+              <option value="all">All categories</option>
+              <option value="customer">Customer</option>
+              <option value="product">Product</option>
+              <option value="order">Transaction</option>
+            </select>
           </FilterBar>
 
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Field</TableHead>
-                <TableHead className="w-32">Data type</TableHead>
-                <TableHead>Source column</TableHead>
+                <SortableTableHead sort={sortState("name")} onSort={() => toggleSort("name")}>Field</SortableTableHead>
+                <SortableTableHead className="w-32" sort={sortState("dataType")} onSort={() => toggleSort("dataType")}>Data type</SortableTableHead>
+                <SortableTableHead className="w-36" sort={sortState("entity")} onSort={() => toggleSort("entity")}>Category</SortableTableHead>
+                <SortableTableHead sort={sortState("detail")} onSort={() => toggleSort("detail")}>Source column</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shown.map((r) => (
+              {sorted.map((r) => (
                 <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpenId(r.id)}>
                   <TableCell>
                     <span className="font-medium text-foreground">{r.name}</span>
                     <p className="mt-0.5 max-w-sm truncate text-sm text-foreground-secondary">{r.description}</p>
                   </TableCell>
                   <TableCell><TypeLabel type={r.dataType} /></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" size="sm">{DEF_ENTITY_LABEL[r.entity]}</Badge>
+                  </TableCell>
                   <TableCell className="max-w-xs truncate font-mono text-xs text-foreground-secondary">{r.detail}</TableCell>
                 </TableRow>
               ))}
-              {shown.length === 0 && (
-                <TableRow><TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">No fields match these filters.</TableCell></TableRow>
+              {sorted.length === 0 && (
+                <TableRow><TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">No fields match these filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
           <p className="text-sm text-muted-foreground">
-            Displaying {shown.length} of {rows.length} fields
+            Displaying {sorted.length} of {rows.length} fields
           </p>
         </div>
       </div>
@@ -677,14 +728,54 @@ export function DefinitionsPage() {
 }
 
 export function MetricsPage() {
-  const [entity, setEntity] = useState<EntityType>("customer");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | EntityType>("all");
+  const [sortKey, setSortKey] = useState<"name" | "dataType" | "entity" | "detail">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const rows: DefRow[] = customDefs(entity);
+  const rows: DefRow[] = ENTITY_ORDER.flatMap((e) => customDefs(e));
   const q = query.trim().toLowerCase();
   const matches = (s: string) => q === "" || s.toLowerCase().includes(q);
-  const shown = rows.filter((r) => matches(r.name) || matches(r.description) || matches(r.detail));
+  const filtered = rows.filter((r) => (
+    matches(r.name)
+    || matches(r.description)
+    || matches(r.detail)
+    || matches(DEF_ENTITY_LABEL[r.entity])
+  )).filter((r) => (categoryFilter === "all" ? true : r.entity === categoryFilter));
+
+  const sorted = [...filtered].sort((a, b) => {
+    const left = sortKey === "entity"
+      ? DEF_ENTITY_LABEL[a.entity]
+      : sortKey === "dataType"
+        ? a.dataType
+        : sortKey === "detail"
+          ? a.detail
+          : a.name;
+    const right = sortKey === "entity"
+      ? DEF_ENTITY_LABEL[b.entity]
+      : sortKey === "dataType"
+        ? b.dataType
+        : sortKey === "detail"
+          ? b.detail
+          : b.name;
+    const result = left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+    if (result === 0) return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    return sortDir === "asc" ? result : -result;
+  });
+
+  const toggleSort = (key: "name" | "dataType" | "entity" | "detail") => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
+  };
+
+  const sortState = (key: "name" | "dataType" | "entity" | "detail") => (
+    sortKey === key ? sortDir : false
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -698,42 +789,54 @@ export function MetricsPage() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <EntitySidebar entity={entity} onSelect={setEntity} />
-
         <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
           <FilterBar>
             <div className="relative">
               <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search metrics" className="h-9 w-64 pl-8" />
             </div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as "all" | EntityType)}
+              className="h-9 rounded-lg border border-input-border bg-input px-3 text-sm text-foreground"
+            >
+              <option value="all">All categories</option>
+              <option value="customer">Customer</option>
+              <option value="product">Product</option>
+              <option value="order">Transaction</option>
+            </select>
           </FilterBar>
 
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Metric</TableHead>
-                <TableHead className="w-32">Data type</TableHead>
-                <TableHead>Logic</TableHead>
+                <SortableTableHead sort={sortState("name")} onSort={() => toggleSort("name")}>Metric</SortableTableHead>
+                <SortableTableHead className="w-32" sort={sortState("dataType")} onSort={() => toggleSort("dataType")}>Data type</SortableTableHead>
+                <SortableTableHead className="w-36" sort={sortState("entity")} onSort={() => toggleSort("entity")}>Category</SortableTableHead>
+                <SortableTableHead sort={sortState("detail")} onSort={() => toggleSort("detail")}>Logic</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {shown.map((r) => (
+              {sorted.map((r) => (
                 <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpenId(r.id)}>
                   <TableCell>
                     <span className="font-medium text-foreground">{r.name}</span>
                     <p className="mt-0.5 max-w-sm truncate text-sm text-foreground-secondary">{r.description}</p>
                   </TableCell>
                   <TableCell><TypeLabel type={r.dataType} /></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" size="sm">{DEF_ENTITY_LABEL[r.entity]}</Badge>
+                  </TableCell>
                   <TableCell className="max-w-xs truncate font-mono text-xs text-foreground-secondary">{r.detail}</TableCell>
                 </TableRow>
               ))}
-              {shown.length === 0 && (
-                <TableRow><TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">No metrics match these filters.</TableCell></TableRow>
+              {sorted.length === 0 && (
+                <TableRow><TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">No metrics match these filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
           <p className="text-sm text-muted-foreground">
-            Displaying {shown.length} of {rows.length} metrics
+            Displaying {sorted.length} of {rows.length} metrics
           </p>
         </div>
       </div>

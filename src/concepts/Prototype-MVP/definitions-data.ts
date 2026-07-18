@@ -25,6 +25,7 @@ export interface DefRow {
   id: string;
   name: string;
   description: string;
+  entity: EntityType;
   dataType: DataType;
   detail: string; // source column (Source) or logic (Custom)
 }
@@ -71,6 +72,7 @@ export function sourceFields(entity: EntityType): DefRow[] {
       id: a.id,
       name: a.name,
       description: a.description,
+      entity: a.entity,
       dataType: dataTypeOf(a.name, a.description, a.dataType, a.id),
       detail: a.athenaColumn ?? "—",
     }));
@@ -84,6 +86,7 @@ export function customDefs(entity: EntityType): DefRow[] {
       id: m.id,
       name: m.name,
       description: m.description,
+      entity: m.entity,
       dataType: dataTypeOf(m.name, m.description, m.dataType, m.id),
       detail: m.sql ?? "—",
     }));
@@ -94,6 +97,7 @@ export function customDefs(entity: EntityType): DefRow[] {
       id: d.id,
       name: d.name,
       description: d.description,
+      entity: d.entity,
       dataType: dataTypeOf(d.name, d.description, d.dataType, d.id),
       detail: d.logic ?? "—",
     }));
