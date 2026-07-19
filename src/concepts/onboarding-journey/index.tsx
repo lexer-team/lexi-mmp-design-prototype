@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LexerLogo } from "@/components/layout/LexerLogo";
+import { LexiIcon } from "@/components/chat/LexiIcon";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -70,7 +71,8 @@ import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
+type Page = "welcome" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
+type OnboardingStep = "welcome" | "users" | "integrations" | "context" | "completed";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
 import { registerDefs } from "@/data/def-registry";
@@ -90,6 +92,17 @@ type SavedSpaceChat = {
   id: string;
   title: string;
   updated: string;
+};
+
+type OnboardingGuidance = {
+  disclaimerVisible: boolean;
+  onAcknowledge: () => void;
+  onNext: () => void;
+  nextLabel: string;
+  promptTitle: string;
+  promptDescription: string;
+  actionLabel: string;
+  disclaimerText: string;
 };
 
 const EMPTY_SAVED_ITEMS: SavedSpaceItems = {
@@ -125,7 +138,11 @@ function SegmentV1Inner() {
   const [collapsed, setCollapsed] = useState(true);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
-  const [page, setPage] = useState<Page>("chat");
+  const [page, setPage] = useState<Page>("welcome");
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>("welcome");
+  const [usersStepAcknowledged, setUsersStepAcknowledged] = useState(false);
+  const [integrationsStepAcknowledged, setIntegrationsStepAcknowledged] = useState(false);
+  const [contextStepAcknowledged, setContextStepAcknowledged] = useState(false);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   // Activation detail opens in a right inset panel (like the segment side panel),
   // independent of the chat-driven slot.
@@ -150,6 +167,53 @@ function SegmentV1Inner() {
     ? (spaceSavedChats[selectedSpaceId] ?? [])
     : [];
   const isChat = page === "chat";
+  const onboardingActive = onboardingStep !== "completed";
+  const showSidebar = !onboardingActive;
+  const usersOnboarding = onboardingStep === "users"
+    ? {
+      disclaimerVisible: usersStepAcknowledged,
+      onAcknowledge: () => setUsersStepAcknowledged(true),
+      onNext: () => {
+        setOnboardingStep("integrations");
+        setPage("integrations");
+      },
+      nextLabel: "Connect Sources",
+      promptTitle: "Let\'s set up your team first",
+      promptDescription: "Create and invite new users so the right people can collaborate in Lexer from day one.",
+      actionLabel: "Create and invite users",
+      disclaimerText: "Onboarding step: invite at least one teammate before moving to required source connections.",
+    } satisfies OnboardingGuidance
+    : undefined;
+  const integrationsOnboarding = onboardingStep === "integrations"
+    ? {
+      disclaimerVisible: integrationsStepAcknowledged,
+      onAcknowledge: () => setIntegrationsStepAcknowledged(true),
+      onNext: () => {
+        setOnboardingStep("context");
+        setPage("context");
+      },
+      nextLabel: "Set Up your context",
+      promptTitle: "Connect your required sources",
+      promptDescription: "Link your core integrations so Lexi can reason over live customer, campaign, and conversion signals.",
+      actionLabel: "Connect required sources",
+      disclaimerText: "Onboarding step: connect your required sources before setting up business context.",
+    } satisfies OnboardingGuidance
+    : undefined;
+  const contextOnboarding = onboardingStep === "context"
+    ? {
+      disclaimerVisible: contextStepAcknowledged,
+      onAcknowledge: () => setContextStepAcknowledged(true),
+      onNext: () => {
+        setOnboardingStep("completed");
+        setPage("chat");
+      },
+      nextLabel: "Ask a question!",
+      promptTitle: "Describe your business context in plain language",
+      promptDescription: "Lexi will translate and apply this when working with you.",
+      actionLabel: "Describe my business context",
+      disclaimerText: "Onboarding step: provide your business context so Lexi can apply it in your future questions.",
+    } satisfies OnboardingGuidance
+    : undefined;
   // Retain the last panel so it keeps its content while sliding out.
   const [shownPanel, setShownPanel] = useState<
     | { kind: "segment"; id: string }
@@ -505,7 +569,8 @@ function SegmentV1Inner() {
 
   const activeConv = CONVERSATIONS.find((c) => c.id === state.activeConversationId);
   const activeConversationPinned = state.activeConversationId != null && pinnedChatIds.includes(state.activeConversationId);
-  const headerTitle = page === "space" ? "Spaces"
+  const headerTitle = page === "welcome" ? "Welcome"
+    : page === "space" ? "Spaces"
     : page === "space-detail" ? (selectedSpace?.name ?? "Space")
     : page === "segments" ? "Segments"
     : page === "segment-detail" ? (detailArtifact?.name ?? "Segment detail")
@@ -540,52 +605,61 @@ function SegmentV1Inner() {
   return (
     <div className="flex h-screen overflow-hidden bg-sidebar">
       {/* ── Left sidebar ── */}
-      <div
-        onMouseEnter={() => {
-          if (collapsed) setSidebarHovered(true);
-        }}
-        onMouseLeave={() => {
-          setSidebarHovered(false);
-        }}
-      >
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          page={page}
-          playbookSection={playbookSection}
-          activationFilter={activationNavFilter}
-          pinnedChatIds={pinnedChatIds}
-          onTogglePinnedChat={(id) => {
-            setPinnedChatIds((prev) => (prev.includes(id)
-              ? prev.filter((chatId) => chatId !== id)
-              : [...prev, id]));
+      {showSidebar && (
+        <div
+          onMouseEnter={() => {
+            if (collapsed) setSidebarHovered(true);
           }}
-          onSelectActivationFilter={(filter) => {
-            setActivationNavFilter(filter);
-            setPage("activations");
+          onMouseLeave={() => {
+            setSidebarHovered(false);
           }}
-          onOpenGlossary={() => {
-            setPlaybookSection("glossary");
-            setPage("playbook");
-          }}
-          onOpenRules={() => {
-            setPlaybookSection("rules");
-            setPage("playbook");
-          }}
-          onNavigate={setPage}
-        />
-      </div>
+        >
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            page={page}
+            playbookSection={playbookSection}
+            activationFilter={activationNavFilter}
+            pinnedChatIds={pinnedChatIds}
+            onTogglePinnedChat={(id) => {
+              setPinnedChatIds((prev) => (prev.includes(id)
+                ? prev.filter((chatId) => chatId !== id)
+                : [...prev, id]));
+            }}
+            onSelectActivationFilter={(filter) => {
+              setActivationNavFilter(filter);
+              setPage("activations");
+            }}
+            onOpenGlossary={() => {
+              setPlaybookSection("glossary");
+              setPage("playbook");
+            }}
+            onOpenRules={() => {
+              setPlaybookSection("rules");
+              setPage("playbook");
+            }}
+            onNavigate={setPage}
+          />
+        </div>
+      )}
 
       {/* ── Main content ── */}
-      <main className="relative m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm">
+      <main className={cn(
+        "relative m-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm",
+        showSidebar && "ml-0",
+      )}>
         {/* Header */}
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >
-            <RiSidebarFoldLine className="size-4" />
-          </button>
-          <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+          {showSidebar && (
+            <>
+              <button
+                onClick={() => setCollapsed((c) => !c)}
+                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <RiSidebarFoldLine className="size-4" />
+              </button>
+              <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+            </>
+          )}
           <HeaderIcon className="size-4 shrink-0 text-muted-foreground" />
           <span className="flex-1 truncate text-sm font-medium text-foreground">{headerTitle}</span>
           {isChat && state.activeConversationId && (
@@ -637,7 +711,14 @@ function SegmentV1Inner() {
 
         {/* Content */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {page === "segment-detail" && selectedSegmentId ? (
+          {page === "welcome" ? (
+            <WelcomeOnboardingPage
+              onEnter={() => {
+                setOnboardingStep("users");
+                setPage("users");
+              }}
+            />
+          ) : page === "segment-detail" && selectedSegmentId ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <GroupDetail
                 key={selectedSegmentId}
@@ -713,15 +794,15 @@ function SegmentV1Inner() {
             </div>
           ) : page === "users" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
-              <UsersPage />
+              <UsersPage onboarding={usersOnboarding} />
             </div>
           ) : page === "context" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
-              <BusinessContextPage />
+              <BusinessContextPage onboarding={contextOnboarding} />
             </div>
           ) : page === "integrations" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
-              <IntegrationsPage />
+              <IntegrationsPage onboarding={integrationsOnboarding} />
             </div>
           ) : page === "space" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
@@ -827,7 +908,7 @@ function SegmentV1Inner() {
         )}
       </div>
 
-      {!isChat && (
+      {!isChat && !onboardingActive && (
         <GlobalLexiDock
           mentionGroups={mentionGroups}
           pageContext={lexiPageContext}
@@ -1848,7 +1929,64 @@ function SourcesPage() {
   );
 }
 
-function UsersPage() {
+function WelcomeOnboardingPage({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center bg-gradient-to-b from-background to-sidebar/40 px-6 py-10">
+      <div className="w-full max-w-2xl rounded-xl border border-border/70 bg-card p-8 shadow-sm">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="rounded-lg border border-border bg-background p-2 text-foreground">
+            <LexiIcon className="size-4" />
+          </div>
+          <LexerLogo collapsed={false} tone="primary" size="lg" label="onboarding journey" />
+        </div>
+        <h1 className="text-3xl font-semibold text-foreground">Welcome to Lexer</h1>
+        <p className="mt-3 max-w-xl text-sm text-foreground-secondary">
+          Before you get started, we will guide you through a quick onboarding journey to set up your team and data sources.
+        </p>
+        <div className="mt-8">
+          <Button size="lg" onClick={onEnter}>
+            Enter Lexer
+            <RiArrowRightSLine className="size-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OnboardingLexiModal({
+  title,
+  description,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/35 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-xl">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 rounded-full bg-accent p-2 text-foreground">
+            <LexiIcon className="size-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">Lexi</p>
+            <p className="mt-1 text-sm text-foreground-secondary">{title}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{description}</p>
+            <div className="mt-4">
+              <Button size="sm" onClick={onAction}>{actionLabel}</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   type UserStatus = "Active" | "Invited" | "Suspended";
   type ManagedUser = {
     id: string;
@@ -1979,11 +2117,17 @@ function UsersPage() {
   };
 
   return (
-    <div className="flex h-full flex-col px-6 py-6">
+    <div className={cn("relative flex h-full flex-col px-6 py-6", onboarding && "pb-24")}>
       <div className="mb-4 flex flex-col gap-1">
         <h1 className="text-xl font-semibold text-foreground">Users</h1>
         <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
       </div>
+
+      {onboarding?.disclaimerVisible && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {onboarding.disclaimerText}
+        </div>
+      )}
 
       <div className={cn(
         "grid min-h-0 flex-1 grid-cols-1 gap-4",
@@ -2297,11 +2441,29 @@ function UsersPage() {
           </div>
         </div>
       </div>
+
+      {onboarding && (
+        <div className="sticky bottom-0 mt-4 flex items-center justify-end border-t border-border bg-background/95 pt-4 backdrop-blur">
+          <Button onClick={onboarding.onNext} disabled={!onboarding.disclaimerVisible}>
+            {onboarding.nextLabel}
+            <RiArrowRightSLine className="size-4" />
+          </Button>
+        </div>
+      )}
+
+      {onboarding && !onboarding.disclaimerVisible && (
+        <OnboardingLexiModal
+          title={onboarding.promptTitle}
+          description={onboarding.promptDescription}
+          actionLabel={onboarding.actionLabel}
+          onAction={onboarding.onAcknowledge}
+        />
+      )}
     </div>
   );
 }
 
-function BusinessContextPage() {
+function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   type ContextCard = {
     id: string;
     label: string;
@@ -2622,11 +2784,17 @@ function BusinessContextPage() {
   ]);
 
   return (
-    <div className="flex h-full flex-col px-6 py-6">
+    <div className={cn("relative flex h-full flex-col px-6 py-6", onboarding && "pb-24")}>
       <div className="mb-4 flex flex-col gap-1">
         <h1 className="text-xl font-semibold text-foreground">Context</h1>
         <p className="text-sm text-foreground-secondary">Capture your business context so Lexer can build your semantic layer.</p>
       </div>
+
+      {onboarding?.disclaimerVisible && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {onboarding.disclaimerText}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-4 rounded-xl border border-border bg-card p-4">
@@ -2718,6 +2886,15 @@ function BusinessContextPage() {
         <Button onClick={saveEntirePage}>Save</Button>
       </div>
 
+      {onboarding && (
+        <div className="sticky bottom-0 mt-4 flex items-center justify-end border-t border-border bg-background/95 pt-4 backdrop-blur">
+          <Button onClick={onboarding.onNext} disabled={!onboarding.disclaimerVisible}>
+            {onboarding.nextLabel}
+            <RiArrowRightSLine className="size-4" />
+          </Button>
+        </div>
+      )}
+
       <ConfirmDialog
         open={pendingClearCardId != null}
         onOpenChange={(open) => {
@@ -2735,11 +2912,20 @@ function BusinessContextPage() {
           setPendingClearCardId(null);
         }}
       />
+
+      {onboarding && !onboarding.disclaimerVisible && (
+        <OnboardingLexiModal
+          title={onboarding.promptTitle}
+          description={onboarding.promptDescription}
+          actionLabel={onboarding.actionLabel}
+          onAction={onboarding.onAcknowledge}
+        />
+      )}
     </div>
   );
 }
 
-function IntegrationsPage() {
+function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   type IntegrationStatus = "Connected" | "Available" | "Disconnected";
   type IntegrationRecord = {
     id: string;
@@ -3630,11 +3816,17 @@ function IntegrationsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col px-6 py-6">
+    <div className={cn("relative flex h-full flex-col px-6 py-6", onboarding && "pb-24")}>
       <div className="mb-4 flex flex-col gap-1">
         <h1 className="text-xl font-semibold text-foreground">Integrations</h1>
         <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>
       </div>
+
+      {onboarding?.disclaimerVisible && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {onboarding.disclaimerText}
+        </div>
+      )}
 
       <div className="min-h-0 flex flex-1 gap-4 overflow-hidden">
         <aside className="w-56 shrink-0 overflow-y-auto rounded-xl border border-border bg-card p-2">
@@ -4048,6 +4240,24 @@ function IntegrationsPage() {
         cancelLabel="Keep account"
         onConfirm={confirmDisconnectIntegration}
       />
+
+      {onboarding && (
+        <div className="sticky bottom-0 mt-4 flex items-center justify-end border-t border-border bg-background/95 pt-4 backdrop-blur">
+          <Button onClick={onboarding.onNext} disabled={!onboarding.disclaimerVisible}>
+            {onboarding.nextLabel}
+            <RiArrowRightSLine className="size-4" />
+          </Button>
+        </div>
+      )}
+
+      {onboarding && !onboarding.disclaimerVisible && (
+        <OnboardingLexiModal
+          title={onboarding.promptTitle}
+          description={onboarding.promptDescription}
+          actionLabel={onboarding.actionLabel}
+          onAction={onboarding.onAcknowledge}
+        />
+      )}
     </div>
   );
 }
