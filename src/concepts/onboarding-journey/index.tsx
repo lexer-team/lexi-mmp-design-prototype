@@ -45,13 +45,13 @@ import {
   RiArrowDownSLine,
   RiSendPlane2Line,
   RiListUnordered,
-  RiSubtractLine,
   RiPlayCircleLine,
   RiProhibitedLine,
   RiExpandDiagonalLine,
   RiPushpinLine,
   RiFullscreenLine,
   RiFullscreenExitLine,
+  RiSettings3Line,
 } from "@remixicon/react";
 import { getDef } from "@/data/def-registry";
 import { KIND_META } from "@/components/definitions/kind-meta";
@@ -69,7 +69,6 @@ import { GroupDetail } from "../lexi-shared-brain-v2/GroupDetail";
 import { BRAIN_GROUPS } from "../lexi-shared-brain/data";
 import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
-import { PromptComposer } from "./components/PromptComposer";
 
 type Page = "welcome" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
 type OnboardingStep = "welcome" | "users" | "integrations" | "context" | "completed";
@@ -143,6 +142,9 @@ function SegmentV1Inner() {
   const [usersStepAcknowledged, setUsersStepAcknowledged] = useState(false);
   const [integrationsStepAcknowledged, setIntegrationsStepAcknowledged] = useState(false);
   const [contextStepAcknowledged, setContextStepAcknowledged] = useState(false);
+  const [showChatSyncPopup, setShowChatSyncPopup] = useState(false);
+  const [showChatSyncDisclaimer, setShowChatSyncDisclaimer] = useState(false);
+  const [chatSyncNoticeConsumed, setChatSyncNoticeConsumed] = useState(false);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   // Activation detail opens in a right inset panel (like the segment side panel),
   // independent of the chat-driven slot.
@@ -177,11 +179,11 @@ function SegmentV1Inner() {
         setOnboardingStep("integrations");
         setPage("integrations");
       },
-      nextLabel: "Connect Sources",
-      promptTitle: "Let\'s set up your team first",
-      promptDescription: "Create and invite new users so the right people can collaborate in Lexer from day one.",
-      actionLabel: "Create and invite users",
-      disclaimerText: "Onboarding step: invite at least one teammate before moving to required source connections.",
+      nextLabel: "Next: Connect your accounts",
+      promptTitle: "Set up accounts",
+      promptDescription: "Complete your own account setup first. When you are finished, you may create and invite additional users, or do it later when you are ready.",
+      actionLabel: "Create your account",
+      disclaimerText: "We recommend setting yourself up first so you can start exploring Lexer right away. You can invite the rest of your team now or skip this and add them anytime from Settings > Users.",
     } satisfies OnboardingGuidance
     : undefined;
   const integrationsOnboarding = onboardingStep === "integrations"
@@ -192,11 +194,11 @@ function SegmentV1Inner() {
         setOnboardingStep("context");
         setPage("context");
       },
-      nextLabel: "Set Up your context",
+      nextLabel: "Next: Set up your context",
       promptTitle: "Connect your required sources",
       promptDescription: "Link your core integrations so Lexi can reason over live customer, campaign, and conversion signals.",
       actionLabel: "Connect required sources",
-      disclaimerText: "Onboarding step: connect your required sources before setting up business context.",
+      disclaimerText: "Connecting your sources is the first step in setting up Lexer. Some integrations sync instantly; others (like POS or loyalty platforms) can take up to 24-48 hours to fully populate. We'll notify you once each source is ready.",
     } satisfies OnboardingGuidance
     : undefined;
   const contextOnboarding = onboardingStep === "context"
@@ -206,12 +208,16 @@ function SegmentV1Inner() {
       onNext: () => {
         setOnboardingStep("completed");
         setPage("chat");
+        if (!chatSyncNoticeConsumed) {
+          setShowChatSyncPopup(true);
+          setShowChatSyncDisclaimer(true);
+        }
       },
       nextLabel: "Ask a question!",
       promptTitle: "Describe your business context in plain language",
       promptDescription: "Lexi will translate and apply this when working with you.",
       actionLabel: "Describe my business context",
-      disclaimerText: "Onboarding step: provide your business context so Lexi can apply it in your future questions.",
+      disclaimerText: "Lexer has pre-filled some context based on your connected sources (Shopify, Klaviyo). These are starting points, not fixed rules - thresholds, timeframes, and definitions may not perfectly match how your business thinks about these segments yet. Please review each section and confirm, edit, or remove anything that doesn't apply.",
     } satisfies OnboardingGuidance
     : undefined;
   // Retain the last panel so it keeps its content while sliding out.
@@ -250,8 +256,14 @@ function SegmentV1Inner() {
       setShownPanel(null);
     }
 
+    if (leavingChat && !chatSyncNoticeConsumed) {
+      setShowChatSyncPopup(false);
+      setShowChatSyncDisclaimer(false);
+      setChatSyncNoticeConsumed(true);
+    }
+
     previousPageRef.current = page;
-  }, [page, state.openSourcesIds, state.openSegmentId, dispatch]);
+  }, [page, state.openSourcesIds, state.openSegmentId, dispatch, chatSyncNoticeConsumed]);
 
   useEffect(() => {
     if (page === "chat") return;
@@ -593,14 +605,7 @@ function SegmentV1Inner() {
   const inSpace = page === "space" || page === "space-detail";
   const inActivations = page === "activations";
   const HeaderIcon = isChat ? RiMessage2Line : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
-  const mentionGroups = buildMentionGroups(state.activations);
   const sidebarCollapsed = collapsed && !sidebarHovered;
-  const lexiPageContext = [
-    `Current page: ${headerTitle}`,
-    page === "segment-detail" && selectedSegmentId ? `Selected segment id: ${selectedSegmentId}` : null,
-    page === "activations" && openActivationId ? `Open activation id: ${openActivationId}` : null,
-    page === "space-detail" && selectedSpace ? `Open space: ${selectedSpace.name}` : null,
-  ].filter(Boolean).join(" · ");
 
   return (
     <div className="flex h-screen overflow-hidden bg-sidebar">
@@ -829,6 +834,11 @@ function SegmentV1Inner() {
           ) : (
             <>
               <div className="flex flex-1 flex-col overflow-hidden">
+                {isChat && showChatSyncDisclaimer && (
+                  <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                    Your data is still syncing from your connected sources. Some answers may be incomplete until this finishes - we'll let you know as soon as everything's ready.
+                  </div>
+                )}
                 <ChatPanel />
               </div>
               <ContextPanel open={contextPanelOpen && !sidePanelOpen && state.chatStarted} />
@@ -908,246 +918,17 @@ function SegmentV1Inner() {
         )}
       </div>
 
-      {!isChat && !onboardingActive && (
-        <GlobalLexiDock
-          mentionGroups={mentionGroups}
-          pageContext={lexiPageContext}
-          onOpenFullChat={(latestPrompt, usePageContext) => {
-            if (!state.activeConversationId) {
-              dispatch({ type: "SELECT_CONVERSATION", id: DEFAULT_CONVERSATION_ID, autoStart: false });
-            }
-            setPage("chat");
-
-            if (latestPrompt.trim()) {
-              const text = usePageContext
-                ? `[Page context: ${lexiPageContext}] ${latestPrompt}`
-                : latestPrompt;
-              window.setTimeout(() => {
-                window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text } }));
-              }, 40);
-            }
+      {isChat && showChatSyncPopup && (
+        <OnboardingLexiModal
+          title="You're in - but Lexi's still getting to know your data"
+          description="Your sources are still syncing, which can take a little time depending on the platform. While that's happening, feel free to explore Lexi, ask questions, and get a feel for how it works - just know that some answers may be based on partial data for now. We'll notify you as soon as everything's fully synced and ready to go."
+          actionLabel="Got it, let's explore."
+          onAction={() => {
+            setShowChatSyncPopup(false);
+            setChatSyncNoticeConsumed(true);
           }}
         />
       )}
-    </div>
-  );
-}
-
-function GlobalLexiDock({
-  onOpenFullChat,
-  mentionGroups,
-  pageContext,
-}: {
-  onOpenFullChat: (latestPrompt: string, usePageContext: boolean) => void;
-  mentionGroups: import("../lexi-shared-brain/MentionComposer").MentionGroup[];
-  pageContext: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
-  const [mode, setMode] = useState<"page" | "general" | null>(null);
-  const welcomeText = "Want to collaborate from what is on this page, or start a completely new request?";
-  const [messages, setMessages] = useState<Array<{ id: string; role: "user" | "lexi"; text: string }>>([
-    {
-      id: "lexi-dock-welcome",
-      role: "lexi",
-      text: welcomeText,
-    },
-  ]);
-  const [lastPrompt, setLastPrompt] = useState("");
-
-  const presentInline = (value: string) => value.replace(/\[\[([^\]]+)\]\]/g, "@$1").trim();
-
-  const setConversationMode = (nextMode: "page" | "general") => {
-    setMode(nextMode);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `lexi-mode-${Date.now()}`,
-        role: "lexi",
-        text: nextMode === "page"
-          ? `Great. I will use this page as context: ${pageContext || "current workspace"}.`
-          : "Perfect. I will treat this as a fresh request, independent of the current page.",
-      },
-    ]);
-  };
-
-  const handleDockSubmit = (text: string) => {
-    const prompt = presentInline(text);
-    if (!prompt) return;
-
-    const normalized = prompt.toLowerCase().trim();
-    if (mode === null) {
-      if (normalized === "yes" || normalized === "y" || normalized.includes("this page")) {
-        setMessages((prev) => [...prev, { id: `lexi-user-${Date.now()}`, role: "user", text: prompt }]);
-        setConversationMode("page");
-        return;
-      }
-      if (normalized.includes("something else") || normalized === "no" || normalized === "n") {
-        setMessages((prev) => [...prev, { id: `lexi-user-${Date.now()}`, role: "user", text: prompt }]);
-        setConversationMode("general");
-        return;
-      }
-    }
-
-    const effectiveMode = mode ?? "page";
-    setLastPrompt(prompt);
-    setMessages((prev) => [
-      ...prev,
-      { id: `lexi-user-${Date.now()}`, role: "user", text: prompt },
-      {
-        id: `lexi-reply-${Date.now()}`,
-        role: "lexi",
-        text: effectiveMode === "page"
-          ? `I will work from this page context: ${pageContext || "current workspace"}. If you want a deeper thread, open full chat.`
-          : "Understood. I will treat this as a fresh query. If you want a deeper thread, open full chat.",
-      },
-    ]);
-  };
-
-  return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
-      {open && (
-        <div className="pointer-events-auto flex h-[420px] w-[360px] flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-lg">
-          <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Lexi quick chat</p>
-              <p className="text-xs text-foreground-secondary">Ask anywhere with @ mentions and continue the thread</p>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => setOpen(false)}
-                aria-label="Minimize Lexi quick chat"
-                title="Minimize"
-              >
-                <RiSubtractLine className="size-4" />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => onOpenFullChat(lastPrompt, mode !== "general")}
-                aria-label="Open full Lexi chat"
-                title="Open full chat"
-              >
-                <RiExpandDiagonalLine className="size-4" />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => {
-                  setConfirmCloseOpen(true);
-                }}
-                aria-label="Close Lexi quick chat"
-                title="Close"
-              >
-                <RiCloseLine className="size-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 p-3">
-            <div className="rounded-lg border border-border/60 bg-card px-3 py-2 text-xs text-foreground-secondary">
-              {pageContext || "Current page context"}
-            </div>
-            <div className="mt-2 space-y-2">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn(
-                    "max-w-[90%] rounded-lg px-3 py-2 text-sm",
-                    message.role === "lexi"
-                      ? "bg-card text-foreground"
-                      : "ml-auto bg-primary text-primary-foreground",
-                  )}
-                >
-                  {message.text}
-                </div>
-              ))}
-
-              {mode === null && (
-                <div className="flex items-center gap-2 pt-1">
-                  <Button
-                    size="xs"
-                    onClick={() => {
-                      setMessages((prev) => [...prev, { id: `lexi-user-choice-${Date.now()}`, role: "user", text: "Yes, use this page" }]);
-                      setConversationMode("page");
-                    }}
-                  >
-                    Yes, use this page
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => {
-                      setMessages((prev) => [...prev, { id: `lexi-user-choice-${Date.now()}`, role: "user", text: "Something else" }]);
-                      setConversationMode("general");
-                    }}
-                  >
-                    Something else
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="border-t border-border p-2">
-            <PromptComposer
-              groups={mentionGroups}
-              placeholder={mode === "general"
-                ? "Ask Lexi anything"
-                : "Ask Lexi, or @ to mention a segment, metric, or activation"}
-              onSubmit={(text) => handleDockSubmit(text)}
-            />
-            <p className="mt-2 text-[11px] text-muted-foreground">Use the top-right expand button to open full Lexi chat.</p>
-          </div>
-
-          {confirmCloseOpen && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/70 p-4 backdrop-blur-[1px]">
-              <div className="w-full max-w-[280px] rounded-xl border border-border bg-card p-3 shadow-lg">
-                <p className="text-sm font-semibold text-foreground">Close Lexi quick chat?</p>
-                <p className="mt-1 text-xs text-foreground-secondary">
-                  This will close the mini window and clear this local quick-chat thread.
-                </p>
-                <div className="mt-3 flex items-center justify-end gap-2">
-                  <Button size="xs" variant="outline" onClick={() => setConfirmCloseOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="destructive"
-                    onClick={() => {
-                      setMessages([
-                        {
-                          id: "lexi-dock-welcome",
-                          role: "lexi",
-                          text: welcomeText,
-                        },
-                      ]);
-                      setMode(null);
-                      setLastPrompt("");
-                      setConfirmCloseOpen(false);
-                      setOpen(false);
-                    }}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="pointer-events-auto flex size-12 items-center justify-center rounded-full border border-border/70 bg-background shadow-lg transition-transform hover:scale-[1.03]"
-        aria-label={open ? "Close Lexi quick chat" : "Open Lexi quick chat"}
-        title={open ? "Close Lexi quick chat" : "Open Lexi quick chat"}
-      >
-        <LexerLogo collapsed tone="primary" />
-      </button>
     </div>
   );
 }
@@ -1976,7 +1757,7 @@ function OnboardingLexiModal({
             <p className="text-sm font-semibold text-foreground">Lexi</p>
             <p className="mt-1 text-sm text-foreground-secondary">{title}</p>
             <p className="mt-2 text-xs text-muted-foreground">{description}</p>
-            <div className="mt-4">
+            <div className="mt-4 flex items-center gap-2">
               <Button size="sm" onClick={onAction}>{actionLabel}</Button>
             </div>
           </div>
@@ -2001,7 +1782,7 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     lastUpdated: string;
   };
 
-  const [roleOptions, setRoleOptions] = useState(["Admin", "Manager", "Analyst", "Viewer"]);
+  const [roleOptions, setRoleOptions] = useState(["Admin", "Manager", "User", "Viewer"]);
   const [teamOptions, setTeamOptions] = useState(["Operations", "Growth", "Data", "Marketing", "Lifecycle"]);
   const timeZoneOptions = [
     "Australia/Sydney",
@@ -2047,7 +1828,7 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
       id: "usr-3",
       fullName: "Ryan Ortiz",
       email: "ryan@lexer.ai",
-      role: "Analyst",
+      role: "User",
       team: "Data",
       timeZone: "America/Los_Angeles",
       addedDate: "2026-07-13",
@@ -2061,7 +1842,7 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(users[0]?.id ?? null);
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserRole, setNewUserRole] = useState("Analyst");
+  const [newUserRole, setNewUserRole] = useState("User");
   const [newUserTeam, setNewUserTeam] = useState("Data");
   const [newUserTimeZone, setNewUserTimeZone] = useState("Australia/Sydney");
   const [showAddRole, setShowAddRole] = useState(false);
@@ -2295,6 +2076,24 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                     </select>
                   </div>
                   <Button className="w-full" onClick={addUser}>Create user</Button>
+
+                  <div className="rounded-lg border border-border bg-card p-3">
+                    <p className="text-xs font-semibold text-muted-foreground">Role definitions</p>
+                    <div className="mt-2 space-y-2 text-xs text-foreground-secondary">
+                      <p>
+                        <span className="font-semibold text-foreground">Admin</span> - Full access. Can manage integrations, users, permissions, billing, and all context, definitions, rules, activations, and segments.
+                      </p>
+                      <p>
+                        <span className="font-semibold text-foreground">Manager</span> - Can set up and manage integrations, activations, and segments, and manage users - but can't edit context, definitions, or rules, and can't access billing.
+                      </p>
+                      <p>
+                        <span className="font-semibold text-foreground">User</span> - Can access chat, view dashboards/reports, and query data - but can't edit context, definitions, rules, or manage integrations/users.
+                      </p>
+                      <p>
+                        <span className="font-semibold text-foreground">Viewer</span> - Can view dashboards, reports, and existing chat threads - but can't query, edit, or manage anything.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2473,6 +2272,41 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     isEditing: boolean;
     isSaved: boolean;
     isConfirmed: boolean;
+    category?: string;
+    createdBy?: string;
+    createdDate?: string;
+    lastUpdatedDate?: string;
+  };
+
+  const CONTEXT_SUBCATEGORY_DESCRIPTIONS: Record<string, string> = {
+    "brand-name": "The names your business trades under so Lexi can reference your brand correctly.",
+    "brand-context": "A short summary of your brand position, voice, and customer promise.",
+    "customer-terminology": "The terms you use for customers (for example customers, members, or guests).",
+    "data-sources-systems": "The key systems feeding data into Lexer and what each source contributes.",
+    "source-system-identifiers": "How connected platforms are identified so records can be linked correctly.",
+    "field-mappings": "How source attributes are translated into business-ready concepts in Lexer.",
+    "identity-resolution-logic": "How Lexer matches records across sources into one customer profile.",
+    "sync-frequency-freshness": "How often data updates and how current the latest synced information is.",
+    "household-income-tiers": "How customer household income bands are grouped for targeting and analysis.",
+    "purchase-history": "How past order behavior is summarized for lifecycle and value insights.",
+    "customer-lifecycle-stage": "How customers are classified by recency and activity stage.",
+    "email-engagement": "How email interaction quality is interpreted for messaging and cadence decisions.",
+    "list-segment-membership": "Which key audiences customers belong to for campaign targeting.",
+    "rfm-fields": "How recency, frequency, and spend are used to prioritize customer value.",
+    "exclusion-groups": "Which groups should be excluded from analysis or campaign audiences.",
+    "financial-year": "Your financial year boundary used for reporting and period comparisons.",
+    "peak-periods": "The high-demand dates and event windows important to your business.",
+    "campaign-vs-bau": "How campaign periods are distinguished from always-on business activity.",
+    "channel-defaults": "Default audience and policy expectations by channel.",
+    "active-flows": "The key automated journeys currently running across channels.",
+    "opt-in-consent-status": "How contact permissions determine who can be messaged.",
+    "channel-identifiers": "The customer contact identifiers used to route channel activity.",
+    "suppression-rules": "Rules that define who should not receive campaign communications.",
+    "category-taxonomy": "How products are grouped into categories for reporting and targeting.",
+    "product-taxonomy": "The hierarchy used to organize your product assortment.",
+    "price-points-variants": "How pricing bands and product options are structured.",
+    "inventory-status": "How stock availability is tracked for activation and merchandising.",
+    "product-metadata": "Additional product attributes used for segmentation and personalization.",
   };
 
   const [cards, setCards] = useState<ContextCard[]>([
@@ -2508,7 +2342,7 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     },
     {
       id: "customer-terminology",
-      label: "Customer terminology - customers/members/guests",
+      label: "Customer terminology",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2537,48 +2371,48 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
       isConfirmed: false,
     },
     {
-      id: "identity-resolution-rules",
-      label: "Identity resolution rules - same customer across channels/devices",
+      id: "source-system-identifiers",
+      label: "Source system identifiers",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "Connected source identifiers represent how commerce and messaging systems are recognized across trading, customer, and campaign activity for review.\n\n- **Primary trading storefront** — The business operates one main online storefront for daily sales, with customer and order activity treated as the default commerce context. ([Shopify])\n- **Market coverage profile** — Activity is concentrated in Australia and New Zealand, with AUD as the primary reporting currency for value comparisons. ([Shopify])\n- **Customer identity anchor** — Most active shoppers are consistently recognized by email for cross-journey continuity. ([Klaviyo])\n- **Messaging account ownership** — One central marketing account drives lifecycle and campaign engagement tracking. ([Klaviyo])\n- **Cross-source linkage baseline** — Purchase and message behavior is connected at a person level for audience planning. ([Klaviyo])",
+      savedText: "Connected source identifiers represent how commerce and messaging systems are recognized across trading, customer, and campaign activity for review.\n\n- **Primary trading storefront** — The business operates one main online storefront for daily sales, with customer and order activity treated as the default commerce context. ([Shopify])\n- **Market coverage profile** — Activity is concentrated in Australia and New Zealand, with AUD as the primary reporting currency for value comparisons. ([Shopify])\n- **Customer identity anchor** — Most active shoppers are consistently recognized by email for cross-journey continuity. ([Klaviyo])\n- **Messaging account ownership** — One central marketing account drives lifecycle and campaign engagement tracking. ([Klaviyo])\n- **Cross-source linkage baseline** — Purchase and message behavior is connected at a person level for audience planning. ([Klaviyo])",
       isEditing: false,
-      isSaved: false,
-      isConfirmed: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "field-mappings",
+      label: "Field mappings",
+      isCustom: false,
+      text: "Field mappings explain how shopper, order, product, and engagement signals are translated into business-friendly context for planning and activation.\n\n- **Customer profile rollup** — Shopper traits are unified into one profile view so teams can work from one customer story. ([Shopify])\n- **Order value normalization** — Purchase values are standardized for fair spend-tier and VIP evaluation. ([Shopify])\n- **Product context alignment** — Product family and assortment cues are grouped into usable merchandising concepts. ([Shopify])\n- **Engagement outcome alignment** — Message responses are interpreted as opened, clicked, and recently engaged states. ([Klaviyo])\n- **Conversion window framing** — Response impact is read within practical retail windows to keep performance comparisons fair. ([Klaviyo])",
+      savedText: "Field mappings explain how shopper, order, product, and engagement signals are translated into business-friendly context for planning and activation.\n\n- **Customer profile rollup** — Shopper traits are unified into one profile view so teams can work from one customer story. ([Shopify])\n- **Order value normalization** — Purchase values are standardized for fair spend-tier and VIP evaluation. ([Shopify])\n- **Product context alignment** — Product family and assortment cues are grouped into usable merchandising concepts. ([Shopify])\n- **Engagement outcome alignment** — Message responses are interpreted as opened, clicked, and recently engaged states. ([Klaviyo])\n- **Conversion window framing** — Response impact is read within practical retail windows to keep performance comparisons fair. ([Klaviyo])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "identity-resolution-logic",
+      label: "Identity resolution logic",
+      isCustom: false,
+      text: "Identity resolution logic describes how customer records are stitched into a reliable person-level view across commerce and messaging channels.\n\n- **Email-first matching** — Profiles are first matched by email because it gives the highest-confidence cross-source continuity. ([Klaviyo])\n- **Phone-assisted matching** — Mobile identity supports matching when email coverage is incomplete. ([Klaviyo])\n- **Recency conflict handling** — More recent confirmed activity is prioritized when profile signals disagree. ([Shopify])\n- **Duplicate collapse threshold** — Repeated overlapping identity signals trigger consolidation into one shopper view. ([Klaviyo])\n- **History preservation** — Purchase history remains attached after matching to protect lifecycle and value accuracy. ([Shopify])",
+      savedText: "Identity resolution logic describes how customer records are stitched into a reliable person-level view across commerce and messaging channels.\n\n- **Email-first matching** — Profiles are first matched by email because it gives the highest-confidence cross-source continuity. ([Klaviyo])\n- **Phone-assisted matching** — Mobile identity supports matching when email coverage is incomplete. ([Klaviyo])\n- **Recency conflict handling** — More recent confirmed activity is prioritized when profile signals disagree. ([Shopify])\n- **Duplicate collapse threshold** — Repeated overlapping identity signals trigger consolidation into one shopper view. ([Klaviyo])\n- **History preservation** — Purchase history remains attached after matching to protect lifecycle and value accuracy. ([Shopify])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "sync-frequency-freshness",
+      label: "Sync frequency and freshness",
+      isCustom: false,
+      text: "Sync and freshness context reflects how quickly connected data is refreshed and how current it is for operational decisions.\n\n- **Order feed cadence** — New and updated orders refresh in near-real-time windows suitable for daily optimization. ([Shopify])\n- **Customer profile cadence** — Signup and profile changes flow through regular hourly-style refresh cycles. ([Shopify])\n- **Engagement feed cadence** — Campaign and flow responses update in frequent batches after send activity. ([Klaviyo])\n- **Daily completeness checkpoint** — Overnight reconciliation improves previous-day reporting completeness. ([Shopify])\n- **Latency risk guidance** — Extended lag indicates campaign decisions should pause until freshness normalizes. ([Klaviyo])",
+      savedText: "Sync and freshness context reflects how quickly connected data is refreshed and how current it is for operational decisions.\n\n- **Order feed cadence** — New and updated orders refresh in near-real-time windows suitable for daily optimization. ([Shopify])\n- **Customer profile cadence** — Signup and profile changes flow through regular hourly-style refresh cycles. ([Shopify])\n- **Engagement feed cadence** — Campaign and flow responses update in frequent batches after send activity. ([Klaviyo])\n- **Daily completeness checkpoint** — Overnight reconciliation improves previous-day reporting completeness. ([Shopify])\n- **Latency risk guidance** — Extended lag indicates campaign decisions should pause until freshness normalizes. ([Klaviyo])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
     },
     {
       id: "household-income-tiers",
       label: "Household income tiers",
-      isCustom: false,
-      text: "",
-      savedText: "",
-      isEditing: false,
-      isSaved: false,
-      isConfirmed: false,
-    },
-    {
-      id: "field-definitions",
-      label: "Field definitions - source-specific meaning overrides",
-      isCustom: false,
-      text: "",
-      savedText: "",
-      isEditing: false,
-      isSaved: false,
-      isConfirmed: false,
-    },
-    {
-      id: "data-quality-flags",
-      label: "Data quality flags - known unreliable fields/periods",
-      isCustom: false,
-      text: "",
-      savedText: "",
-      isEditing: false,
-      isSaved: false,
-      isConfirmed: false,
-    },
-    {
-      id: "source-hierarchy",
-      label: "Source hierarchy - system of record on conflict",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2598,7 +2432,7 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     },
     {
       id: "lifecycle-tiers",
-      label: "Lifecycle tiers - New/Active/Lapsing/Lapsed thresholds",
+      label: "Lifecycle tiers",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2607,18 +2441,58 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
       isConfirmed: false,
     },
     {
-      id: "value-tiers",
-      label: "Value tiers - VIP/top-spender definitions",
+      id: "purchase-history",
+      label: "Purchase history",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "Purchase history context summarizes recent and repeat buying behavior used for lifecycle and value planning.\n\n- **Recent buyer window** — Customers with at least one purchase in the last 30 days are treated as current buyers. ([Shopify])\n- **Repeat purchase marker** — Customers with 2 or more orders in 12 months are prioritized for retention programs. ([Shopify])\n- **High-value buyer threshold** — Customers above key spend bands are routed to premium experiences over broad discounting. ([Shopify])\n- **Dormant purchaser cohort** — Customers with long purchase gaps are grouped for winback strategy. ([Shopify])\n- **Order cadence profile** — Typical reorder timing guides campaign spacing by customer need cycle. ([Shopify])",
+      savedText: "Purchase history context summarizes recent and repeat buying behavior used for lifecycle and value planning.\n\n- **Recent buyer window** — Customers with at least one purchase in the last 30 days are treated as current buyers. ([Shopify])\n- **Repeat purchase marker** — Customers with 2 or more orders in 12 months are prioritized for retention programs. ([Shopify])\n- **High-value buyer threshold** — Customers above key spend bands are routed to premium experiences over broad discounting. ([Shopify])\n- **Dormant purchaser cohort** — Customers with long purchase gaps are grouped for winback strategy. ([Shopify])\n- **Order cadence profile** — Typical reorder timing guides campaign spacing by customer need cycle. ([Shopify])",
       isEditing: false,
-      isSaved: false,
-      isConfirmed: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "customer-lifecycle-stage",
+      label: "Customer lifecycle stage",
+      isCustom: false,
+      text: "Lifecycle stage context classifies customer momentum so outreach timing, tone, and offers match customer maturity and risk.\n\n- **New customer** — First purchase completed recently and still in onboarding to second-order conversion. ([Shopify])\n- **Active customer** — Repeat recent buyers with stable momentum are suitable for cross-sell and newness. ([Shopify])\n- **Lapsing customer** — Customers with growing purchase gaps are flagged for early re-engagement. ([Shopify])\n- **Lapsed customer** — Long-inactive purchasers are grouped for stronger recovery journeys. ([Shopify])\n- **VIP active customer** — High-value and recent buyers are routed to exclusivity-led experiences. ([Shopify])",
+      savedText: "Lifecycle stage context classifies customer momentum so outreach timing, tone, and offers match customer maturity and risk.\n\n- **New customer** — First purchase completed recently and still in onboarding to second-order conversion. ([Shopify])\n- **Active customer** — Repeat recent buyers with stable momentum are suitable for cross-sell and newness. ([Shopify])\n- **Lapsing customer** — Customers with growing purchase gaps are flagged for early re-engagement. ([Shopify])\n- **Lapsed customer** — Long-inactive purchasers are grouped for stronger recovery journeys. ([Shopify])\n- **VIP active customer** — High-value and recent buyers are routed to exclusivity-led experiences. ([Shopify])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "email-engagement",
+      label: "Email engagement",
+      isCustom: false,
+      text: "Email engagement context summarizes response quality and audience readiness for message cadence, offer strength, and lifecycle progression.\n\n- **Highly engaged audience** — Opened or clicked recently and suitable for conversion-led messaging. ([Klaviyo])\n- **Click-active shoppers** — Recent clickers indicate strong purchase intent and short-term response potential. ([Klaviyo])\n- **Passive readers** — Open behavior without clicks suggests awareness but weaker offer relevance. ([Klaviyo])\n- **At-risk subscribers** — No recent interaction indicates fatigue risk and cadence adjustment need. ([Klaviyo])\n- **Suppressed profile pool** — Excluded audience protects deliverability and compliance quality. ([Klaviyo])",
+      savedText: "Email engagement context summarizes response quality and audience readiness for message cadence, offer strength, and lifecycle progression.\n\n- **Highly engaged audience** — Opened or clicked recently and suitable for conversion-led messaging. ([Klaviyo])\n- **Click-active shoppers** — Recent clickers indicate strong purchase intent and short-term response potential. ([Klaviyo])\n- **Passive readers** — Open behavior without clicks suggests awareness but weaker offer relevance. ([Klaviyo])\n- **At-risk subscribers** — No recent interaction indicates fatigue risk and cadence adjustment need. ([Klaviyo])\n- **Suppressed profile pool** — Excluded audience protects deliverability and compliance quality. ([Klaviyo])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "list-segment-membership",
+      label: "List and segment membership",
+      isCustom: false,
+      text: "List and segment membership context reflects the audiences currently available for lifecycle orchestration and campaign targeting.\n\n- **Newsletter subscribers** — Core consented audience for regular promotional and content sends. ([Klaviyo])\n- **VIP early-access group** — High-value cohort receives priority product access and premium treatment. ([Klaviyo])\n- **Recent purchasers segment** — Buyers from recent windows are used for replenishment and cross-sell journeys. ([Klaviyo])\n- **Winback candidates segment** — Inactive purchasers are grouped for staged recovery campaigns. ([Klaviyo])\n- **High-intent browsers segment** — Active browsers without purchase are prioritized for conversion reminders. ([Klaviyo])",
+      savedText: "List and segment membership context reflects the audiences currently available for lifecycle orchestration and campaign targeting.\n\n- **Newsletter subscribers** — Core consented audience for regular promotional and content sends. ([Klaviyo])\n- **VIP early-access group** — High-value cohort receives priority product access and premium treatment. ([Klaviyo])\n- **Recent purchasers segment** — Buyers from recent windows are used for replenishment and cross-sell journeys. ([Klaviyo])\n- **Winback candidates segment** — Inactive purchasers are grouped for staged recovery campaigns. ([Klaviyo])\n- **High-intent browsers segment** — Active browsers without purchase are prioritized for conversion reminders. ([Klaviyo])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "rfm-fields",
+      label: "RFM fields",
+      isCustom: false,
+      text: "RFM context defines value prioritization using recency, frequency, and spend behavior for practical activation targeting.\n\n- **Recency banding** — Customers are grouped by days since last purchase to support timing relevance. ([Shopify])\n- **Frequency banding** — Order-count bands separate casual from habitual shoppers for treatment strategy. ([Shopify])\n- **Monetary banding** — Spend tiers distinguish broad-value from high-value customers. ([Shopify])\n- **High-priority RFM cluster** — Recent, frequent, high-spend customers are prioritized for retention value. ([Shopify])\n- **Recovery RFM cluster** — Historically valuable but less recent customers are prioritized for selective winback. ([Shopify])",
+      savedText: "RFM context defines value prioritization using recency, frequency, and spend behavior for practical activation targeting.\n\n- **Recency banding** — Customers are grouped by days since last purchase to support timing relevance. ([Shopify])\n- **Frequency banding** — Order-count bands separate casual from habitual shoppers for treatment strategy. ([Shopify])\n- **Monetary banding** — Spend tiers distinguish broad-value from high-value customers. ([Shopify])\n- **High-priority RFM cluster** — Recent, frequent, high-spend customers are prioritized for retention value. ([Shopify])\n- **Recovery RFM cluster** — Historically valuable but less recent customers are prioritized for selective winback. ([Shopify])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
     },
     {
       id: "exclusion-groups",
-      label: "Exclusion groups - staff, wholesale, test accounts",
+      label: "Exclusion groups",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2638,7 +2512,7 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     },
     {
       id: "financial-year",
-      label: "Financial year - start date",
+      label: "Financial year",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2648,7 +2522,7 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     },
     {
       id: "peak-periods",
-      label: "Peak periods - sale events and date rules",
+      label: "Peak periods",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2658,7 +2532,7 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     },
     {
       id: "campaign-vs-bau",
-      label: "Campaign vs BAU - campaign period flagging",
+      label: "Campaign vs BAU",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2678,7 +2552,7 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     },
     {
       id: "channel-defaults",
-      label: "Channel defaults - per-channel opt-in/consent audience",
+      label: "Channel defaults",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2687,8 +2561,38 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
       isConfirmed: false,
     },
     {
+      id: "active-flows",
+      label: "Active flows",
+      isCustom: false,
+      text: "Active flow context summarizes the lifecycle automations currently running and their role in shopper journey progression.\n\n- **Welcome series** — New subscribers are nurtured early to improve first-purchase conversion. ([Klaviyo])\n- **Browse abandonment flow** — Product viewers without cart activity receive timely reminder outreach. ([Klaviyo])\n- **Cart abandonment flow** — Incomplete checkout shoppers are re-engaged in short conversion windows. ([Klaviyo])\n- **Post-purchase follow-up** — Recent buyers receive care, review, and complementary product messaging. ([Klaviyo])\n- **Winback automation** — Inactive customers enter staged reactivation journeys after extended inactivity. ([Klaviyo])",
+      savedText: "Active flow context summarizes the lifecycle automations currently running and their role in shopper journey progression.\n\n- **Welcome series** — New subscribers are nurtured early to improve first-purchase conversion. ([Klaviyo])\n- **Browse abandonment flow** — Product viewers without cart activity receive timely reminder outreach. ([Klaviyo])\n- **Cart abandonment flow** — Incomplete checkout shoppers are re-engaged in short conversion windows. ([Klaviyo])\n- **Post-purchase follow-up** — Recent buyers receive care, review, and complementary product messaging. ([Klaviyo])\n- **Winback automation** — Inactive customers enter staged reactivation journeys after extended inactivity. ([Klaviyo])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "opt-in-consent-status",
+      label: "Opt-in and consent status",
+      isCustom: false,
+      text: "Consent status context shows which audiences are safely reachable and where suppression protections apply for channel quality.\n\n- **Email opted-in audience** — Customers with active email permission are eligible for campaign and lifecycle sends. ([Klaviyo])\n- **SMS opted-in audience** — Mobile-consented customers are eligible for faster-response text activation. ([Klaviyo])\n- **Suppressed audience** — Unsubscribed, bounced, or complaint-prone profiles are automatically excluded. ([Klaviyo])\n- **Recent consent growth** — Newly opted-in contacts are prioritized for onboarding journeys. ([Klaviyo])\n- **Consent decay monitoring** — Deteriorating engagement or complaint trends trigger cadence review needs. ([Klaviyo])",
+      savedText: "Consent status context shows which audiences are safely reachable and where suppression protections apply for channel quality.\n\n- **Email opted-in audience** — Customers with active email permission are eligible for campaign and lifecycle sends. ([Klaviyo])\n- **SMS opted-in audience** — Mobile-consented customers are eligible for faster-response text activation. ([Klaviyo])\n- **Suppressed audience** — Unsubscribed, bounced, or complaint-prone profiles are automatically excluded. ([Klaviyo])\n- **Recent consent growth** — Newly opted-in contacts are prioritized for onboarding journeys. ([Klaviyo])\n- **Consent decay monitoring** — Deteriorating engagement or complaint trends trigger cadence review needs. ([Klaviyo])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "channel-identifiers",
+      label: "Channel identifiers",
+      isCustom: false,
+      text: "Channel identifier context summarizes the contact keys used to route messaging and connect customer behavior across journeys.\n\n- **Primary email channel key** — Email is the default cross-channel identifier for audience targeting. ([Klaviyo])\n- **Mobile contact key** — Phone identity supports SMS routing and secondary person matching. ([Klaviyo])\n- **Commerce customer identity** — Store-level customer identity anchors purchase and value context. ([Shopify])\n- **Messaging profile identity** — Engagement identity anchors response and suppression decisions. ([Klaviyo])\n- **Cross-channel confidence signal** — Customers with stable multi-contact identifiers support stronger omnichannel orchestration. ([Klaviyo])",
+      savedText: "Channel identifier context summarizes the contact keys used to route messaging and connect customer behavior across journeys.\n\n- **Primary email channel key** — Email is the default cross-channel identifier for audience targeting. ([Klaviyo])\n- **Mobile contact key** — Phone identity supports SMS routing and secondary person matching. ([Klaviyo])\n- **Commerce customer identity** — Store-level customer identity anchors purchase and value context. ([Shopify])\n- **Messaging profile identity** — Engagement identity anchors response and suppression decisions. ([Klaviyo])\n- **Cross-channel confidence signal** — Customers with stable multi-contact identifiers support stronger omnichannel orchestration. ([Klaviyo])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
       id: "suppression-rules",
-      label: "Suppression rules - who gets excluded and why",
+      label: "Suppression rules",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2708,7 +2612,7 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     },
     {
       id: "category-taxonomy",
-      label: "Category taxonomy - how products/services are grouped",
+      label: "Category taxonomy",
       isCustom: false,
       text: "",
       savedText: "",
@@ -2716,14 +2620,81 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
       isSaved: false,
       isConfirmed: false,
     },
+    {
+      id: "product-taxonomy",
+      label: "Product taxonomy",
+      isCustom: false,
+      text: "Product taxonomy context reflects how assortment is grouped into practical merchandise families for reporting and campaign relevance.\n\n- **Core category model** — The assortment is grouped into primary retail families for broad planning and performance comparison. ([Shopify])\n- **Collection-led grouping** — Seasonal collections are treated as strategic overlays across core categories. ([Shopify])\n- **Style-level hierarchy** — Performance is interpreted at style level before variant-level detail. ([Shopify])\n- **Commercial priority tiers** — Highest-contributing categories are surfaced for near-term activation focus. ([Shopify])\n- **Long-tail preservation** — Niche category context remains available to protect specialized demand opportunities. ([Shopify])",
+      savedText: "Product taxonomy context reflects how assortment is grouped into practical merchandise families for reporting and campaign relevance.\n\n- **Core category model** — The assortment is grouped into primary retail families for broad planning and performance comparison. ([Shopify])\n- **Collection-led grouping** — Seasonal collections are treated as strategic overlays across core categories. ([Shopify])\n- **Style-level hierarchy** — Performance is interpreted at style level before variant-level detail. ([Shopify])\n- **Commercial priority tiers** — Highest-contributing categories are surfaced for near-term activation focus. ([Shopify])\n- **Long-tail preservation** — Niche category context remains available to protect specialized demand opportunities. ([Shopify])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "price-points-variants",
+      label: "Price points and variants",
+      isCustom: false,
+      text: "Price and variant context summarizes how assortment is distributed across entry, core, and premium value bands with option complexity.\n\n- **Entry price band** — Lower-priced items support acquisition and first-purchase behavior. ([Shopify])\n- **Core price band** — Mid-range assortment drives the largest volume of routine purchases. ([Shopify])\n- **Premium price band** — Higher-ticket products align to higher-margin and high-value segments. ([Shopify])\n- **Variant complexity profile** — Size and color structures shape conversion and inventory decisioning needs. ([Shopify])\n- **Variant demand sensitivity** — Performance varies by option, so variant availability informs activation priority. ([Shopify])",
+      savedText: "Price and variant context summarizes how assortment is distributed across entry, core, and premium value bands with option complexity.\n\n- **Entry price band** — Lower-priced items support acquisition and first-purchase behavior. ([Shopify])\n- **Core price band** — Mid-range assortment drives the largest volume of routine purchases. ([Shopify])\n- **Premium price band** — Higher-ticket products align to higher-margin and high-value segments. ([Shopify])\n- **Variant complexity profile** — Size and color structures shape conversion and inventory decisioning needs. ([Shopify])\n- **Variant demand sensitivity** — Performance varies by option, so variant availability informs activation priority. ([Shopify])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "inventory-status",
+      label: "Inventory status",
+      isCustom: false,
+      text: "Inventory status context shows stock health signals that influence campaign eligibility and urgency messaging decisions.\n\n- **In-stock baseline** — Most active assortment remains purchasable for broad campaign targeting. ([Shopify])\n- **Low-stock trigger band** — Low unit availability flags products for urgency messaging or exclusions. ([Shopify])\n- **Out-of-stock exclusion logic** — Unavailable products are excluded from broad promotional sends to protect customer experience. ([Shopify])\n- **Backorder-capable assortment** — Eligible products can remain active even when immediate stock is constrained. ([Shopify])\n- **Restock opportunity timing** — Recently replenished demand drivers are prioritized for conversion outreach. ([Shopify])",
+      savedText: "Inventory status context shows stock health signals that influence campaign eligibility and urgency messaging decisions.\n\n- **In-stock baseline** — Most active assortment remains purchasable for broad campaign targeting. ([Shopify])\n- **Low-stock trigger band** — Low unit availability flags products for urgency messaging or exclusions. ([Shopify])\n- **Out-of-stock exclusion logic** — Unavailable products are excluded from broad promotional sends to protect customer experience. ([Shopify])\n- **Backorder-capable assortment** — Eligible products can remain active even when immediate stock is constrained. ([Shopify])\n- **Restock opportunity timing** — Recently replenished demand drivers are prioritized for conversion outreach. ([Shopify])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
+    {
+      id: "product-metadata",
+      label: "Product metadata",
+      isCustom: false,
+      text: "Product metadata context captures descriptive attributes that improve personalization, assortment storytelling, and campaign precision.\n\n- **Brand and supplier context** — Product line ownership cues support curated merchandising narratives. ([Shopify])\n- **Seasonal tagging model** — Seasonal labels support launch sequencing and transition planning. ([Shopify])\n- **Material and composition cues** — Fabric-led context supports intent-based product messaging. ([Shopify])\n- **Margin sensitivity markers** — Margin-aware groupings guide discount governance and profitability protection. ([Shopify])\n- **Bestseller designation** — High-demand products are identified for stronger social-proof and urgency use cases. ([Shopify])",
+      savedText: "Product metadata context captures descriptive attributes that improve personalization, assortment storytelling, and campaign precision.\n\n- **Brand and supplier context** — Product line ownership cues support curated merchandising narratives. ([Shopify])\n- **Seasonal tagging model** — Seasonal labels support launch sequencing and transition planning. ([Shopify])\n- **Material and composition cues** — Fabric-led context supports intent-based product messaging. ([Shopify])\n- **Margin sensitivity markers** — Margin-aware groupings guide discount governance and profitability protection. ([Shopify])\n- **Bestseller designation** — High-demand products are identified for stronger social-proof and urgency use cases. ([Shopify])",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: true,
+    },
   ]);
-  const [pendingClearCardId, setPendingClearCardId] = useState<string | null>(null);
+  const [expandedSectionIds, setExpandedSectionIds] = useState<string[]>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [addNewOpen, setAddNewOpen] = useState(true);
+  const [newContextInput, setNewContextInput] = useState("");
+  const [newContextInterpretation, setNewContextInterpretation] = useState("");
+  const [cardInterpretationDrafts, setCardInterpretationDrafts] = useState<Record<string, string>>({});
+  const [cardEditOriginalText, setCardEditOriginalText] = useState<Record<string, string>>({});
+  const [newCategoryDraft, setNewCategoryDraft] = useState("");
+  const [showNewCategoryInputForCardId, setShowNewCategoryInputForCardId] = useState<string | null>(null);
+  const preferredSelectedCardIdRef = useRef<string | null>(null);
+
+  const formatDateLabel = () => new Date().toLocaleDateString("en-AU", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 
   const updateCard = (cardId: string, updater: (card: ContextCard) => ContextCard) => {
-    setCards((prev) => prev.map((card) => (card.id === cardId ? updater(card) : card)));
+    setCards((prev) => prev.map((card) => {
+      if (card.id !== cardId) return card;
+      const updated = updater(card);
+      if (updated.createdDate || updated.isCustom) {
+        return { ...updated, lastUpdatedDate: formatDateLabel() };
+      }
+      return updated;
+    }));
   };
 
   const startEditing = (cardId: string) => {
+    const sourceCard = cards.find((card) => card.id === cardId);
+    if (sourceCard) {
+      setCardEditOriginalText((prev) => ({ ...prev, [cardId]: sourceCard.text }));
+    }
+    setCardInterpretationDrafts((prev) => ({ ...prev, [cardId]: "" }));
     updateCard(cardId, (card) => ({ ...card, isEditing: true, isSaved: false, isConfirmed: false }));
   };
 
@@ -2743,10 +2714,6 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     updateCard(cardId, (card) => ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
   };
 
-  const clearCard = (cardId: string) => {
-    updateCard(cardId, (card) => ({ ...card, text: "", savedText: "", isSaved: false, isConfirmed: false, isEditing: true }));
-  };
-
   const addMoreCard = () => {
     const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setCards((prev) => [
@@ -2760,8 +2727,14 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
         isEditing: true,
         isSaved: false,
         isConfirmed: false,
+        category: "Uncategorised",
+        createdBy: MOCK_USER.firstName,
+        createdDate: formatDateLabel(),
+        lastUpdatedDate: formatDateLabel(),
       },
     ]);
+    setSelectedCardId(id);
+    setExpandedSectionIds((prev) => (prev.includes("custom-uncategorised") ? prev : [...prev, "custom-uncategorised"]));
   };
 
   const saveEntirePage = () => {
@@ -2783,6 +2756,274 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     "product-catalog",
   ]);
 
+  const validContextCardIds = new Set(cards.filter((card) => !sectionIds.has(card.id)).map((card) => card.id));
+
+  type ContextSectionGroup = {
+    id: string;
+    label: string;
+    cardIds: string[];
+  };
+
+  const sectionOrder: string[] = [];
+  const sectionsById: Record<string, ContextSectionGroup> = {};
+  let currentSectionId: string | null = null;
+
+  const ensureSection = (id: string, label: string) => {
+    if (sectionsById[id]) return;
+    sectionsById[id] = { id, label, cardIds: [] };
+    sectionOrder.push(id);
+  };
+
+  for (const card of cards) {
+    if (sectionIds.has(card.id)) {
+      currentSectionId = card.id;
+      ensureSection(card.id, card.label);
+      continue;
+    }
+
+    if (card.isCustom) {
+      const categoryLabel = card.category?.trim() || "Uncategorised";
+      const categoryId = `custom-${categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "uncategorised"}`;
+      const customSectionId = categoryId;
+      ensureSection(customSectionId, categoryLabel);
+      sectionsById[customSectionId].cardIds.push(card.id);
+      continue;
+    }
+
+    const fallbackSectionId = "uncategorised";
+    const targetSectionId = currentSectionId ?? fallbackSectionId;
+    const targetSectionLabel = currentSectionId ? (sectionsById[currentSectionId]?.label ?? "Section") : "Uncategorised";
+    ensureSection(targetSectionId, targetSectionLabel);
+    sectionsById[targetSectionId].cardIds.push(card.id);
+  }
+
+  // Keep an explicit uncategorised bucket visible in the list.
+  ensureSection("custom-uncategorised", "Uncategorised");
+
+  const groupedSections = sectionOrder
+    .map((sectionId) => sectionsById[sectionId])
+    .filter((section) => section.cardIds.length > 0 || section.id === "custom-uncategorised");
+
+  const orderedGroupedSections = groupedSections.sort((a, b) => {
+    if (a.id === "custom-uncategorised") return 1;
+    if (b.id === "custom-uncategorised") return -1;
+    return 0;
+  });
+
+  const contextSectionOptions = Array.from(new Set(groupedSections.map((section) => section.label)));
+
+  useEffect(() => {
+    if (groupedSections.length === 0) {
+      setExpandedSectionIds([]);
+      setSelectedCardId(null);
+      return;
+    }
+
+    setExpandedSectionIds((prev) => {
+      const validExpanded = prev.filter((id) => orderedGroupedSections.some((section) => section.id === id));
+      return validExpanded;
+    });
+
+    setSelectedCardId((prev) => {
+      const preferredSelectedCardId = preferredSelectedCardIdRef.current;
+      if (preferredSelectedCardId && validContextCardIds.has(preferredSelectedCardId)) {
+        preferredSelectedCardIdRef.current = null;
+        return preferredSelectedCardId;
+      }
+      if (prev && validContextCardIds.has(prev)) return prev;
+      return orderedGroupedSections[0].cardIds[0] ?? null;
+    });
+  }, [cards]);
+
+  const selectedCard = selectedCardId
+    ? cards.find((card) => card.id === selectedCardId && !sectionIds.has(card.id)) ?? null
+    : null;
+
+  const toggleSection = (sectionId: string) => {
+    setExpandedSectionIds((prev) => {
+      if (prev.includes(sectionId)) return prev.filter((id) => id !== sectionId);
+      return [...prev, sectionId];
+    });
+  };
+
+  const handleSelectCard = (cardId: string) => {
+    setAddNewOpen(false);
+    setSelectedCardId(cardId);
+  };
+
+  const buildLexiInterpretation = (input: string) => {
+    const cleaned = input.trim().replace(/\s+/g, " ");
+    if (!cleaned) return "";
+
+    const normalized = cleaned.toLowerCase().replace(/[.,]+$/g, "");
+    const vipDemoInput = "our vip tiers are based on total spend. bronze is under $500, silver is $500 to $1,500, gold is $1,500 to $5,000";
+
+    if (normalized === vipDemoInput) {
+      return "There are 3 VIP tiers based on spend - Bronze under $500, Silver from $500 to $1,500, Gold from $1,500 to $5,000.";
+    }
+
+    return `Lexi interprets this context as: ${cleaned}`;
+  };
+
+  const buildSmartContextLabel = (input: string, interpretation: string) => {
+    const normalizedInput = input.toLowerCase();
+    const normalizedInterpretation = interpretation.toLowerCase();
+
+    if (normalizedInput.includes("vip") && normalizedInput.includes("tier")) {
+      return "VIP spend tiers";
+    }
+
+    if (normalizedInterpretation.includes("tier")) {
+      return "Tier definition";
+    }
+
+    const words = input.trim().split(/\s+/).filter(Boolean);
+    const shortTitle = words.slice(0, 5).join(" ");
+    if (!shortTitle) return "Lexi context note";
+    return shortTitle.length > 48 ? `${shortTitle.slice(0, 48)}...` : shortTitle;
+  };
+
+  const runNewContextInterpretation = () => {
+    const interpretation = buildLexiInterpretation(newContextInput);
+    setNewContextInterpretation(interpretation);
+  };
+
+  const approveNewContext = () => {
+    const rawInput = newContextInput.trim();
+    const interpretation = newContextInterpretation.trim();
+    if (!rawInput || !interpretation) return;
+
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const dateLabel = formatDateLabel();
+    const label = buildSmartContextLabel(rawInput, interpretation);
+    const defaultCategory = "Uncategorised";
+
+    setCards((prev) => [
+      ...prev,
+      {
+        id,
+        label,
+        isCustom: true,
+        text: interpretation,
+        savedText: interpretation,
+        isEditing: false,
+        isSaved: false,
+        isConfirmed: true,
+        category: defaultCategory,
+        createdBy: MOCK_USER.firstName,
+        createdDate: dateLabel,
+        lastUpdatedDate: dateLabel,
+      },
+    ]);
+    preferredSelectedCardIdRef.current = id;
+    setExpandedSectionIds((prev) => (prev.includes("custom-uncategorised") ? prev : [...prev, "custom-uncategorised"]));
+    setSelectedCardId(id);
+    setNewContextInput("");
+    setNewContextInterpretation("");
+    setAddNewOpen(false);
+  };
+
+  const cancelNewContext = () => {
+    setNewContextInterpretation("");
+    setNewContextInput("");
+    setAddNewOpen(false);
+  };
+
+  const updateCardCategory = (cardId: string, category: string) => {
+    updateCard(cardId, (card) => ({ ...card, category }));
+  };
+
+  const addCategoryForSelectedCard = () => {
+    const selectedId = selectedCardId;
+    const name = newCategoryDraft.trim();
+    if (!selectedId || !name) return;
+
+    updateCardCategory(selectedId, name);
+    setNewCategoryDraft("");
+    setShowNewCategoryInputForCardId(null);
+  };
+
+  const confirmCardInterpretation = (cardId: string) => {
+    const card = cards.find((item) => item.id === cardId);
+    if (!card) return;
+    const interpretation = buildLexiInterpretation(card.text);
+    setCardInterpretationDrafts((prev) => ({ ...prev, [cardId]: interpretation }));
+  };
+
+  const approveCardInterpretation = (cardId: string) => {
+    const interpretation = (cardInterpretationDrafts[cardId] ?? "").trim();
+    if (!interpretation) return;
+
+    const existingCard = cards.find((card) => card.id === cardId);
+    if (!existingCard) return;
+
+    const dateLabel = formatDateLabel();
+    const nextCategory = (existingCard.category?.trim() || "Uncategorised");
+
+    const hasSmartName = existingCard.label.trim().length > 0 && existingCard.label !== "New context box";
+    const nextLabel = hasSmartName
+      ? existingCard.label
+      : buildSmartContextLabel(existingCard.text, interpretation);
+
+    const nextId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    setCards((prev) => prev.map((card) => {
+      if (card.id !== cardId) return card;
+      return {
+        ...card,
+        id: nextId,
+        label: nextLabel,
+        isCustom: true,
+        text: interpretation,
+        savedText: interpretation,
+        isEditing: false,
+        isSaved: false,
+        isConfirmed: true,
+        category: nextCategory,
+        createdBy: card.createdBy ?? MOCK_USER.firstName,
+        createdDate: card.createdDate ?? dateLabel,
+        lastUpdatedDate: dateLabel,
+      };
+    }));
+
+    preferredSelectedCardIdRef.current = nextId;
+    setSelectedCardId(nextId);
+    const normalizedCategoryId = `custom-${nextCategory.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "uncategorised"}`;
+    setExpandedSectionIds((prev) => (prev.includes(normalizedCategoryId) ? prev : [...prev, normalizedCategoryId]));
+    setCardInterpretationDrafts((prev) => ({ ...prev, [cardId]: "" }));
+    setCardEditOriginalText((prev) => {
+      const next = { ...prev };
+      delete next[cardId];
+      return next;
+    });
+  };
+
+  const saveApprovedCard = (cardId: string) => {
+    updateCard(cardId, (card) => ({
+      ...card,
+      isSaved: true,
+      isConfirmed: true,
+      isEditing: false,
+    }));
+  };
+
+  const cancelCardEditing = (cardId: string) => {
+    const originalText = cardEditOriginalText[cardId];
+    updateCard(cardId, (card) => ({
+      ...card,
+      text: originalText ?? card.text,
+      isEditing: false,
+      isSaved: Boolean(card.savedText),
+      isConfirmed: card.savedText === card.text,
+    }));
+    setCardInterpretationDrafts((prev) => ({ ...prev, [cardId]: "" }));
+    setCardEditOriginalText((prev) => {
+      const next = { ...prev };
+      delete next[cardId];
+      return next;
+    });
+  };
+
   return (
     <div className={cn("relative flex h-full flex-col px-6 py-6", onboarding && "pb-24")}>
       <div className="mb-4 flex flex-col gap-1">
@@ -2796,94 +3037,322 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-          <div className="grid grid-cols-1 gap-4">
-            {cards.map((card) => {
-              if (sectionIds.has(card.id)) {
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="min-h-0 overflow-y-auto rounded-xl border border-border bg-card p-3">
+            <div className="mb-3 rounded-lg border border-border/80 bg-background p-2.5">
+              <p className="text-xs font-semibold text-muted-foreground">Add new context</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full"
+                onClick={() => {
+                  setAddNewOpen(true);
+                  setNewContextInput("");
+                  setNewContextInterpretation("");
+                }}
+              >
+                <RiAddLine className="size-4" />
+                Add New
+              </Button>
+            </div>
+
+            <p className="mb-3 text-xs font-semibold text-muted-foreground">Context sections</p>
+
+            <div className="space-y-2">
+              {orderedGroupedSections.map((section) => {
+                const expanded = expandedSectionIds.includes(section.id);
                 return (
-                  <div key={card.id} className="pt-2">
-                    <h2 className="text-base font-semibold text-foreground">{card.label}</h2>
-                    <div className="mt-2 border-b border-border" />
+                  <div key={section.id} className="rounded-lg border border-border/80 bg-background">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                      onClick={() => toggleSection(section.id)}
+                    >
+                      <span className="text-sm font-semibold text-foreground">{section.label}</span>
+                      {expanded ? (
+                        <RiArrowDownSLine className="size-4 text-foreground-secondary" />
+                      ) : (
+                        <RiArrowRightSLine className="size-4 text-foreground-secondary" />
+                      )}
+                    </button>
+
+                    {expanded && (
+                      <div className="space-y-1 border-t border-border px-2 py-2">
+                        {section.cardIds.map((cardId) => {
+                          const card = cards.find((item) => item.id === cardId);
+                          if (!card) return null;
+                          const selected = selectedCardId === card.id;
+                          const hasContextAdded = card.savedText.trim().length > 0 || card.text.trim().length > 0;
+                          const emphasizePrefilled = Boolean(onboarding) && hasContextAdded;
+                          return (
+                            <button
+                              key={card.id}
+                              type="button"
+                              onClick={() => handleSelectCard(card.id)}
+                              className={cn(
+                                "w-full rounded-md px-2 py-1.5 text-left text-sm transition",
+                                selected
+                                  ? "bg-accent text-foreground"
+                                  : "text-foreground-secondary hover:bg-muted/40 hover:text-foreground",
+                              )}
+                            >
+                              <span
+                                className={cn(emphasizePrefilled && "font-semibold")}
+                                style={emphasizePrefilled ? { color: "#00BEB7" } : undefined}
+                              >
+                                {card.label}
+                                {emphasizePrefilled ? "*" : ""}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
-              }
+              })}
+            </div>
+          </div>
 
-              const editing = card.isEditing;
-              const saved = card.isSaved;
-              const confirmed = card.isConfirmed;
-              const lockByConfirmation = confirmed && !editing;
-
-              return (
-                <div key={card.id} className="rounded-xl border border-border bg-background p-3">
-                  {card.isCustom ? (
-                    <Input
-                      value={card.label}
-                      readOnly={!editing}
-                      onChange={(e) => updateCardLabel(card.id, e.target.value)}
-                      className="h-8 text-sm font-semibold read-only:cursor-default read-only:bg-muted/25"
+          <div className="min-h-0 overflow-y-auto rounded-xl border border-border bg-card p-4">
+            {addNewOpen ? (
+              <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-xs font-semibold text-muted-foreground">Add context in plain language</p>
+                  <form
+                    className="mt-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      runNewContextInterpretation();
+                    }}
+                  >
+                    <Textarea
+                      rows={7}
+                      value={newContextInput}
+                      onChange={(e) => setNewContextInput(e.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          runNewContextInterpretation();
+                        }
+                      }}
+                      placeholder="Tell Lexi the context you want to add"
                     />
-                  ) : (
-                    <p className="text-sm font-semibold text-foreground">{card.label}</p>
-                  )}
-
-                  <p className="mt-3 text-[11px] font-semibold text-muted-foreground">Description</p>
-                  <Textarea
-                    rows={4}
-                    value={card.text}
-                    readOnly={!editing}
-                    onChange={(e) => updateCardText(card.id, e.target.value)}
-                    className="mt-1 min-h-20 read-only:cursor-default read-only:bg-muted/25"
-                  />
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!editing || lockByConfirmation}
-                      onClick={() => setPendingClearCardId(card.id)}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => startEditing(card.id)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!editing || lockByConfirmation}
-                      onClick={() => saveCard(card.id)}
-                    >
-                      {saved && !editing ? "Saved" : "Save"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={!editing || lockByConfirmation}
-                      onClick={() => confirmCard(card.id)}
-                    >
-                      {confirmed && !editing ? "Confirmed" : "Confirm"}
-                    </Button>
-                  </div>
-
-                  {saved && !confirmed && !editing && (
-                    <p className="mt-2 text-xs text-foreground-secondary">
-                      Changes have been saved but not approved or applied to your context layer.
-                    </p>
-                  )}
+                    <div className="mt-3 flex items-center justify-end border-t border-border pt-3">
+                      <Button type="submit" size="sm" disabled={newContextInput.trim().length === 0}>Confirm</Button>
+                    </div>
+                  </form>
                 </div>
-              );
-            })}
+
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-xs font-semibold text-muted-foreground">Lexi interpretation</p>
+                  <Textarea
+                    rows={7}
+                    value={newContextInterpretation}
+                    readOnly
+                    placeholder="Lexi will interpret your context after you confirm."
+                    className="mt-2 read-only:cursor-default read-only:bg-muted/25"
+                  />
+                  <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3">
+                    <Button variant="outline" size="sm" onClick={cancelNewContext}>Cancel</Button>
+                    <Button size="sm" onClick={approveNewContext} disabled={newContextInterpretation.trim().length === 0}>Approve</Button>
+                  </div>
+                </div>
+              </div>
+            ) : selectedCard ? (
+              (() => {
+                const editing = selectedCard.isEditing;
+                const saved = selectedCard.isSaved;
+                const confirmed = selectedCard.isConfirmed;
+                const interpretationDraft = cardInterpretationDrafts[selectedCard.id] ?? "";
+
+                return (
+                  <div className="rounded-xl border border-border bg-background p-3">
+                    <Input
+                      value={selectedCard.label}
+                      onChange={(e) => updateCardLabel(selectedCard.id, e.target.value)}
+                      className="h-8 text-sm font-semibold"
+                    />
+
+                    {CONTEXT_SUBCATEGORY_DESCRIPTIONS[selectedCard.id] && (
+                      <p className="mt-2 text-xs text-foreground-secondary">
+                        {CONTEXT_SUBCATEGORY_DESCRIPTIONS[selectedCard.id]}
+                      </p>
+                    )}
+
+                    <p className="mt-3 text-[11px] font-semibold text-muted-foreground">Description</p>
+                    <Textarea
+                      rows={6}
+                      value={selectedCard.text}
+                      readOnly={!editing}
+                      onChange={(e) => updateCardText(selectedCard.id, e.target.value)}
+                      className="mt-1 min-h-28 read-only:cursor-default read-only:bg-muted/25"
+                    />
+
+                    {editing && (
+                      <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => cancelCardEditing(selectedCard.id)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => confirmCardInterpretation(selectedCard.id)}
+                          disabled={selectedCard.text.trim().length === 0}
+                        >
+                          Confirm
+                        </Button>
+                      </div>
+                    )}
+
+                    {editing && (
+                      <div className="mt-3 rounded-lg border border-border bg-card p-3">
+                        <p className="text-[11px] font-semibold text-muted-foreground">Lexi interpretation</p>
+                        <Textarea
+                          rows={6}
+                          value={interpretationDraft}
+                          readOnly
+                          placeholder="Select Confirm to generate Lexi's interpretation."
+                          className="mt-1 min-h-28 read-only:cursor-default read-only:bg-muted/25"
+                        />
+                        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => cancelCardEditing(selectedCard.id)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => approveCardInterpretation(selectedCard.id)}
+                            disabled={interpretationDraft.trim().length === 0}
+                          >
+                            Approve
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedCard.isCustom && (
+                      <div className="mt-3 rounded-lg border border-border bg-card p-3">
+                        <p className="text-[11px] font-semibold text-muted-foreground">Context section</p>
+                        <select
+                          value={selectedCard.category ?? "Uncategorised"}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === "__new__") {
+                              setShowNewCategoryInputForCardId(selectedCard.id);
+                              return;
+                            }
+                            setShowNewCategoryInputForCardId(null);
+                            updateCardCategory(selectedCard.id, value);
+                          }}
+                          className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        >
+                          {contextSectionOptions.map((sectionLabel) => (
+                            <option key={sectionLabel} value={sectionLabel}>{sectionLabel}</option>
+                          ))}
+                          <option value="__new__">New category...</option>
+                        </select>
+
+                        {showNewCategoryInputForCardId === selectedCard.id && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <Input
+                              value={newCategoryDraft}
+                              onChange={(e) => setNewCategoryDraft(e.target.value)}
+                              placeholder="Add a new context section"
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={addCategoryForSelectedCard}
+                              disabled={newCategoryDraft.trim().length === 0}
+                            >
+                              Add
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setShowNewCategoryInputForCardId(null);
+                                setNewCategoryDraft("");
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        )}
+
+                        <div className="mt-3 grid grid-cols-1 gap-1 text-xs text-foreground-secondary">
+                          <p>
+                            <span className="font-medium text-foreground">Created by:</span> {selectedCard.createdBy ?? "-"}
+                          </p>
+                          <p>
+                            <span className="font-medium text-foreground">Created date:</span> {selectedCard.createdDate ?? "-"}
+                          </p>
+                          <p>
+                            <span className="font-medium text-foreground">Last updated:</span> {selectedCard.lastUpdatedDate ?? "-"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                      {!editing && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditing(selectedCard.id)}
+                          >
+                            Edit
+                          </Button>
+                          {confirmed && (
+                            <Button
+                              size="sm"
+                              onClick={() => saveApprovedCard(selectedCard.id)}
+                              disabled={saved}
+                            >
+                              {saved ? "Saved" : "Save"}
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    {saved && !confirmed && !editing && (
+                      <p className="mt-2 text-xs text-foreground-secondary">
+                        Changes have been saved but not approved or applied to your context layer.
+                      </p>
+                    )}
+
+                    {confirmed && saved && !editing && (
+                      <p className="mt-2 text-xs text-foreground-secondary">
+                        Changes have been saved, approved and applied to your context layer.
+                      </p>
+                    )}
+
+                    {confirmed && !saved && !editing && (
+                      <p className="mt-2 text-xs text-foreground-secondary">
+                        Please review and save. This information has not been applied to your context layer.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-xl border border-border bg-background p-6 text-sm text-muted-foreground">
+                Select a context box from the left to view and edit it.
+              </div>
+            )}
           </div>
         </div>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-        <Button variant="outline" onClick={addMoreCard}>Add more</Button>
-        <Button onClick={saveEntirePage}>Save</Button>
       </div>
 
       {onboarding && (
@@ -2894,24 +3363,6 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
           </Button>
         </div>
       )}
-
-      <ConfirmDialog
-        open={pendingClearCardId != null}
-        onOpenChange={(open) => {
-          if (!open) setPendingClearCardId(null);
-        }}
-        variant="destructive"
-        icon={RiProhibitedLine}
-        title="Clear this context box?"
-        description="Do you want to clear all of the information in this box? This can not be undone and unsaved work will be lost."
-        confirmLabel="Yes, clear"
-        cancelLabel="Keep content"
-        onConfirm={() => {
-          if (!pendingClearCardId) return;
-          clearCard(pendingClearCardId);
-          setPendingClearCardId(null);
-        }}
-      />
 
       {onboarding && !onboarding.disclaimerVisible && (
         <OnboardingLexiModal
@@ -4290,15 +4741,7 @@ function Sidebar({
   const { state, dispatch } = useSession();
   const inSegments = page === "segments" || page === "segment-detail";
   const inActivations = page === "activations";
-  const inIntegrations = page === "integrations";
-  const inContext = page === "context";
-  const inUsers = page === "users";
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources";
   const [activationsOpen, setActivationsOpen] = useState(false);
-  const [dataOpen, setDataOpen] = useState(false);
-  const savedSegmentCount = Array.from(state.artifacts.values()).filter(
-    (artifact) => artifact.type === "segment" && artifact.status === "saved",
-  ).length;
   const activationCount = {
     all: state.activations.length,
     live: state.activations.filter((a) => a.status === "live").length,
@@ -4346,28 +4789,36 @@ function Sidebar({
             <li><NavRow icon={RiAddLine} label="New Chat" main collapsed={collapsed} active={onNewChat} onClick={newChat} /></li>
             <li>
               <NavRow
-                icon={RiDatabase2Line}
-                label="Data"
+                icon={RiGroupLine}
+                label="Segments"
                 collapsed={collapsed}
-                active={collapsed ? inData : inData && !dataOpen}
-                onClick={() => onNavigate("definitions")}
-                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", dataOpen && "rotate-90")} /> : undefined}
-                onTrailingToggle={!collapsed ? () => setDataOpen((o) => !o) : undefined}
-                trailingToggleLabel="Toggle data destinations"
+                active={inSegments}
+                onClick={() => onNavigate("segments")}
               />
-              {!collapsed && dataOpen && (
+            </li>
+            <li>
+              <NavRow
+                icon={RiBroadcastLine}
+                label="Activations"
+                collapsed={collapsed}
+                active={collapsed ? inActivations : inActivations && !activationsOpen}
+                onClick={() => onSelectActivationFilter("all")}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", activationsOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setActivationsOpen((o) => !o) : undefined}
+                trailingToggleLabel="Toggle activation filters"
+              />
+              {!collapsed && activationsOpen && (
                 <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
-                  <li><SubNavRow label="Source Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
-                  <li><SubNavRow label="Calculated Defintions" active={page === "metrics"} onClick={() => onNavigate("metrics")} /></li>
-                  <li><SubNavRow label="Custom Definitions" active={page === "playbook" && playbookSection === "glossary"} onClick={onOpenGlossary} /></li>
-                  <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
-                  <li><SubNavRow label="Sources" active={page === "sources"} onClick={() => onNavigate("sources")} /></li>
+                  <li><SubNavRow label="All activations" active={inActivations && activationFilter === "all"} onClick={() => onSelectActivationFilter("all")} /></li>
+                  {activationCount.live > 0 && <li><SubNavRow label="Live" active={inActivations && activationFilter === "live"} onClick={() => onSelectActivationFilter("live")} /></li>}
+                  {activationCount.scheduled > 0 && <li><SubNavRow label="Scheduled" active={inActivations && activationFilter === "scheduled"} onClick={() => onSelectActivationFilter("scheduled")} /></li>}
+                  {activationCount["awaiting-approval"] > 0 && <li><SubNavRow label="Awaiting approval" active={inActivations && activationFilter === "awaiting-approval"} onClick={() => onSelectActivationFilter("awaiting-approval")} /></li>}
+                  {activationCount.sent > 0 && <li><SubNavRow label="Sent" active={inActivations && activationFilter === "sent"} onClick={() => onSelectActivationFilter("sent")} /></li>}
+                  {activationCount.completed > 0 && <li><SubNavRow label="Completed" active={inActivations && activationFilter === "completed"} onClick={() => onSelectActivationFilter("completed")} /></li>}
                 </ul>
               )}
             </li>
-            <li><NavRow icon={RiGroupLine} label="Users" collapsed={collapsed} active={inUsers} onClick={() => onNavigate("users")} /></li>
-            <li><NavRow icon={RiBookOpenLine} label="Context" collapsed={collapsed} active={inContext} onClick={() => onNavigate("context")} /></li>
-            <li><NavRow icon={RiPlugLine} label="Integrations" collapsed={collapsed} active={inIntegrations} onClick={() => onNavigate("integrations")} /></li>
+            <li><NavRow icon={RiDashboardLine} label="Dashboards (WIP)" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
             {!collapsed && (
               <li>
                 <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Pinned Chats</div>
@@ -4419,47 +4870,6 @@ function Sidebar({
           </ul>
         </div>
         <div className="space-y-2 p-2">
-          <ul className="flex list-none flex-col gap-0.5 border-t border-sidebar-border/50 pt-2">
-            <li>
-              <NavRow
-                icon={RiGroupLine}
-                label="Segments"
-                collapsed={collapsed}
-                active={inSegments}
-                onClick={() => onNavigate("segments")}
-                trailing={!collapsed ? (
-                  <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-foreground tabular-nums">
-                    {savedSegmentCount}
-                  </span>
-                ) : undefined}
-              />
-            </li>
-            <li>
-              <NavRow
-                icon={RiBroadcastLine}
-                label="Activations"
-                collapsed={collapsed}
-                active={collapsed ? inActivations : inActivations && !activationsOpen}
-                onClick={() => onSelectActivationFilter("all")}
-                trailing={!collapsed ? <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-foreground tabular-nums">{state.activations.length}</span> : undefined}
-                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", activationsOpen && "rotate-90")} /> : undefined}
-                onTrailingToggle={!collapsed ? () => setActivationsOpen((o) => !o) : undefined}
-                trailingToggleLabel="Toggle activation filters"
-              />
-              {!collapsed && activationsOpen && (
-                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
-                  <li><SubNavRow label="All activations" active={inActivations && activationFilter === "all"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.all}</span>} onClick={() => onSelectActivationFilter("all")} /></li>
-                  {activationCount.live > 0 && <li><SubNavRow label="Live" active={inActivations && activationFilter === "live"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.live}</span>} onClick={() => onSelectActivationFilter("live")} /></li>}
-                  {activationCount.scheduled > 0 && <li><SubNavRow label="Scheduled" active={inActivations && activationFilter === "scheduled"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.scheduled}</span>} onClick={() => onSelectActivationFilter("scheduled")} /></li>}
-                  {activationCount["awaiting-approval"] > 0 && <li><SubNavRow label="Awaiting approval" active={inActivations && activationFilter === "awaiting-approval"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount["awaiting-approval"]}</span>} onClick={() => onSelectActivationFilter("awaiting-approval")} /></li>}
-                  {activationCount.sent > 0 && <li><SubNavRow label="Sent" active={inActivations && activationFilter === "sent"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.sent}</span>} onClick={() => onSelectActivationFilter("sent")} /></li>}
-                  {activationCount.completed > 0 && <li><SubNavRow label="Completed" active={inActivations && activationFilter === "completed"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.completed}</span>} onClick={() => onSelectActivationFilter("completed")} /></li>}
-                </ul>
-              )}
-            </li>
-            <li><NavRow icon={RiDashboardLine} label="Dashboards (WIP)" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
-          </ul>
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {collapsed ? (
@@ -4485,11 +4895,6 @@ function Sidebar({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => onNavigate("chat")}>Home</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onNavigate("segments")}>Segments</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onSelectActivationFilter("all")}>Activations</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onNavigate("users")}>Users</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onNavigate("context")}>Context</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuSub>
                 <DropdownMenuPrimitive.SubTrigger
@@ -4498,8 +4903,8 @@ function Sidebar({
                     "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
                   )}
                 >
-                  <RiDatabase2Line className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="flex-1">Data</span>
+                  <RiSettings3Line className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">Settings</span>
                   <RiArrowRightSLine className="size-4 shrink-0 text-muted-foreground" />
                 </DropdownMenuPrimitive.SubTrigger>
                 <DropdownMenuPrimitive.Portal>
@@ -4511,11 +4916,37 @@ function Sidebar({
                       "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
                     )}
                   >
-                    <DropdownMenuItem onSelect={() => onNavigate("definitions")}>Source Definitions</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onNavigate("metrics")}>Calculated Defintions</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={onOpenGlossary}>Custom Definitions</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={onOpenRules}>Rules</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onNavigate("sources")}>Sources</DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuPrimitive.SubTrigger
+                        className={cn(
+                          "relative flex cursor-default select-none items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium outline-none",
+                          "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+                        )}
+                      >
+                        <RiDatabase2Line className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="flex-1">Data</span>
+                        <RiArrowRightSLine className="size-4 shrink-0 text-muted-foreground" />
+                      </DropdownMenuPrimitive.SubTrigger>
+                      <DropdownMenuPrimitive.Portal>
+                        <DropdownMenuPrimitive.SubContent
+                          sideOffset={6}
+                          alignOffset={-4}
+                          className={cn(
+                            "z-50 min-w-44 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg",
+                            "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+                          )}
+                        >
+                          <DropdownMenuItem onSelect={() => onNavigate("definitions")}>Source Definitions</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => onNavigate("metrics")}>Calculated Defintions</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={onOpenGlossary}>Custom Definitions</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={onOpenRules}>Rules</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => onNavigate("sources")}>Sources</DropdownMenuItem>
+                        </DropdownMenuPrimitive.SubContent>
+                      </DropdownMenuPrimitive.Portal>
+                    </DropdownMenuSub>
+                    <DropdownMenuItem onSelect={() => onNavigate("integrations")}>Integrations</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigate("context")}>Context</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigate("users")}>Users</DropdownMenuItem>
                   </DropdownMenuPrimitive.SubContent>
                 </DropdownMenuPrimitive.Portal>
               </DropdownMenuSub>
