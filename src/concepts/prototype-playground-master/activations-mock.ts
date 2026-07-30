@@ -47,16 +47,10 @@ export interface Activation {
   whenLabel: string;
   /** ISO date used for one-off scheduled activations (YYYY-MM-DD). */
   scheduledDate?: string;
-  /** Time used with `scheduledDate` when available (HH:mm). */
-  scheduledTime?: string;
   /** ISO start date for recurring schedules (YYYY-MM-DD). */
   recurringStartDate?: string;
-  /** Preferred recurring run time (HH:mm). */
-  recurringTime?: string;
   /** ISO end date for recurring schedules when defined (YYYY-MM-DD). */
   recurringEndDate?: string;
-  /** Optional recurring end time when defined (HH:mm). */
-  recurringEndTime?: string;
   result?: string;
   invocations: SkillInvocation[];
   /** chronological audit log entries */
@@ -72,7 +66,6 @@ export interface Activation {
     fieldMapping: string[];
     timing: string;
     cadence: string;
-    recurringTime?: string;
     customers: Array<{ id: string; name: string; meta: string }>;
   };
 }

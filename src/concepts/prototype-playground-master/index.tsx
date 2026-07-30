@@ -62,6 +62,8 @@ import { SegmentsPage, DefinitionsPage, MetricsPage, BenchmarksPage, ScorecardPa
 import { PlaybookPage } from "./PlaybookPage";
 import { SpacePage } from "./SpacePage";
 import { SpacesPage } from "./SpacesPage";
+import { CanvasPage } from "./CanvasPage";
+import { Canvas2Page } from "./Canvas2Page";
 import { ActivationsPage, ActivationDetail } from "./ActivationsPage";
 import { ACTIVATION_STATUS_META, getActivation, type ActivationStatus } from "./activations-mock";
 import { INITIAL_SPACES, type Space } from "./spaces-data";
@@ -71,7 +73,7 @@ import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
+type Page = "canvas" | "canvas2" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
 import { registerDefs } from "@/data/def-registry";
@@ -93,6 +95,8 @@ type SavedSpaceChat = {
   updated: string;
 };
 
+type AddToDestination = "lab" | "dashboards" | "space" | "playbook" | "activations";
+
 const EMPTY_SAVED_ITEMS: SavedSpaceItems = {
   segmentIds: [],
   insightIds: [],
@@ -105,6 +109,13 @@ const EMPTY_SAVED_ITEMS: SavedSpaceItems = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MOCK_USER = { firstName: "Izac", initials: "IH", org: "Lexer" };
+const ADD_TO_DESTINATIONS: Array<{ id: AddToDestination; label: string }> = [
+  { id: "lab", label: "Lab" },
+  { id: "dashboards", label: "Dashboards" },
+  { id: "space", label: "Space" },
+  { id: "playbook", label: "Playbook" },
+  { id: "activations", label: "Activations" },
+];
 
 registerDefs([...DEMO_DEFS, ...DEMO_SEGMENT_DEFS]);
 
@@ -126,7 +137,7 @@ function SegmentV1Inner() {
   const [collapsed, setCollapsed] = useState(true);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
-  const [page, setPage] = useState<Page>("chat");
+  const [page, setPage] = useState<Page>("canvas");
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   // Activation detail opens in a right inset panel (like the segment side panel),
   // independent of the chat-driven slot.
@@ -503,10 +514,14 @@ function SegmentV1Inner() {
   // A saved segment is shown in the standard detail page via a synthesized group.
   const detailArtifact = page === "segment-detail" && selectedSegmentId ? state.artifacts.get(selectedSegmentId) : undefined;
   const detailIsSegment = detailArtifact?.type === "segment";
+  const segmentArtifactCount = Array.from(state.artifacts.values()).filter((artifact) => artifact.type === "segment").length;
+  const totalTrackerCount = 3;
 
   const activeConv = CONVERSATIONS.find((c) => c.id === state.activeConversationId);
   const activeConversationPinned = state.activeConversationId != null && pinnedChatIds.includes(state.activeConversationId);
-  const headerTitle = page === "space" ? "Spaces"
+  const headerTitle = page === "canvas" ? "Canvas"
+    : page === "canvas2" ? "Canvas 2"
+    : page === "space" ? "Spaces"
     : page === "space-detail" ? (selectedSpace?.name ?? "Space")
     : page === "segments" ? "Segments"
     : page === "segment-detail" ? (detailArtifact?.name ?? "Segment detail")
@@ -527,8 +542,9 @@ function SegmentV1Inner() {
   const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail";
   const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
   const inSpace = page === "space" || page === "space-detail";
+  const inCanvas = page === "canvas" || page === "canvas2";
   const inActivations = page === "activations";
-  const HeaderIcon = isChat ? RiMessage2Line : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
+  const HeaderIcon = isChat ? RiMessage2Line : inCanvas ? RiDashboardLine : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
   const mentionGroups = buildMentionGroups(state.activations);
   const sidebarCollapsed = collapsed && !sidebarHovered;
   const lexiPageContext = [
@@ -537,6 +553,7 @@ function SegmentV1Inner() {
     page === "activations" && openActivationId ? `Open activation id: ${openActivationId}` : null,
     page === "space-detail" && selectedSpace ? `Open space: ${selectedSpace.name}` : null,
   ].filter(Boolean).join(" · ");
+  const ActiveCanvasPage = page === "canvas2" ? Canvas2Page : CanvasPage;
 
   return (
     <div className="flex h-screen overflow-hidden bg-sidebar">
@@ -638,7 +655,48 @@ function SegmentV1Inner() {
 
         {/* Content */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {page === "segment-detail" && selectedSegmentId ? (
+          {page === "canvas" || page === "canvas2" ? (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <ActiveCanvasPage
+                userName={MOCK_USER.firstName}
+                activationCounts={{
+                  all: state.activations.length,
+                  live: state.activations.filter((item) => item.status === "live").length,
+                  scheduled: state.activations.filter((item) => item.status === "scheduled").length,
+                  awaitingApproval: state.activations.filter((item) => item.status === "awaiting-approval").length,
+                  sent: state.activations.filter((item) => item.status === "sent").length,
+                  completed: state.activations.filter((item) => item.status === "completed").length,
+                }}
+                segmentCount={segmentArtifactCount}
+                dashboardCount={3}
+                metricCount={12}
+                trackerCount={totalTrackerCount}
+                onNavigate={setPage}
+                onOpenChat={() => {
+                  dispatch({ type: "NEW_CHAT" });
+                  setPage("chat");
+                }}
+                onStartSegment={() => {
+                  dispatch({ type: "NEW_CHAT" });
+                  setPage("chat");
+                  window.setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", {
+                      detail: { text: "Build a new segment" },
+                    }));
+                  }, 40);
+                }}
+                onStartActivation={() => {
+                  dispatch({ type: "NEW_CHAT" });
+                  setPage("chat");
+                  window.setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", {
+                      detail: { text: "Build a new activation" },
+                    }));
+                  }, 40);
+                }}
+              />
+            </div>
+          ) : page === "segment-detail" && selectedSegmentId ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <GroupDetail
                 key={selectedSegmentId}
@@ -659,11 +717,13 @@ function SegmentV1Inner() {
                   setSegmentPanelFullScreen(false);
                   dispatch({ type: "OPEN_SEGMENT", id });
                 }}
+                onOpenActivationPage={openActivationPage}
                 onStartSegmentWorkflow={() => {
-                  dispatch({ type: "NEW_CHAT" });
                   setPage("chat");
                   window.setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text: "Build a new segment" } }));
+                    window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", {
+                      detail: { text: "Build a new activation" },
+                    }));
                   }, 40);
                 }}
               />
@@ -672,13 +732,7 @@ function SegmentV1Inner() {
             <div className="min-w-0 flex-1 overflow-hidden">
               <ActivationsPage
                 onOpenActivation={openActivation}
-                onStartActivationWorkflow={() => {
-                  dispatch({ type: "NEW_CHAT" });
-                  setPage("chat");
-                  window.setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text: "Build a new activation" } }));
-                  }, 40);
-                }}
+                onOpenSegmentPage={openSegmentPanelPage}
                 prefillSegmentId={pendingActivationSegmentId ?? undefined}
                 onPrefillComplete={() => setPendingActivationSegmentId(null)}
                 initialStatusFilter={activationNavFilter}
@@ -784,6 +838,17 @@ function SegmentV1Inner() {
             onActivate={(id) => {
               kickoffActivationFromSegment(id);
             }}
+            onAddToDestination={(segmentId, destination) => {
+              const segmentName = state.artifacts.get(segmentId)?.name
+                ?? DUMMY_SEGMENT_BY_ID[segmentId]?.name
+                ?? "this segment";
+              setPage("chat");
+              window.setTimeout(() => {
+                window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", {
+                  detail: { text: `Add ${segmentName} to ${destination}.` },
+                }));
+              }, 40);
+            }}
             onOpenActivation={openActivationPage}
             onStartResize={startResize}
             fullScreen={segmentPanelFullScreen}
@@ -816,6 +881,14 @@ function SegmentV1Inner() {
               setPage("chat");
               window.setTimeout(() => {
                 window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text } }));
+              }, 40);
+            }}
+            onAddToDestination={(activationName, destination) => {
+              setPage("chat");
+              window.setTimeout(() => {
+                window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", {
+                  detail: { text: `Add ${activationName} to ${destination}.` },
+                }));
               }, 40);
             }}
             onClose={() => setOpenActivationId(null)}
@@ -1074,10 +1147,11 @@ function GlobalLexiDock({
 
 // ─── Activation detail side panel (inset, narrow, right) ────────────────────────
 
-function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInChat, onClose, onOpenSegment, onStartResize }: {
+function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInChat, onAddToDestination, onClose, onOpenSegment, onStartResize }: {
   activationId: string;
   onOpenActivationPage: (id: string) => void;
   onPromptInChat: (text: string) => void;
+  onAddToDestination: (activationName: string, destination: string) => void;
   onClose: () => void;
   onOpenSegment: (id: string) => void;
   onStartResize: (e: React.MouseEvent) => void;
@@ -1165,6 +1239,12 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
           >
             {activation?.name ?? "Activation"}
           </button>
+          <AddToHeaderMenu
+            onSelect={(destination) => {
+              if (!activation) return;
+              onAddToDestination(activation.name, destination);
+            }}
+          />
           <button
             onClick={onClose}
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -1249,11 +1329,12 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
 
 // ─── Segment detail side panel (inset, narrow, right) ───────────────────────────
 
-function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, onOpenActivation, onStartResize, fullScreen, onToggleFullScreen }: {
+function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, onAddToDestination, onOpenActivation, onStartResize, fullScreen, onToggleFullScreen }: {
   artifactId: string;
   onOpenSegmentPage: (id: string) => void;
   onClose: () => void;
   onActivate: (id: string) => void;
+  onAddToDestination: (segmentId: string, destination: string) => void;
   onOpenActivation: (id: string) => void;
   onStartResize: (e: React.MouseEvent) => void;
   fullScreen: boolean;
@@ -1267,11 +1348,14 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
     ? segmentArtifactToGroup(artifact)
     : BRAIN_GROUPS.find((item) => item.id === artifactId);
 
-  const panelName = matchedDummy?.name ?? group?.name ?? artifact?.name ?? "Segment";
-  const panelSummary = group?.summary
+  const panelName = artifact?.name ?? matchedDummy?.name ?? group?.name ?? "Segment";
+  const panelSummary = artifact?.def?.description
+    ?? group?.summary
     ?? matchedDummy?.summary
-    ?? artifact?.def?.description
     ?? "Audience definition generated from chat-confirmed assumptions.";
+  const panelPurpose = artifact?.body?.kind === "segment"
+    ? (artifact.body.purpose ?? artifact.def?.description ?? matchedDummy?.purpose ?? group?.summary ?? "")
+    : (matchedDummy?.purpose ?? group?.summary ?? "");
   const inferredPopulationFromCriteria = artifact?.body?.kind === "segment"
     ? artifact.body.criteria.find((item) => item.toLowerCase().startsWith("population:"))?.split(":").slice(1).join(":").trim()
     : undefined;
@@ -1281,6 +1365,11 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
   const panelCriteria = artifact?.body?.kind === "segment"
     ? artifact.body.criteria
     : (matchedDummy?.validation ?? group?.criteria.map((criterion) => criterion.detail) ?? []);
+
+  const panelCriteriaResolved = panelCriteria.map((item) => item.replace(/\[\[([^\]]+)\]\]/g, (_match, id: string) => {
+    const resolved = getDef(id.trim());
+    return resolved?.name ?? id;
+  }));
 
   const panelRecommendations = artifact?.body?.kind === "segment" && artifact.body.recommendations && artifact.body.recommendations.length > 0
     ? artifact.body.recommendations
@@ -1331,6 +1420,7 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
           >
             {panelName}
           </button>
+          <AddToHeaderMenu onSelect={(destination) => onAddToDestination(artifactId, destination)} />
           <button
             onClick={onToggleFullScreen}
             className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -1381,12 +1471,19 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
                 <div className="rounded-xl border border-border bg-card p-4">
                   <h4 className="text-sm font-semibold text-foreground">Validation</h4>
                   <ul className="mt-3 space-y-2">
-                    {(panelCriteria.length > 0 ? panelCriteria : ["No validation criteria available yet"]).map((item, index) => (
+                    {(panelCriteriaResolved.length > 0 ? panelCriteriaResolved : ["No validation criteria available yet"]).map((item, index) => (
                       <li key={`${item}-${index}`} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground-secondary">
                         {item}
                       </li>
                     ))}
                   </ul>
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <h4 className="text-sm font-semibold text-foreground">Purpose - Why are we building this section</h4>
+                  <p className="mt-2 text-sm text-foreground-secondary">
+                    {panelPurpose || "Purpose has not been documented yet."}
+                  </p>
                 </div>
 
                 <div className="rounded-xl border border-border bg-card p-4">
@@ -1441,6 +1538,29 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AddToHeaderMenu({ onSelect }: { onSelect: (destination: string) => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="hidden text-xs text-muted-foreground sm:inline">Add To:</span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="outline" className="h-8 px-2.5">
+            Add To
+            <RiArrowDownSLine className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          {ADD_TO_DESTINATIONS.map((option) => (
+            <DropdownMenuItem key={option.id} onSelect={() => onSelect(option.label)}>
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -4080,12 +4200,14 @@ function Sidebar({
 }) {
   const { state, dispatch } = useSession();
   const inSegments = page === "segments" || page === "segment-detail";
+  const inMeasure = page === "benchmarks" || page === "scorecard";
   const inActivations = page === "activations";
   const inIntegrations = page === "integrations";
   const inContext = page === "context";
   const inUsers = page === "users";
   const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources";
   const [activationsOpen, setActivationsOpen] = useState(false);
+  const [measureOpen, setMeasureOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const activationCount = {
     all: state.activations.length,
@@ -4127,11 +4249,56 @@ function Sidebar({
     <div className={cn("flex h-full shrink-0 flex-col overflow-hidden bg-sidebar p-2 transition-[width] duration-200", collapsed ? "w-14" : "w-[16rem]")}>
       <div className="flex h-full flex-col overflow-hidden rounded-lg bg-sidebar">
         <div className={cn("flex items-center p-2", collapsed && "justify-center")}>
-          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype onboarding" />
+          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype-playground-master" />
         </div>
         <div className={cn("flex flex-1 flex-col gap-4 overflow-y-auto py-2", collapsed ? "px-0" : "px-2")}>
           <ul className="flex list-none flex-col gap-0.5">
+            <li>
+              <NavRow
+                icon={RiDashboardLine}
+                label="Canvas"
+                collapsed={collapsed}
+                active={page === "canvas"}
+                onClick={() => onNavigate("canvas")}
+              />
+            </li>
+            <li>
+              <NavRow
+                icon={RiDashboardLine}
+                label="Canvas 2"
+                collapsed={collapsed}
+                active={page === "canvas2"}
+                onClick={() => onNavigate("canvas2")}
+              />
+            </li>
             <li><NavRow icon={RiAddLine} label="New Chat" main collapsed={collapsed} active={onNewChat} onClick={newChat} /></li>
+            <li>
+              <NavRow
+                icon={RiPlanetLine}
+                label="Space"
+                collapsed={collapsed}
+                active={page === "space" || page === "space-detail"}
+                onClick={() => onNavigate("space")}
+              />
+            </li>
+            <li>
+              <NavRow
+                icon={RiArrowLeftRightLine}
+                label="Measure"
+                collapsed={collapsed}
+                active={collapsed ? inMeasure : inMeasure && !measureOpen}
+                onClick={() => onNavigate("benchmarks")}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", measureOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setMeasureOpen((o) => !o) : undefined}
+                trailingToggleLabel="Toggle measure sections"
+              />
+              {!collapsed && measureOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Benchmarks" active={page === "benchmarks"} onClick={() => onNavigate("benchmarks")} /></li>
+                  <li><SubNavRow label="Score cards" active={page === "scorecard"} onClick={() => onNavigate("scorecard")} /></li>
+                </ul>
+              )}
+            </li>
             <li>
               <NavRow
                 icon={RiGroupLine}
@@ -4164,6 +4331,7 @@ function Sidebar({
               )}
             </li>
             <li><NavRow icon={RiDashboardLine} label="Dashboards" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
+            <li><NavRow icon={RiBrainLine} label="Insights" collapsed={collapsed} active={page === "insights"} onClick={() => onNavigate("insights")} /></li>
             {!collapsed && (
               <li>
                 <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Pinned Chats</div>

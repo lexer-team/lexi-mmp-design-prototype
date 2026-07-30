@@ -83,6 +83,46 @@ const LIST_ACTION_LABELS: Record<typeof LIST_ACTION_OPTIONS[number], { label: st
     hint: "Rebuilds the full list each run so it always reflects the latest qualifying customers.",
   },
 };
+const SOURCE_LIST = [
+  { id: "src-meta", name: "Meta Ads" },
+  { id: "src-klaviyo", name: "Klaviyo" },
+  { id: "src-braze", name: "Braze" },
+  { id: "src-google-ads", name: "Google Ads" },
+  { id: "src-sfmc", name: "Salesforce Marketing Cloud" },
+  { id: "src-amplitude", name: "Amplitude" },
+] as const;
+const ACCOUNTS_BY_SOURCE: Record<string, Array<{ id: string; name: string; region: "AU" | "NZ" | "USA" }>> = {
+  "src-meta": [
+    { id: "meta-au", name: "Meta AU account", region: "AU" },
+    { id: "meta-nz", name: "Meta NZ account", region: "NZ" },
+    { id: "meta-usa", name: "Meta USA account", region: "USA" },
+  ],
+  "src-klaviyo": [
+    { id: "klaviyo-au", name: "Klaviyo AU account", region: "AU" },
+    { id: "klaviyo-nz", name: "Klaviyo NZ account", region: "NZ" },
+    { id: "klaviyo-usa", name: "Klaviyo USA account", region: "USA" },
+  ],
+  "src-braze": [
+    { id: "braze-au", name: "Braze AU account", region: "AU" },
+    { id: "braze-nz", name: "Braze NZ account", region: "NZ" },
+    { id: "braze-usa", name: "Braze USA account", region: "USA" },
+  ],
+  "src-google-ads": [
+    { id: "gads-au", name: "Google Ads AU account", region: "AU" },
+    { id: "gads-nz", name: "Google Ads NZ account", region: "NZ" },
+    { id: "gads-usa", name: "Google Ads USA account", region: "USA" },
+  ],
+  "src-sfmc": [
+    { id: "sfmc-au", name: "SFMC AU account", region: "AU" },
+    { id: "sfmc-nz", name: "SFMC NZ account", region: "NZ" },
+    { id: "sfmc-usa", name: "SFMC USA account", region: "USA" },
+  ],
+  "src-amplitude": [
+    { id: "amp-au", name: "Amplitude AU account", region: "AU" },
+    { id: "amp-nz", name: "Amplitude NZ account", region: "NZ" },
+    { id: "amp-usa", name: "Amplitude USA account", region: "USA" },
+  ],
+};
 const TODAY = new Date().toISOString().slice(0, 10);
 
 function getFieldLabel(fieldId: string) {
@@ -284,6 +324,13 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
     recurringEndDate: TODAY,
     listAction: "maintain" as const,
   };
+  const connectedSourceId = block.connectedSourceId ?? "src-meta";
+  const connectedAccountIds = block.connectedAccountIds ?? [];
+  const selectedSource = SOURCE_LIST.find((source) => source.id === connectedSourceId);
+  const selectedSourceAccounts = ACCOUNTS_BY_SOURCE[connectedSourceId] ?? [];
+  const selectedAccountNames = selectedSourceAccounts
+    .filter((account) => connectedAccountIds.includes(account.id))
+    .map((account) => account.name);
   const audienceName = block.savedName ?? segmentArtifact?.name ?? segmentGroup?.name ?? "Lapsed";
 
   const updateBlock = (patch: Partial<Extract<ContentBlock, { type: "flow" }>>) => {
@@ -368,13 +415,9 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
     const scheduledDate = !schedule.sendNow
       ? schedule.sendLaterDate
       : undefined;
-    const scheduledTime = !schedule.sendNow
-      ? schedule.sendLaterTime
-      : undefined;
     const recurringStartDate = isRecurring
       ? (schedule.sendNow ? TODAY : schedule.sendLaterDate)
       : undefined;
-    const recurringTime = isRecurring ? schedule.recurringTime : undefined;
     const recurringEndDate = isRecurring
       ? (schedule.recurringEndType === "onDate" ? schedule.recurringEndDate : undefined)
       : undefined;
@@ -393,9 +436,7 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
       status,
       whenLabel,
       scheduledDate,
-      scheduledTime,
       recurringStartDate,
-      recurringTime,
       recurringEndDate,
       result,
       invocations: [
@@ -429,6 +470,8 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
     segmentId: block.segmentId,
     savedName: block.savedName,
     destination: block.destination,
+    connectedSourceId: block.connectedSourceId,
+    connectedAccountIds: block.connectedAccountIds,
     subscriptionStatus: block.subscriptionStatus,
     dismissedResolveFields: block.dismissedResolveFields,
     segmentResolve: block.segmentResolve,
@@ -688,6 +731,23 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
   };
 
   const handleConfirmMapping = () => {
+    if (block.destination) {
+      updateBlock({ confirmed: true, confirmedText: "Fields confirmed — schedule this activation next." });
+      appendStep({
+        type: "flow",
+        flowId: block.flowId,
+        ...carryForward,
+        step: "schedule",
+        windowDays: block.windowDays,
+        confirmed: false,
+        fieldMapping,
+        schedule,
+        savedName: block.savedName,
+        destination: block.destination,
+      });
+      return;
+    }
+
     updateBlock({ confirmed: true, confirmedText: "Fields confirmed — what destination should I send this to?" });
     appendStep({
       type: "flow",
@@ -707,14 +767,25 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
     updateBlock({ destination });
   };
 
+  const handleSelectSource = (sourceId: string) => {
+    updateBlock({ connectedSourceId: sourceId, connectedAccountIds: [] });
+  };
+
+  const handleToggleAccount = (accountId: string) => {
+    const next = connectedAccountIds.includes(accountId)
+      ? connectedAccountIds.filter((id) => id !== accountId)
+      : [...connectedAccountIds, accountId];
+    updateBlock({ connectedAccountIds: next });
+  };
+
   const handleConfirmDestination = () => {
     if (!block.destination) return;
-    updateBlock({ confirmed: true, confirmedText: `Destination confirmed — ${block.destination}.` });
+    updateBlock({ confirmed: true, confirmedText: `Destination confirmed — ${block.destination}. I'll map fields next.` });
     appendStep({
       type: "flow",
       flowId: block.flowId,
       ...carryForward,
-      step: "schedule",
+      step: "fieldMapping",
       windowDays: block.windowDays,
       confirmed: false,
       fieldMapping,
@@ -1399,6 +1470,54 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="space-y-4">
           <p className="text-sm leading-relaxed text-foreground">Where should I send this activation?</p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Connected data sources</p>
+              <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+                {SOURCE_LIST.map((source) => {
+                  const selected = source.id === connectedSourceId;
+                  return (
+                    <button
+                      key={source.id}
+                      type="button"
+                      onClick={() => handleSelectSource(source.id)}
+                      className={cn(
+                        "w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                        selected
+                          ? "border-primary/60 bg-primary/10 text-foreground"
+                          : "border-border bg-card text-foreground hover:bg-accent",
+                      )}
+                    >
+                      {source.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Accounts (multi select)</p>
+              <div className="mt-2 space-y-2">
+                {selectedSourceAccounts.map((account) => {
+                  const checked = connectedAccountIds.includes(account.id);
+                  return (
+                    <label key={account.id} className="flex items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => handleToggleAccount(account.id)}
+                        className="size-4"
+                      />
+                      <span className="flex-1">{account.name}</span>
+                      <span className="text-xs text-muted-foreground">{account.region}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-3">
             {DESTINATION_OPTIONS.map((option) => {
               const selected = block.destination === option;
@@ -1443,7 +1562,7 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
 
           {!block.confirmed ? (
             <div className="flex justify-end">
-              <Button size="sm" onClick={handleConfirmDestination} disabled={!block.destination}>
+              <Button size="sm" onClick={handleConfirmDestination} disabled={!block.destination || connectedAccountIds.length === 0}>
                 Confirm destination
               </Button>
             </div>
@@ -1613,6 +1732,14 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
             <div className="grid gap-1">
               <span className="font-semibold text-foreground">Sent to Meta</span>
               <span>{includeSubscription ? `${consentedCount.toLocaleString()} consented customers` : `${customerCount} customers`}</span>
+            </div>
+            <div className="grid gap-1">
+              <span className="font-semibold text-foreground">Data source</span>
+              <span>{selectedSource?.name ?? "Not selected"}</span>
+            </div>
+            <div className="grid gap-1">
+              <span className="font-semibold text-foreground">Accounts</span>
+              <span>{selectedAccountNames.join(", ") || "Not selected"}</span>
             </div>
             <div className="grid gap-1">
               <span className="font-semibold text-foreground">Fields</span>

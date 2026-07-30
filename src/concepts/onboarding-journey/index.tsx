@@ -4818,7 +4818,7 @@ function Sidebar({
                 </ul>
               )}
             </li>
-            <li><NavRow icon={RiDashboardLine} label="Dashboards (WIP)" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
+            <li><NavRow icon={RiDashboardLine} label="Dashboards" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
             {!collapsed && (
               <li>
                 <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Pinned Chats</div>

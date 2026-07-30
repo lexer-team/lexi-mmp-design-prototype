@@ -1429,11 +1429,18 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
           <p className="text-sm leading-relaxed text-foreground">When should this go?</p>
           <div className="grid gap-3 rounded-lg border border-border/70 bg-background p-4">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant={schedule.mode === "one-off" ? "default" : "outline"} onClick={() => handleScheduleChange({ mode: "one-off" })}>
-                One-off
-              </Button>
-              <Button size="sm" variant={schedule.mode === "recurring" ? "default" : "outline"} onClick={() => handleScheduleChange({ mode: "recurring" })}>
-                Recurring
+              <Button
+                size="sm"
+                variant={schedule.mode === "recurring" ? "default" : "outline"}
+                onClick={() => {
+                  const nextMode = schedule.mode === "recurring" ? "one-off" : "recurring";
+                  handleScheduleChange({
+                    mode: nextMode,
+                    ...(nextMode === "one-off" ? { recurringEndType: "none", recurringEndDate: schedule.recurringEndDate } : {}),
+                  });
+                }}
+              >
+                Re-Occuring
               </Button>
             </div>
 

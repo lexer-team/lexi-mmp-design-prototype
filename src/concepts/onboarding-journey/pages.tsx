@@ -40,6 +40,9 @@ import { TypeLabel, DefinitionDrawer } from "./DefinitionDetail";
 import { INSIGHTS, previewText, type Insight, type SourceRef } from "./insights-data";
 import { InsightDrawer } from "./InsightDetail";
 import { BENCHMARKS } from "./benchmarks-data";
+import { MasterKpisDashboard } from "./dashboards/MasterKpisDashboard";
+import { EnhancedRfmDashboard } from "./dashboards/EnhancedRfmDashboard";
+import { GeneralReportingDashboard } from "./dashboards/GeneralReportingDashboard";
 import { useSession } from "./store";
 import { DUMMY_SEGMENTS } from "./segment-dummy-data";
 
@@ -1104,9 +1107,18 @@ export function ScorecardPage() {
 }
 
 export function DashboardsPage() {
+  const hiddenDashboards = new Set([
+    "Engagement Health Monitor",
+    "Hero Product Pulse",
+    "Loyalty Performance Board",
+    "Margin Guardrails",
+    "Returns Risk Tracker",
+  ]);
+
   const dashboardRows = useMemo(() => {
     const byDashboard = new Map<string, {
       name: string;
+      kind: "benchmark" | "master-kpis" | "enhanced-rfm" | "general-reporting";
       benchmarks: Array<{ id: string; name: string; owner: string; updatedAt: string }>;
       examples: string[];
     }>();
@@ -1117,6 +1129,7 @@ export function DashboardsPage() {
 
       const existing = byDashboard.get(dashboard) ?? {
         name: dashboard,
+        kind: "benchmark" as const,
         benchmarks: [],
         examples: [],
       };
@@ -1135,7 +1148,30 @@ export function DashboardsPage() {
       byDashboard.set(dashboard, existing);
     });
 
-    return Array.from(byDashboard.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const benchmarkRows = Array.from(byDashboard.values())
+      .filter((dashboard) => !hiddenDashboards.has(dashboard.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [
+      {
+        name: "Master KPIs",
+        kind: "master-kpis" as const,
+        benchmarks: [],
+        examples: [],
+      },
+      {
+        name: "Enhanced RFM",
+        kind: "enhanced-rfm" as const,
+        benchmarks: [],
+        examples: [],
+      },
+      {
+        name: "General Reporting",
+        kind: "general-reporting" as const,
+        benchmarks: [],
+        examples: [],
+      },
+      ...benchmarkRows,
+    ];
   }, []);
 
   const [activeDashboard, setActiveDashboard] = useState<string | null>(null);
@@ -1156,7 +1192,7 @@ export function DashboardsPage() {
   const parseNumeric = (value: string) => Number(value.replace(/[^0-9.-]/g, ""));
 
   const selectedBenchmarks = useMemo(() => {
-    if (!selectedDashboard) return [];
+    if (!selectedDashboard || selectedDashboard.kind !== "benchmark") return [];
     const ids = new Set(selectedDashboard.benchmarks.map((benchmark) => benchmark.id));
     return BENCHMARKS.filter((benchmark) => ids.has(benchmark.id));
   }, [selectedDashboard]);
@@ -1210,6 +1246,13 @@ export function DashboardsPage() {
 
         <div className="min-w-0 flex-1 overflow-y-auto">
           {selectedDashboard ? (
+            selectedDashboard.kind === "master-kpis" ? (
+              <MasterKpisDashboard />
+            ) : selectedDashboard.kind === "enhanced-rfm" ? (
+              <EnhancedRfmDashboard />
+            ) : selectedDashboard.kind === "general-reporting" ? (
+              <GeneralReportingDashboard />
+            ) : (
             <div className="space-y-4">
               <div className="rounded-xl border border-border bg-card p-4">
                 <h2 className="text-base font-semibold text-foreground">{selectedDashboard.name}</h2>
@@ -1275,6 +1318,7 @@ export function DashboardsPage() {
                 </Table>
               </div>
             </div>
+            )
           ) : (
             <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-8 text-sm text-muted-foreground">
               No dashboards referenced yet. Add dashboard tracking to benchmarks to populate this view.

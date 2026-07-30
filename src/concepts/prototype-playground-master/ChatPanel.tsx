@@ -9,6 +9,7 @@ import { ProposedBlock } from "./components/ProposedBlock";
 import { SummaryPointer } from "./components/SummaryPointer";
 import { ReasoningBlock, type SegmentConfirmedPayload } from "./components/ReasoningBlock";
 import { ChartBlock } from "./components/ResponseBlocks";
+import { CrystallisationPopover } from "./components/CrystallisationPopover";
 import { type MentionGroup } from "../lexi-shared-brain/MentionComposer";
 import { PromptComposer } from "./components/PromptComposer";
 import { ThinkingProcess, type ThinkingStep } from "../lexi-shared-brain/ChatThinking";
@@ -41,6 +42,12 @@ const SEGMENT_REFS: DefRef[] = BRAIN_GROUPS.map((g) => ({
   stat: { label: ENTITY_META[g.outputEntity].unit, value: g.population.toLocaleString() },
 }));
 registerDefs(SEGMENT_REFS);
+
+const RECURRING_LIST_ACTION_HINT: Record<"append" | "maintain" | "update", string> = {
+  append: "Adds new customers to your current list without removing existing members.",
+  maintain: "Keeps your current list structure and refreshes eligible members each run.",
+  update: "Rebuilds the full list each run so membership always reflects the latest segment state.",
+};
 
 function activationRef(a: Activation): DefRef {
   return {
@@ -377,6 +384,7 @@ function ActivationBuildCard({
   const [latestActivationId, setLatestActivationId] = useState<string | null>(null);
   const [sendTiming, setSendTiming] = useState<"send-now" | "schedule-send">("send-now");
   const [sendCadence, setSendCadence] = useState<"once-off" | "re-occurring">("once-off");
+  const [recurringListAction, setRecurringListAction] = useState<"append" | "maintain" | "update">("maintain");
   const [recurringHasEndDate, setRecurringHasEndDate] = useState<"yes" | "no">("no");
   const [scheduledStartDate, setScheduledStartDate] = useState("");
   const [scheduledStartTime, setScheduledStartTime] = useState("");
@@ -483,11 +491,11 @@ function ActivationBuildCard({
   const hasStartDate = !requiresStartDate || Boolean(scheduledStartDate);
   const requiresStartTime = sendTiming === "schedule-send";
   const hasStartTime = !requiresStartTime || Boolean(scheduledStartTime);
-  const requiresRecurringTime = sendCadence === "re-occurring";
-  const hasRecurringTime = !requiresRecurringTime || Boolean(recurringSendTime);
   const requiresEndDate = sendCadence === "re-occurring"
     && recurringHasEndDate === "yes";
   const hasEndDate = !requiresEndDate || Boolean(scheduledEndDate);
+  const requiresRecurringTime = sendCadence === "re-occurring";
+  const hasRecurringTime = !requiresRecurringTime || Boolean(recurringSendTime);
   const canConfirmActivationConnection = hasSelectedSource
     && hasSelectedAccounts
     && hasValidFieldMappings
@@ -720,36 +728,13 @@ function ActivationBuildCard({
               </button>
             </div>
 
-            <div className="mt-2 grid grid-cols-1 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const nextCadence = sendCadence === "re-occurring" ? "once-off" : "re-occurring";
-                  setSendCadence(nextCadence);
-                  if (nextCadence !== "re-occurring") {
-                    setRecurringHasEndDate("no");
-                    setScheduledEndDate("");
-                  }
-                }}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                  sendCadence === "re-occurring"
-                    ? "border-primary/60 bg-primary/10 text-foreground"
-                    : "border-border bg-card text-foreground hover:bg-accent",
-                )}
-              >
-                Re-Occuring
-              </button>
-            </div>
-
             {sendTiming === "schedule-send" ? (
               <div className="mt-3 rounded-lg border border-border/70 bg-card p-3">
-                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Date range</p>
-
+                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Scheduled send</p>
                 <div className="mt-2 grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="text-xs font-medium text-foreground-secondary" htmlFor="activation-schedule-start-date">
-                      Start date
+                      Date
                     </label>
                     <input
                       id="activation-schedule-start-date"
@@ -772,22 +757,64 @@ function ActivationBuildCard({
                     />
                   </div>
                 </div>
-
               </div>
             ) : null}
 
+            <div className="mt-2 grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const nextCadence = sendCadence === "re-occurring" ? "once-off" : "re-occurring";
+                  setSendCadence(nextCadence);
+                  if (nextCadence !== "re-occurring") {
+                    setRecurringHasEndDate("no");
+                    setScheduledEndDate("");
+                  }
+                }}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                  sendCadence === "re-occurring"
+                    ? "border-primary/60 bg-primary/10 text-foreground"
+                    : "border-border bg-card text-foreground hover:bg-accent",
+                )}
+              >
+                Re-Occuring
+              </button>
+            </div>
+
             {sendCadence === "re-occurring" ? (
               <div className="mt-3 rounded-lg border border-border/70 bg-card p-3">
-                <label className="text-xs font-medium text-foreground-secondary" htmlFor="activation-recurring-time">
-                  Preferred daily send time
-                </label>
-                <input
-                  id="activation-recurring-time"
-                  type="time"
-                  value={recurringSendTime}
-                  onChange={(e) => setRecurringSendTime(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
-                />
+                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Recurring setup</p>
+
+                <div className="mt-2">
+                  <label className="text-xs font-medium text-foreground-secondary" htmlFor="activation-list-action">
+                    List action
+                  </label>
+                  <select
+                    id="activation-list-action"
+                    value={recurringListAction}
+                    onChange={(e) => setRecurringListAction(e.target.value as "append" | "maintain" | "update")}
+                    className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                  >
+                    <option value="append">Append</option>
+                    <option value="maintain">Maintain</option>
+                    <option value="update">Update</option>
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">{RECURRING_LIST_ACTION_HINT[recurringListAction]}</p>
+                </div>
+
+                <div className="mt-3">
+                  <label className="text-xs font-medium text-foreground-secondary" htmlFor="activation-recurring-time">
+                    Preferred daily send time
+                  </label>
+                  <input
+                    id="activation-recurring-time"
+                    type="time"
+                    value={recurringSendTime}
+                    onChange={(e) => setRecurringSendTime(e.target.value)}
+                    className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                  />
+                </div>
 
                 <div className="mt-3">
                   <p className="text-xs font-medium text-foreground-secondary">Is there an end date?</p>
@@ -936,38 +963,37 @@ function ActivationBuildCard({
                       <span className="font-medium">Cadence:</span>{" "}
                       {sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off"}
                     </p>
-                    <p className="text-foreground">
-                      <span className="font-medium">Date range:</span>{" "}
-                      {sendTiming === "schedule-send"
-                        ? (sendCadence === "re-occurring"
-                          ? (recurringHasEndDate === "yes"
-                            ? `${scheduledStartDate || "Not selected"} to ${scheduledEndDate || "Not selected"}`
-                            : `${scheduledStartDate || "Not selected"} to No End Date`)
-                          : (scheduledStartDate || "Not selected"))
-                        : "Not applicable"}
-                    </p>
+                    {sendCadence === "re-occurring" ? (
+                      <p className="text-foreground">
+                        <span className="font-medium">List action:</span>{" "}
+                        {recurringListAction}
+                      </p>
+                    ) : null}
 
                     {sendTiming === "schedule-send" ? (
                       <>
                         <p className="text-foreground">
-                          <span className="font-medium">Start date:</span>{" "}
+                          <span className="font-medium">Scheduled date:</span>{" "}
                           {scheduledStartDate || "Not selected"}
                         </p>
                         <p className="text-foreground">
-                          <span className="font-medium">Start time:</span>{" "}
+                          <span className="font-medium">Scheduled time:</span>{" "}
                           {scheduledStartTime || "Not selected"}
                         </p>
+                      </>
+                    ) : null}
+
+                    {sendCadence === "re-occurring" ? (
+                      <>
+                        <p className="text-foreground">
+                          <span className="font-medium">Daily send time:</span>{" "}
+                          {recurringSendTime || "Not selected"}
+                        </p>
                         {sendCadence === "re-occurring" ? (
-                          <>
-                            <p className="text-foreground">
-                              <span className="font-medium">Daily send time:</span>{" "}
-                              {recurringSendTime || "Not selected"}
-                            </p>
-                            <p className="text-foreground">
-                              <span className="font-medium">End date:</span>{" "}
-                              {recurringHasEndDate === "yes" ? (scheduledEndDate || "Not selected") : "No end date"}
-                            </p>
-                          </>
+                          <p className="text-foreground">
+                            <span className="font-medium">End date:</span>{" "}
+                            {recurringHasEndDate === "yes" ? (scheduledEndDate || "Not selected") : "No end date"}
+                          </p>
                         ) : null}
                       </>
                     ) : null}
@@ -988,7 +1014,12 @@ function ActivationBuildCard({
                           month: "short",
                           year: "numeric",
                         });
-                        const activationStatus = sendTiming === "schedule-send" ? "scheduled" : "sent";
+                        const activationStatus = sendCadence === "re-occurring"
+                          ? (sendTiming === "schedule-send" ? "scheduled" : "live")
+                          : (sendTiming === "schedule-send" ? "scheduled" : "sent");
+                        const scheduledWhenLabel = scheduledStartDate
+                          ? `Scheduled · ${scheduledStartDate}${scheduledStartTime ? ` ${scheduledStartTime}` : ""}`
+                          : "Scheduled";
 
                         dispatch({
                           type: "ADD_ARTIFACT",
@@ -1022,18 +1053,12 @@ function ActivationBuildCard({
                             skill: "Activation build",
                             approval: { kind: "approved", by: "Izac", at: dateLabel },
                             status: activationStatus,
-                            whenLabel: `Approved and sent · ${dateLabel}`,
+                            whenLabel: sendTiming === "schedule-send" ? scheduledWhenLabel : `Approved and sent · ${dateLabel}`,
                             scheduledDate: sendTiming === "schedule-send"
                               ? (scheduledStartDate || undefined)
                               : undefined,
-                            scheduledTime: sendTiming === "schedule-send"
-                              ? (scheduledStartTime || undefined)
-                              : undefined,
                             recurringStartDate: sendCadence === "re-occurring"
-                              ? ((sendTiming === "schedule-send" ? scheduledStartDate : undefined) || undefined)
-                              : undefined,
-                            recurringTime: sendCadence === "re-occurring"
-                              ? (recurringSendTime || undefined)
+                              ? ((sendTiming === "schedule-send" ? scheduledStartDate : timestamp.slice(0, 10)) || undefined)
                               : undefined,
                             recurringEndDate: sendCadence === "re-occurring" && recurringHasEndDate === "yes"
                               ? (scheduledEndDate || undefined)
@@ -1042,7 +1067,7 @@ function ActivationBuildCard({
                             invocations: [
                               {
                                 skill: "Activation build",
-                                params: `Segment ${block.segmentName} with ${selectedAccounts.length} selected account(s)` ,
+                                params: `Segment ${block.segmentName} with ${selectedAccounts.length} selected account(s)${sendCadence === "re-occurring" ? ` · List action: ${recurringListAction}` : ""}`,
                                 result: "Sent",
                               },
                             ],
@@ -1066,7 +1091,6 @@ function ActivationBuildCard({
                               }),
                               timing: sendTiming === "schedule-send" ? "Schedule Send" : "Send Now",
                               cadence: sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off",
-                              recurringTime: sendCadence === "re-occurring" ? recurringSendTime : undefined,
                               customers: [
                                 { id: `${activationId}-cust-1`, name: `${block.segmentName} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
                                 { id: `${activationId}-cust-2`, name: `${block.segmentName} - Liam Nguyen`, meta: "AOV $129 · Last purchase 49 days ago" },
@@ -3640,7 +3664,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
             placeholder={empty ? "Message Lexi..." : "Reply to Lexi..."}
             onSubmit={handleSubmit}
             disabled={busy}
-            enableMentions={false}
+            enableMentions
           />
           {empty ? (
             <StartPrompts
@@ -3664,6 +3688,9 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         {/* Collapsing spacer — 1fr when centred, 0fr once pinned. */}
         <div aria-hidden="true" />
       </div>
+
+      {/* Crystallisation (highlight-to-pin / insight menu) */}
+      <CrystallisationPopover />
 
     </div>
   );

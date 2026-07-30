@@ -161,8 +161,46 @@ export function ActivationsPage({
     return `${dd}/${mm}/${yyyy}`;
   };
 
+  const formatClock = (value?: string) => {
+    if (!value) return undefined;
+    const m = value.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return value;
+    const hh = Number(m[1]);
+    if (Number.isNaN(hh) || hh < 0 || hh > 23) return value;
+    const period = hh >= 12 ? "pm" : "am";
+    const displayHour = hh % 12 || 12;
+    return `${displayHour}:${m[2]} ${period}`;
+  };
+
+  const formatDateTime = (dateValue?: string, timeValue?: string) => {
+    const date = formatIsoDate(dateValue);
+    if (!date) return "-";
+    const time = formatClock(timeValue);
+    return time ? `${date} ${time}` : date;
+  };
+
+  const activationStartDateTime = (activation: Activation) => {
+    const startDate = activation.recurringStartDate ?? activation.scheduledDate;
+    const startTime = activation.scheduledTime;
+    return formatDateTime(startDate, startTime);
+  };
+
+  const activationEndDateTime = (activation: Activation) => {
+    return formatDateTime(activation.recurringEndDate, activation.recurringEndTime);
+  };
+
+  const activationRecurringTime = (activation: Activation) => {
+    const direct = activation.recurringTime ?? activation.mvpDetails?.recurringTime;
+    if (direct) return formatClock(direct) ?? direct;
+
+    const fromLabel = activation.whenLabel.match(/daily at\s+([^,]+)/i)?.[1]?.trim();
+    if (fromLabel) return fromLabel;
+    return "-";
+  };
+
   const activationFrequency = (activation: Activation) => {
     if (activation.mvpDetails?.timing) return activation.mvpDetails.timing;
+    if (activation.status === "live" || activation.status === "sent") return "Send Now";
     if (activation.recurringStartDate || activation.scheduledDate) return "Schedule Send";
     return "Send Now";
   };
@@ -401,7 +439,9 @@ export function ActivationsPage({
                 <TableHead className="w-32">Frequency</TableHead>
                 <TableHead className="w-56">Cadence</TableHead>
                 <TableHead className="w-40">Status</TableHead>
-                <TableHead className="w-32">When</TableHead>
+                <TableHead className="w-44">Start date</TableHead>
+                <TableHead className="w-44">End date</TableHead>
+                <TableHead className="w-40">Scheduled Time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -431,12 +471,14 @@ export function ActivationsPage({
                     <TableCell className="text-sm text-foreground-secondary">{activationFrequency(a)}</TableCell>
                     <TableCell className="max-w-[18rem] truncate text-sm text-foreground-secondary">{activationCadence(a)}</TableCell>
                     <TableCell><Badge variant={s.variant} size="sm">{s.label}</Badge></TableCell>
-                    <TableCell className="text-sm text-foreground-secondary">{activationWhen(a)}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{activationStartDateTime(a)}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{activationEndDateTime(a)}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{activationRecurringTime(a)}</TableCell>
                   </TableRow>
                 );
               })}
               {shown.length === 0 && (
-                <TableRow><TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

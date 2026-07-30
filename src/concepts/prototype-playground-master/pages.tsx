@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { FilterBar } from "@/components/ui/FilterBar";
@@ -27,12 +28,14 @@ import {
   RiAddLine, RiSearchLine, RiGroupLine, RiShoppingBag2Line, RiPriceTag3Line,
   RiFolderLine, RiMore2Line, RiListUnordered, RiPencilLine, RiDeleteBinLine,
   RiLightbulbLine, RiTimeLine,
-  RiMessage2Line, RiLayoutGridLine,
+  RiMessage2Line, RiLayoutGridLine, RiCloseLine, RiFullscreenLine, RiFullscreenExitLine,
 } from "@remixicon/react";
 import {
   BRAIN_GROUPS, ENTITY_META, foldersForEntity, groupsForEntity,
   type BrainGroup, type OutputEntity,
 } from "../lexi-shared-brain/data";
+import type { DefRef } from "@/data/def-registry";
+import { getDef } from "@/data/def-registry";
 import { MOCK_DEFINITIONS, MOCK_METRICS, type EntityType } from "@/data/definitions-mock";
 import { CHANNEL_REVENUE_BAR, REVENUE_TREND } from "@/data/mock";
 import { sourceFields, customDefs, type DefRow } from "./definitions-data";
@@ -45,6 +48,17 @@ import { EnhancedRfmDashboard } from "./dashboards/EnhancedRfmDashboard";
 import { GeneralReportingDashboard } from "./dashboards/GeneralReportingDashboard";
 import { useSession } from "./store";
 import { DUMMY_SEGMENTS } from "./segment-dummy-data";
+import { ConditionComposer } from "./components/ConditionComposer";
+import { buildConditionMenuGroups } from "./condition-menu-groups";
+import { ReasoningBlock, type SegmentConfirmedPayload } from "./components/ReasoningBlock";
+import type { ReasoningAssumption } from "./types";
+
+const SEGMENT_DEMO_PROMPT = "High value customers that live in au but not usa and buy shirts";
+const RECURRING_LIST_ACTION_HINT: Record<"append" | "maintain" | "update", string> = {
+  append: "Adds new customers to your current list without removing existing members.",
+  maintain: "Keeps your current list structure and refreshes eligible members each run.",
+  update: "Rebuilds the full list each run so membership always reflects the latest segment state.",
+};
 
 // ─── Shared bits ─────────────────────────────────────────────────────────────
 
@@ -257,9 +271,11 @@ function GroupSidebar({
 export function SegmentsPage({
   onOpenSegment,
   onStartSegmentWorkflow,
+  onOpenActivationPage,
 }: {
   onOpenSegment?: (id: string) => void;
   onStartSegmentWorkflow?: () => void;
+  onOpenActivationPage?: (id: string) => void;
 }) {
   const { state, dispatch } = useSession();
   const [query, setQuery] = useState("");
@@ -271,8 +287,534 @@ export function SegmentsPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkGroup, setBulkGroup] = useState<string>("");
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
+  const [builderMounted, setBuilderMounted] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderFullScreen, setBuilderFullScreen] = useState(false);
+  const [builderName, setBuilderName] = useState("");
+  const [builderPurpose, setBuilderPurpose] = useState("");
+  const [builderPopulation, setBuilderPopulation] = useState("2,840");
+  const [builderCriteria, setBuilderCriteria] = useState("Last purchase within 180 days\nAOV greater than $100\nEmail consent is opted in");
+  const [builderPromptInput, setBuilderPromptInput] = useState("");
+  const [builderConditions, setBuilderConditions] = useState<string[]>([]);
+  const [builderReasoningGoal, setBuilderReasoningGoal] = useState("");
+  const [builderReasoningAssumptions, setBuilderReasoningAssumptions] = useState<ReasoningAssumption[]>([]);
+  const [builderReasoningVisible, setBuilderReasoningVisible] = useState(false);
+  const [builderApprovedSaved, setBuilderApprovedSaved] = useState(false);
+  const [builderApprovedPayload, setBuilderApprovedPayload] = useState<SegmentConfirmedPayload | null>(null);
+  const [builderActivationPreview, setBuilderActivationPreview] = useState<{
+    activationName: string;
+    activationDescription: string;
+    population: string;
+    rules: string[];
+  } | null>(null);
+  const [builderShowActivationConnection, setBuilderShowActivationConnection] = useState(false);
+  const [builderConnectionConfirmed, setBuilderConnectionConfirmed] = useState(false);
+  const [builderActivationApprovedSent, setBuilderActivationApprovedSent] = useState(false);
+  const [builderLatestActivationId, setBuilderLatestActivationId] = useState<string | null>(null);
+  const [builderSelectedSourceId, setBuilderSelectedSourceId] = useState("src-meta");
+  const [builderSelectedAccounts, setBuilderSelectedAccounts] = useState<string[]>([]);
+  const [builderFieldRows, setBuilderFieldRows] = useState<Array<{ id: string; fieldType: string; selectedMatch: string }>>([
+    { id: "map-email", fieldType: "email", selectedMatch: "email_98" },
+    { id: "map-phone", fieldType: "phone", selectedMatch: "mobile_92" },
+  ]);
+  const [builderSendTiming, setBuilderSendTiming] = useState<"send-now" | "schedule-send">("send-now");
+  const [builderSendCadence, setBuilderSendCadence] = useState<"once-off" | "re-occurring">("once-off");
+  const [builderRecurringListAction, setBuilderRecurringListAction] = useState<"append" | "maintain" | "update">("maintain");
+  const [builderRecurringHasEndDate, setBuilderRecurringHasEndDate] = useState<"yes" | "no">("no");
+  const [builderScheduledStartDate, setBuilderScheduledStartDate] = useState("");
+  const [builderScheduledStartTime, setBuilderScheduledStartTime] = useState("");
+  const [builderRecurringSendTime, setBuilderRecurringSendTime] = useState("09:00");
+  const [builderScheduledEndDate, setBuilderScheduledEndDate] = useState("");
+  const [confirmBuilderCloseOpen, setConfirmBuilderCloseOpen] = useState(false);
+  const [pendingBuilderExitAction, setPendingBuilderExitAction] = useState<"close" | "new-segment" | null>(null);
+  const sessionSegmentRefs = useMemo<DefRef[]>(() => {
+    return [...state.artifacts.values()]
+      .filter((artifact) => artifact.type === "segment" && artifact.status === "saved" && artifact.body?.kind === "segment")
+      .map((artifact) => ({
+        id: artifact.id,
+        kind: "segment" as const,
+        name: artifact.name,
+        entity: artifact.def?.entity ?? "customer",
+        description: artifact.def?.description
+          ?? (artifact.body?.kind === "segment" ? artifact.body.purpose : undefined)
+          ?? "Segment",
+        logic: artifact.def?.logic,
+        stat: artifact.def?.stat,
+      }));
+  }, [state.artifacts]);
+  const mentionGroups = useMemo(() => buildConditionMenuGroups(sessionSegmentRefs), [sessionSegmentRefs]);
+  const builderSourceList = [
+    { id: "src-meta", name: "Meta Ads" },
+    { id: "src-klaviyo", name: "Klaviyo" },
+    { id: "src-braze", name: "Braze" },
+    { id: "src-google-ads", name: "Google Ads" },
+    { id: "src-sfmc", name: "Salesforce Marketing Cloud" },
+    { id: "src-amplitude", name: "Amplitude" },
+  ];
+  const builderAccountsBySource: Record<string, Array<{ id: string; name: string; region: "AU" | "NZ" | "USA" }>> = {
+    "src-meta": [
+      { id: "meta-au", name: "Meta AU account", region: "AU" },
+      { id: "meta-nz", name: "Meta NZ account", region: "NZ" },
+      { id: "meta-usa", name: "Meta USA account", region: "USA" },
+    ],
+    "src-klaviyo": [
+      { id: "klaviyo-au", name: "Klaviyo AU account", region: "AU" },
+      { id: "klaviyo-nz", name: "Klaviyo NZ account", region: "NZ" },
+      { id: "klaviyo-usa", name: "Klaviyo USA account", region: "USA" },
+    ],
+    "src-braze": [
+      { id: "braze-au", name: "Braze AU account", region: "AU" },
+      { id: "braze-nz", name: "Braze NZ account", region: "NZ" },
+      { id: "braze-usa", name: "Braze USA account", region: "USA" },
+    ],
+    "src-google-ads": [
+      { id: "gads-au", name: "Google Ads AU account", region: "AU" },
+      { id: "gads-nz", name: "Google Ads NZ account", region: "NZ" },
+      { id: "gads-usa", name: "Google Ads USA account", region: "USA" },
+    ],
+    "src-sfmc": [
+      { id: "sfmc-au", name: "SFMC AU account", region: "AU" },
+      { id: "sfmc-nz", name: "SFMC NZ account", region: "NZ" },
+      { id: "sfmc-usa", name: "SFMC USA account", region: "USA" },
+    ],
+    "src-amplitude": [
+      { id: "amp-au", name: "Amplitude AU account", region: "AU" },
+      { id: "amp-nz", name: "Amplitude NZ account", region: "NZ" },
+      { id: "amp-usa", name: "Amplitude USA account", region: "USA" },
+    ],
+  };
+  const builderFieldTypeOptions = [
+    { value: "email", label: "Email" },
+    { value: "phone", label: "Phone" },
+    { value: "first-name", label: "First name" },
+    { value: "last-name", label: "Last name" },
+    { value: "country", label: "Country" },
+  ] as const;
+  const builderFieldMatchOptions: Record<string, Array<{ value: string; label: string }>> = {
+    email: [
+      { value: "email_98", label: "Email (98%)" },
+      { value: "contact_email_84", label: "Contact Email (84%)" },
+    ],
+    phone: [
+      { value: "phone_86", label: "Phone (86%)" },
+      { value: "cell_79", label: "Cell (79%)" },
+      { value: "mobile_92", label: "Mobile (92%)" },
+    ],
+    "first-name": [
+      { value: "first_name_96", label: "First Name (96%)" },
+      { value: "given_name_81", label: "Given Name (81%)" },
+    ],
+    "last-name": [
+      { value: "last_name_95", label: "Last Name (95%)" },
+      { value: "surname_82", label: "Surname (82%)" },
+    ],
+    country: [
+      { value: "country_code_99", label: "Country Code (99%)" },
+      { value: "country_name_93", label: "Country Name (93%)" },
+    ],
+  };
+  const builderSelectedSourceAccounts = builderAccountsBySource[builderSelectedSourceId] ?? [];
+  const builderSelectedSource = builderSourceList.find((source) => source.id === builderSelectedSourceId);
+  const builderCanConfirmConnection = Boolean(builderSelectedSourceId)
+    && builderSelectedAccounts.length > 0
+    && builderFieldRows.every((row) => Boolean(row.fieldType) && Boolean(row.selectedMatch))
+    && (builderSendTiming !== "schedule-send" || Boolean(builderScheduledStartDate))
+    && (builderSendTiming !== "schedule-send" || Boolean(builderScheduledStartTime))
+    && (builderSendCadence !== "re-occurring" || Boolean(builderRecurringSendTime))
+    && !(builderSendCadence === "re-occurring"
+      && builderRecurringHasEndDate === "yes"
+      && !builderScheduledEndDate);
   const entity: OutputEntity = "customer";
   const groups = foldersForEntity("customer");
+
+  const openSegmentBuilder = () => {
+    setBuilderName("");
+    setBuilderPurpose("");
+    setBuilderPopulation("2,840");
+    setBuilderCriteria("Last purchase within 180 days\nAOV greater than $100\nEmail consent is opted in");
+    setBuilderPromptInput(SEGMENT_DEMO_PROMPT);
+    setBuilderConditions([]);
+    setBuilderReasoningGoal("");
+    setBuilderReasoningAssumptions([]);
+    setBuilderReasoningVisible(false);
+    setBuilderApprovedSaved(false);
+    setBuilderApprovedPayload(null);
+    setBuilderActivationPreview(null);
+    setBuilderShowActivationConnection(false);
+    setBuilderConnectionConfirmed(false);
+    setBuilderActivationApprovedSent(false);
+    setBuilderLatestActivationId(null);
+    setBuilderSelectedSourceId("src-meta");
+    setBuilderSelectedAccounts([]);
+    setBuilderFieldRows([
+      { id: "map-email", fieldType: "email", selectedMatch: "email_98" },
+      { id: "map-phone", fieldType: "phone", selectedMatch: "mobile_92" },
+    ]);
+    setBuilderSendTiming("send-now");
+    setBuilderSendCadence("once-off");
+    setBuilderRecurringListAction("maintain");
+    setBuilderRecurringHasEndDate("no");
+    setBuilderScheduledStartDate("");
+    setBuilderScheduledStartTime("");
+    setBuilderRecurringSendTime("09:00");
+    setBuilderScheduledEndDate("");
+    setBuilderMounted(true);
+    setBuilderOpen(false);
+    setBuilderFullScreen(false);
+  };
+
+  const applyBuilderCondition = () => {
+    const next = builderPromptInput.trim();
+    if (!next) return;
+    setBuilderConditions((prev) => [...prev, next]);
+    setBuilderPromptInput("");
+    setBuilderApprovedSaved(false);
+    setBuilderApprovedPayload(null);
+    setBuilderActivationPreview(null);
+    setBuilderShowActivationConnection(false);
+    setBuilderConnectionConfirmed(false);
+    setBuilderActivationApprovedSent(false);
+    setBuilderLatestActivationId(null);
+  };
+
+  const removeBuilderCondition = (index: number) => {
+    setBuilderConditions((prev) => prev.filter((_, i) => i !== index));
+    setBuilderApprovedSaved(false);
+    setBuilderApprovedPayload(null);
+    setBuilderActivationPreview(null);
+    setBuilderShowActivationConnection(false);
+    setBuilderConnectionConfirmed(false);
+    setBuilderActivationApprovedSent(false);
+    setBuilderLatestActivationId(null);
+  };
+
+  const closeSegmentBuilder = () => {
+    setBuilderOpen(false);
+  };
+
+  const saveApprovedSegment = (payload: SegmentConfirmedPayload) => {
+    const criteria = payload.assumptions
+      .filter((assumption) => !assumption.label.toLowerCase().includes("population"))
+      .map((assumption) => {
+        const label = assumption.label.trim();
+        const value = assumption.value.trim();
+        return value ? `${label} ${value}` : label;
+      })
+      .filter(Boolean);
+
+    const description = payload.description.trim() || payload.purpose.trim() || "Segment created from the Segments builder.";
+    const population = payload.population.trim() || "2,840";
+
+    dispatch({
+      type: "ADD_ARTIFACT",
+      artifact: {
+        id: payload.id,
+        type: "segment",
+        name: payload.name.trim() || "New segment",
+        status: "saved",
+        savedAt: new Date().toISOString(),
+        def: {
+          id: payload.id,
+          kind: "segment",
+          name: payload.name.trim() || "New segment",
+          entity: "customer",
+          description,
+        },
+        body: {
+          kind: "segment",
+          criteria: criteria.length > 0 ? criteria : ["No criteria added yet"],
+          population,
+          purpose: payload.purpose.trim() || description,
+        },
+      },
+    });
+
+    setBuilderApprovedSaved(true);
+    setBuilderApprovedPayload(payload);
+    setBuilderActivationPreview(null);
+    setBuilderShowActivationConnection(false);
+    setBuilderConnectionConfirmed(false);
+    setBuilderActivationApprovedSent(false);
+    setBuilderLatestActivationId(null);
+  };
+
+  const requestCloseSegmentBuilder = () => {
+    setPendingBuilderExitAction("close");
+    setConfirmBuilderCloseOpen(true);
+  };
+
+  const requestBuildNewSegment = () => {
+    if (builderApprovedSaved) {
+      openSegmentBuilder();
+      return;
+    }
+    setPendingBuilderExitAction("new-segment");
+    setConfirmBuilderCloseOpen(true);
+  };
+
+  const handleConfirmSegmentBuilderClose = () => {
+    if (pendingBuilderExitAction === "new-segment") {
+      openSegmentBuilder();
+    } else {
+      closeSegmentBuilder();
+    }
+    setPendingBuilderExitAction(null);
+    setConfirmBuilderCloseOpen(false);
+  };
+
+  const resolveMentionTokens = (value: string) => value.replace(/\[\[([^\]]+)\]\]/g, (_match, tokenId: string) => {
+    const def = getDef(tokenId.trim());
+    return def?.name ?? tokenId.trim();
+  });
+
+  const activateApprovedSegment = () => {
+    if (!builderApprovedPayload) return;
+
+    const rules = builderApprovedPayload.assumptions
+      .filter((assumption) => !assumption.label.toLowerCase().includes("population"))
+      .map((assumption) => {
+        const label = resolveMentionTokens(assumption.label.trim());
+        const value = resolveMentionTokens(assumption.value.trim());
+        return value ? `${label} ${value}` : label;
+      })
+      .filter(Boolean);
+
+    const segmentName = builderApprovedPayload.name.trim() || "New segment";
+    const activationName = `${segmentName} Activation`;
+    const activationDescription = builderApprovedPayload.description.trim()
+      || builderApprovedPayload.purpose.trim()
+      || `Activation from Segment: ${segmentName}`;
+
+    setBuilderActivationPreview({
+      activationName,
+      activationDescription,
+      population: builderApprovedPayload.population.trim() || "2,840",
+      rules,
+    });
+    setBuilderShowActivationConnection(false);
+    setBuilderConnectionConfirmed(false);
+    setBuilderActivationApprovedSent(false);
+    setBuilderLatestActivationId(null);
+  };
+
+  const approveAndSendActivationFromSegmentBuilder = () => {
+    if (!builderActivationPreview || builderActivationApprovedSent) return;
+
+    const activationId = `ac-${Date.now()}`;
+    const timestamp = new Date().toISOString();
+    const dateLabel = new Date().toLocaleDateString("en-AU", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+    const activationStatus = builderSendCadence === "re-occurring"
+      ? (builderSendTiming === "schedule-send" ? "scheduled" : "live")
+      : (builderSendTiming === "schedule-send" ? "scheduled" : "sent");
+    const scheduledWhenLabel = builderScheduledStartDate
+      ? `Scheduled · ${builderScheduledStartDate}${builderScheduledStartTime ? ` ${builderScheduledStartTime}` : ""}`
+      : "Scheduled";
+    const segmentName = builderApprovedPayload?.name?.trim() || "New segment";
+
+    dispatch({
+      type: "ADD_ACTIVATION",
+      activation: {
+        id: activationId,
+        createdAt: timestamp,
+        name: builderActivationPreview.activationName,
+        context: `From segment: ${segmentName}`,
+        segmentId: builderApprovedPayload?.id,
+        segmentName,
+        channel: builderSelectedSource?.name ?? "Multi-channel",
+        category: "MVP activation",
+        skill: "Activation build",
+        approval: { kind: "approved", by: "Izac", at: dateLabel },
+        status: activationStatus,
+        whenLabel: builderSendTiming === "schedule-send" ? scheduledWhenLabel : `Approved and sent · ${dateLabel}`,
+        scheduledDate: builderSendTiming === "schedule-send" ? (builderScheduledStartDate || undefined) : undefined,
+        recurringStartDate: builderSendCadence === "re-occurring"
+          ? ((builderSendTiming === "schedule-send" ? builderScheduledStartDate : timestamp.slice(0, 10)) || undefined)
+          : undefined,
+        recurringEndDate: builderSendCadence === "re-occurring" && builderRecurringHasEndDate === "yes"
+          ? (builderScheduledEndDate || undefined)
+          : undefined,
+        result: "Activation approved and sent from segment builder.",
+        invocations: [
+          {
+            skill: "Activation build",
+            params: `Segment ${segmentName} with ${builderSelectedAccounts.length} selected account(s)${builderSendCadence === "re-occurring" ? ` · List action: ${builderRecurringListAction}` : ""}`,
+            result: "Sent",
+          },
+        ],
+        trail: [
+          { at: dateLabel, entry: "Activation connection confirmed." },
+          { at: dateLabel, entry: "Approved and sent from segment builder." },
+        ],
+        mvpDetails: {
+          population: builderActivationPreview.population,
+          activationName: builderActivationPreview.activationName,
+          activationDefinition: builderActivationPreview.activationDescription,
+          segmentName,
+          dataSource: builderSelectedSource?.name ?? "Not selected",
+          accounts: builderSelectedSourceAccounts
+            .filter((account) => builderSelectedAccounts.includes(account.id))
+            .map((account) => account.name),
+          fieldMapping: builderFieldRows.map((row) => {
+            const fieldLabel = builderFieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType;
+            const matchLabel = (builderFieldMatchOptions[row.fieldType] ?? []).find((option) => option.value === row.selectedMatch)?.label ?? row.selectedMatch;
+            return `${fieldLabel} -> ${matchLabel}`;
+          }),
+          timing: builderSendTiming === "schedule-send" ? "Schedule Send" : "Send Now",
+          cadence: builderSendCadence === "re-occurring" ? "Re-Occuring" : "Once Off",
+          customers: [
+            { id: `${activationId}-cust-1`, name: `${segmentName} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
+            { id: `${activationId}-cust-2`, name: `${segmentName} - Liam Nguyen`, meta: "AOV $129 · Last purchase 49 days ago" },
+            { id: `${activationId}-cust-3`, name: `${segmentName} - Mia Rodriguez`, meta: "AOV $151 · Last purchase 62 days ago" },
+          ],
+        },
+      },
+    });
+
+    setBuilderActivationApprovedSent(true);
+    setBuilderLatestActivationId(activationId);
+  };
+
+  const buildReasoningAssumptions = (source: string[]): ReasoningAssumption[] => {
+    const parseGenericAssumption = (entry: string, index: number): ReasoningAssumption | null => {
+      const cleaned = entry.replace(/[.]+$/, "").trim();
+      if (!cleaned) return null;
+
+      if (/^country\s+is\s+new\s+zealand$/i.test(cleaned)) {
+        return {
+          id: `seg-assumption-${index}`,
+          label: "Country is New Zealand",
+          value: "",
+        };
+      }
+
+      const pair = cleaned.match(/^(.+?)\s*(?:=|is|are|should be|to be)\s+(.+)$/i);
+      if (pair) {
+        return {
+          id: `seg-assumption-${index}`,
+          label: pair[1].trim(),
+          value: pair[2].trim(),
+        };
+      }
+      return {
+        id: `seg-assumption-${index}`,
+        label: `Assumption ${index + 1}`,
+        value: cleaned,
+      };
+    };
+
+    const fullText = source.join(" ").toLowerCase();
+    const hasHighValue = /high\s*value/.test(fullText);
+    const hasAustralia = /\b(australia|au)\b/.test(fullText);
+    const hasNotUsa = /\b(not|exclude|without)\b[\s\S]*\b(united states|usa|us|u\.s\.a)\b/.test(fullText);
+    const hasShirts = /\bshirts?\b/.test(fullText);
+
+    if (hasHighValue && hasAustralia && hasNotUsa && hasShirts) {
+      const baseAssumptions: ReasoningAssumption[] = [
+        {
+          id: "seg-assumption-high-value",
+          label: "[[def-1]]",
+          value: "is yes",
+        },
+        {
+          id: "seg-assumption-country-au",
+          label: "[[attr-1]]",
+          value: "is Australia",
+        },
+        {
+          id: "seg-assumption-country-us",
+          label: "[[attr-1]]",
+          value: "is not United States",
+        },
+        {
+          id: "seg-assumption-product-type",
+          label: "[[attr-18]]",
+          value: "is Shirts",
+        },
+      ];
+
+      const demoConditionPattern = /high\s*value[\s\S]*\b(australia|au)\b[\s\S]*\b(not|exclude|without)\b[\s\S]*\b(united states|usa|us|u\.s\.a)\b[\s\S]*\bshirts?\b/i;
+      const additionalAssumptions = source
+        .map((entry, index) => ({ entry, index }))
+        .filter(({ entry }) => !demoConditionPattern.test(entry))
+        .map(({ entry, index }) => parseGenericAssumption(entry, index + 100))
+        .filter((item): item is ReasoningAssumption => Boolean(item));
+
+      return [...baseAssumptions, ...additionalAssumptions];
+    }
+
+    return source
+      .map((entry, index) => parseGenericAssumption(entry, index))
+      .filter((item): item is ReasoningAssumption => Boolean(item));
+  };
+
+  const handleSegmentComposerConfirm = ({ committedConditions, committedInput }: { committedConditions: string[]; committedInput: string }) => {
+    const assumptions = buildReasoningAssumptions(committedConditions);
+    if (assumptions.length === 0) {
+      setBuilderReasoningVisible(false);
+      return;
+    }
+    const fullText = committedConditions.join(" ").toLowerCase();
+    const isDemoPrompt = /high\s*value/.test(fullText)
+      && /\b(australia|au)\b/.test(fullText)
+      && /\b(not|exclude|without)\b[\s\S]*\b(united states|usa|us|u\.s\.a)\b/.test(fullText)
+      && /\bshirts?\b/.test(fullText);
+    const includesNewZealand = /\b(new\s*zealand|nz)\b/.test(fullText);
+
+    setBuilderReasoningGoal(isDemoPrompt
+      ? (includesNewZealand
+        ? "Description: High Value Customers who live in Australia and New Zealand but not in the United States that buy shirts."
+        : "Description: High Value Customers who live in Australia but not in the United States that buy shirts.")
+      : committedInput.trim()
+        || committedConditions.join(" and ")
+        || "Build the segment from the validated assumptions below.");
+    setBuilderReasoningAssumptions(assumptions);
+    setBuilderReasoningVisible(true);
+    setBuilderApprovedSaved(false);
+    setBuilderApprovedPayload(null);
+    setBuilderActivationPreview(null);
+  };
+
+  const saveSegmentFromBuilder = () => {
+    const id = `seg-builder-${Date.now()}`;
+    const name = builderName.trim() || "New segment";
+    const description = builderPurpose.trim() || "Segment created from the Segments builder.";
+    const typedCriteria = builderCriteria
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const criteria = [...builderConditions, ...typedCriteria];
+
+    dispatch({
+      type: "ADD_ARTIFACT",
+      artifact: {
+        id,
+        type: "segment",
+        name,
+        status: "saved",
+        savedAt: new Date().toISOString(),
+        def: {
+          id,
+          kind: "segment",
+          name,
+          entity: "customer",
+          description,
+        },
+        body: {
+          kind: "segment",
+          criteria: criteria.length > 0 ? criteria : ["No criteria added yet"],
+          population: builderPopulation.trim() || "2,840",
+          purpose: description,
+        },
+      },
+    });
+
+    closeSegmentBuilder();
+    onOpenSegment?.(id);
+  };
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -390,8 +932,14 @@ export function SegmentsPage({
     setSelectedIds((prev) => new Set([...prev].filter((id) => visible.has(id))));
   }, [deletedGroupIds, state.artifacts]);
 
+  useEffect(() => {
+    if (builderMounted) {
+      requestAnimationFrame(() => setBuilderOpen(true));
+    }
+  }, [builderMounted]);
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       {/* Header */}
       <div className="flex flex-col gap-4 px-6 pt-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -402,11 +950,7 @@ export function SegmentsPage({
           <Button
             size="sm"
             className="shrink-0"
-            onClick={() => {
-              if (onStartSegmentWorkflow) {
-                onStartSegmentWorkflow();
-              }
-            }}
+            onClick={openSegmentBuilder}
           >
             <RiAddLine className="size-3.5" /> New segment
           </Button>
@@ -563,6 +1107,560 @@ export function SegmentsPage({
         cancelLabel="Cancel"
         variant="destructive"
         onConfirm={confirmBulkDelete}
+      />
+
+      {builderMounted ? (
+        <div className="absolute inset-0 z-40 flex items-stretch">
+          <div
+            className={cn(
+              "absolute inset-0 bg-background/40 backdrop-blur-sm transition-opacity duration-300",
+              builderOpen ? "opacity-100" : "opacity-0 pointer-events-none",
+            )}
+            onClick={() => {
+              if (!builderOpen) return;
+              requestCloseSegmentBuilder();
+            }}
+          />
+          <div
+            className={cn(
+              "relative flex h-full flex-col border-r border-border/70 bg-background shadow-2xl transition-all duration-300 ease-out",
+              builderOpen ? "translate-x-0" : "-translate-x-full",
+              builderFullScreen ? "w-full" : "w-[50vw] max-w-[720px]",
+            )}
+            onTransitionEnd={(event) => {
+              if (!builderOpen && event.currentTarget === event.target) {
+                setBuilderMounted(false);
+                setBuilderFullScreen(false);
+              }
+            }}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">Build new segment</p>
+                <p className="text-xs text-foreground-secondary">Segment workflow</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="icon" variant="ghost" onClick={() => setBuilderFullScreen((open) => !open)}>
+                  {builderFullScreen ? <RiFullscreenExitLine className="size-4" /> : <RiFullscreenLine className="size-4" />}
+                </Button>
+                <Button size="icon" variant="ghost" onClick={requestCloseSegmentBuilder}>
+                  <RiCloseLine className="size-4" />
+                  <span className="sr-only">Close segment workflow</span>
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-4 rounded-2xl border border-border/70 bg-card p-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground-secondary">Describe what you want to build</label>
+                  <p className="text-xs text-muted-foreground">Add a full description or add conditions one by one.</p>
+                  <ConditionComposer
+                    value={builderPromptInput}
+                    onValueChange={setBuilderPromptInput}
+                    onApply={applyBuilderCondition}
+                    placeholder="Example: Repeat customers from Australia with AOV above $120"
+                    groups={mentionGroups}
+                    conditions={builderConditions}
+                    onRemoveCondition={removeBuilderCondition}
+                    onClearConditions={() => {
+                      setBuilderConditions([]);
+                      setBuilderReasoningVisible(false);
+                      setBuilderApprovedSaved(false);
+                      setBuilderApprovedPayload(null);
+                      setBuilderActivationPreview(null);
+                      setBuilderShowActivationConnection(false);
+                      setBuilderConnectionConfirmed(false);
+                      setBuilderActivationApprovedSent(false);
+                      setBuilderLatestActivationId(null);
+                    }}
+                    onConfirmAction={handleSegmentComposerConfirm}
+                  />
+                  {builderReasoningVisible ? (
+                    <div className="mt-3">
+                      <ReasoningBlock
+                        goal={builderReasoningGoal}
+                        assumptions={builderReasoningAssumptions}
+                        onSegmentApprove={saveApprovedSegment}
+                        onReject={() => {
+                          setBuilderReasoningVisible(false);
+                          setBuilderApprovedSaved(false);
+                          setBuilderApprovedPayload(null);
+                          setBuilderActivationPreview(null);
+                          setBuilderShowActivationConnection(false);
+                          setBuilderConnectionConfirmed(false);
+                          setBuilderActivationApprovedSent(false);
+                          setBuilderLatestActivationId(null);
+                        }}
+                        hideEditSegmentAction
+                        hideActivateAction
+                      />
+                    </div>
+                  ) : null}
+
+                  {builderActivationPreview ? (
+                    <div className="rounded-xl border border-border bg-card p-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                          MVP activation build
+                        </span>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-border bg-background px-4 py-3">
+                        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population volume</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{builderActivationPreview.population}</p>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-border bg-background p-3">
+                        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation name</p>
+                        <p className="mt-2 text-sm font-medium text-foreground">{builderActivationPreview.activationName}</p>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-border bg-background p-3">
+                        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation description</p>
+                        <p className="mt-2 text-sm text-foreground-secondary">{builderActivationPreview.activationDescription}</p>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-border bg-background p-3">
+                        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Segment contains</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground-secondary">
+                          {builderActivationPreview.rules.map((rule, index) => (
+                            <li key={`segment-activation-preview-rule-${index}`}>{rule}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setBuilderShowActivationConnection(true)}
+                          className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                        >
+                          Confirm
+                        </button>
+                      </div>
+
+                      {builderShowActivationConnection ? (
+                        <>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-xl border border-border bg-background p-3">
+                              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Connected data sources</p>
+                              <div className="mt-2 max-h-44 overflow-y-auto space-y-2 pr-1">
+                                {builderSourceList.map((source) => {
+                                  const selected = source.id === builderSelectedSourceId;
+                                  return (
+                                    <button
+                                      key={source.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setBuilderSelectedSourceId(source.id);
+                                        setBuilderSelectedAccounts([]);
+                                        setBuilderConnectionConfirmed(false);
+                                        setBuilderActivationApprovedSent(false);
+                                      }}
+                                      className={cn(
+                                        "w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                                        selected
+                                          ? "border-primary/60 bg-primary/10 text-foreground"
+                                          : "border-border bg-card text-foreground hover:bg-accent",
+                                      )}
+                                    >
+                                      {source.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border bg-background p-3">
+                              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Accounts (multi select)</p>
+                              <div className="mt-2 space-y-2">
+                                {builderSelectedSourceAccounts.map((account) => {
+                                  const checked = builderSelectedAccounts.includes(account.id);
+                                  return (
+                                    <label key={account.id} className="flex items-center gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-2 text-sm text-foreground">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          setBuilderSelectedAccounts((prev) => (
+                                            prev.includes(account.id)
+                                              ? prev.filter((item) => item !== account.id)
+                                              : [...prev, account.id]
+                                          ));
+                                          setBuilderConnectionConfirmed(false);
+                                          setBuilderActivationApprovedSent(false);
+                                        }}
+                                        className="size-4"
+                                      />
+                                      <span className="flex-1">{account.name}</span>
+                                      <span className="text-xs text-muted-foreground">{account.region}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 rounded-xl border border-border bg-background p-3">
+                            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Field mapping</p>
+                            <div className="mt-2 space-y-2">
+                              {builderFieldRows.map((row) => (
+                                <div key={row.id} className="grid gap-2 md:grid-cols-[170px_1fr] md:items-center">
+                                  <select
+                                    value={row.fieldType}
+                                    onChange={(event) => {
+                                      const nextFieldType = event.target.value;
+                                      const defaultMatch = builderFieldMatchOptions[nextFieldType]?.[0]?.value ?? "";
+                                      setBuilderFieldRows((prev) => prev.map((item) => (
+                                        item.id === row.id
+                                          ? { ...item, fieldType: nextFieldType, selectedMatch: defaultMatch }
+                                          : item
+                                      )));
+                                      setBuilderConnectionConfirmed(false);
+                                      setBuilderActivationApprovedSent(false);
+                                    }}
+                                    className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                                  >
+                                    {builderFieldTypeOptions.map((option) => (
+                                      <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={row.selectedMatch}
+                                    onChange={(event) => {
+                                      const next = event.target.value;
+                                      setBuilderFieldRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, selectedMatch: next } : item)));
+                                      setBuilderConnectionConfirmed(false);
+                                      setBuilderActivationApprovedSent(false);
+                                    }}
+                                    className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                                  >
+                                    {(builderFieldMatchOptions[row.fieldType] ?? []).map((option) => (
+                                      <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBuilderFieldRows((prev) => ([
+                                    ...prev,
+                                    {
+                                      id: `map-extra-${prev.length + 1}`,
+                                      fieldType: "email",
+                                      selectedMatch: "email_98",
+                                    },
+                                  ]));
+                                  setBuilderConnectionConfirmed(false);
+                                  setBuilderActivationApprovedSent(false);
+                                }}
+                                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+                              >
+                                Add More Fields
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 rounded-xl border border-border bg-background p-3">
+                            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Frequency</p>
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBuilderSendTiming("send-now");
+                                  setBuilderConnectionConfirmed(false);
+                                  setBuilderActivationApprovedSent(false);
+                                }}
+                                className={cn(
+                                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                                  builderSendTiming === "send-now"
+                                    ? "border-primary/60 bg-primary/10 text-foreground"
+                                    : "border-border bg-card text-foreground hover:bg-accent",
+                                )}
+                              >
+                                Send Now
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBuilderSendTiming("schedule-send");
+                                  setBuilderConnectionConfirmed(false);
+                                  setBuilderActivationApprovedSent(false);
+                                }}
+                                className={cn(
+                                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                                  builderSendTiming === "schedule-send"
+                                    ? "border-primary/60 bg-primary/10 text-foreground"
+                                    : "border-border bg-card text-foreground hover:bg-accent",
+                                )}
+                              >
+                                Schedule Send
+                              </button>
+                            </div>
+
+                            {builderSendTiming === "schedule-send" ? (
+                              <div className="mt-3 rounded-lg border border-border/70 bg-card p-3">
+                                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Scheduled send</p>
+                                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <label className="text-xs font-medium text-foreground-secondary" htmlFor="segment-builder-activation-start-date">Date</label>
+                                    <input
+                                      id="segment-builder-activation-start-date"
+                                      type="date"
+                                      value={builderScheduledStartDate}
+                                      onChange={(event) => {
+                                        setBuilderScheduledStartDate(event.target.value);
+                                        setBuilderConnectionConfirmed(false);
+                                        setBuilderActivationApprovedSent(false);
+                                      }}
+                                      className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-medium text-foreground-secondary" htmlFor="segment-builder-activation-start-time">Time</label>
+                                    <input
+                                      id="segment-builder-activation-start-time"
+                                      type="time"
+                                      value={builderScheduledStartTime}
+                                      onChange={(event) => {
+                                        setBuilderScheduledStartTime(event.target.value);
+                                        setBuilderConnectionConfirmed(false);
+                                        setBuilderActivationApprovedSent(false);
+                                      }}
+                                      className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="mt-2 grid grid-cols-1 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextCadence = builderSendCadence === "re-occurring" ? "once-off" : "re-occurring";
+                                  setBuilderSendCadence(nextCadence);
+                                  if (nextCadence !== "re-occurring") {
+                                    setBuilderRecurringHasEndDate("no");
+                                    setBuilderScheduledEndDate("");
+                                  }
+                                  setBuilderConnectionConfirmed(false);
+                                  setBuilderActivationApprovedSent(false);
+                                }}
+                                className={cn(
+                                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                                  builderSendCadence === "re-occurring"
+                                    ? "border-primary/60 bg-primary/10 text-foreground"
+                                    : "border-border bg-card text-foreground hover:bg-accent",
+                                )}
+                              >
+                                Re-Occuring
+                              </button>
+                            </div>
+
+                            {builderSendCadence === "re-occurring" ? (
+                              <div className="mt-3 rounded-lg border border-border/70 bg-card p-3">
+                                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Recurring setup</p>
+                                <div className="mt-2">
+                                  <label className="text-xs font-medium text-foreground-secondary" htmlFor="segment-builder-list-action">List action</label>
+                                  <select
+                                    id="segment-builder-list-action"
+                                    value={builderRecurringListAction}
+                                    onChange={(event) => {
+                                      setBuilderRecurringListAction(event.target.value as "append" | "maintain" | "update");
+                                      setBuilderConnectionConfirmed(false);
+                                      setBuilderActivationApprovedSent(false);
+                                    }}
+                                    className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                                  >
+                                    <option value="append">Append</option>
+                                    <option value="maintain">Maintain</option>
+                                    <option value="update">Update</option>
+                                  </select>
+                                  <p className="mt-1 text-xs text-muted-foreground">{RECURRING_LIST_ACTION_HINT[builderRecurringListAction]}</p>
+                                </div>
+                                <div className="mt-3">
+                                  <label className="text-xs font-medium text-foreground-secondary" htmlFor="segment-builder-recurring-time">Preferred daily send time</label>
+                                  <input
+                                    id="segment-builder-recurring-time"
+                                    type="time"
+                                    value={builderRecurringSendTime}
+                                    onChange={(event) => {
+                                      setBuilderRecurringSendTime(event.target.value);
+                                      setBuilderConnectionConfirmed(false);
+                                      setBuilderActivationApprovedSent(false);
+                                    }}
+                                    className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                                  />
+                                </div>
+                                <div className="mt-3">
+                                  <p className="text-xs font-medium text-foreground-secondary">Is there an end date?</p>
+                                  <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setBuilderRecurringHasEndDate("yes");
+                                        setBuilderConnectionConfirmed(false);
+                                        setBuilderActivationApprovedSent(false);
+                                      }}
+                                      className={cn(
+                                        "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                                        builderRecurringHasEndDate === "yes"
+                                          ? "border-primary/60 bg-primary/10 text-foreground"
+                                          : "border-border bg-background text-foreground hover:bg-accent",
+                                      )}
+                                    >
+                                      Yes
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setBuilderRecurringHasEndDate("no");
+                                        setBuilderScheduledEndDate("");
+                                        setBuilderConnectionConfirmed(false);
+                                        setBuilderActivationApprovedSent(false);
+                                      }}
+                                      className={cn(
+                                        "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                                        builderRecurringHasEndDate === "no"
+                                          ? "border-primary/60 bg-primary/10 text-foreground"
+                                          : "border-border bg-background text-foreground hover:bg-accent",
+                                      )}
+                                    >
+                                      No
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {builderRecurringHasEndDate === "yes" ? (
+                                  <div className="mt-3">
+                                    <label className="text-xs font-medium text-foreground-secondary" htmlFor="segment-builder-activation-end-date">End date</label>
+                                    <input
+                                      id="segment-builder-activation-end-date"
+                                      type="date"
+                                      value={builderScheduledEndDate}
+                                      onChange={(event) => {
+                                        setBuilderScheduledEndDate(event.target.value);
+                                        setBuilderConnectionConfirmed(false);
+                                        setBuilderActivationApprovedSent(false);
+                                      }}
+                                      className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            <div className="mt-3 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setBuilderConnectionConfirmed(true)}
+                                disabled={!builderCanConfirmConnection}
+                                className={cn(
+                                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                                  builderCanConfirmConnection
+                                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                    : "cursor-not-allowed bg-muted text-muted-foreground",
+                                )}
+                              >
+                                {builderConnectionConfirmed ? "Confirmed" : "Confirm"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {builderConnectionConfirmed ? (
+                            <>
+                              <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation confirmation</p>
+                                <div className="mt-2 space-y-2 text-sm">
+                                  <p className="text-foreground"><span className="font-medium">Activation name:</span> {builderActivationPreview.activationName}</p>
+                                  <p className="text-foreground"><span className="font-medium">Activation definition:</span> {builderActivationPreview.activationDescription}</p>
+                                  <p className="text-foreground"><span className="font-medium">Population:</span> {builderActivationPreview.population}</p>
+                                  <p className="text-foreground"><span className="font-medium">Data source:</span> {builderSelectedSource?.name ?? "Not selected"}</p>
+                                </div>
+                              </div>
+                              <div className="mt-3 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={approveAndSendActivationFromSegmentBuilder}
+                                  disabled={builderActivationApprovedSent}
+                                  className={cn(
+                                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                                    builderActivationApprovedSent
+                                      ? "cursor-not-allowed bg-muted text-muted-foreground"
+                                      : "bg-primary text-primary-foreground hover:bg-primary/90",
+                                  )}
+                                >
+                                  {builderActivationApprovedSent ? "Approved and Sent" : "Approve and Send"}
+                                </button>
+                              </div>
+
+                            </>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-border/60 px-4 py-3">
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="outline" onClick={requestCloseSegmentBuilder}>Close</Button>
+                <Button
+                  variant="outline"
+                  disabled={!builderReasoningVisible}
+                  onClick={requestBuildNewSegment}
+                >
+                  Build a New Segment
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={!builderLatestActivationId}
+                  onClick={() => {
+                    if (!builderLatestActivationId) return;
+                    closeSegmentBuilder();
+                    onOpenActivationPage?.(builderLatestActivationId);
+                  }}
+                >
+                  Go to Activation
+                </Button>
+                <Button
+                  disabled={!builderApprovedSaved || Boolean(builderActivationPreview)}
+                  onClick={activateApprovedSegment}
+                >
+                  Activate
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmBuilderCloseOpen}
+        onOpenChange={(open) => {
+          setConfirmBuilderCloseOpen(open);
+          if (!open) setPendingBuilderExitAction(null);
+        }}
+        title={pendingBuilderExitAction === "new-segment"
+          ? "Are you sure you want to build a new segment now?"
+          : "Are you sure you want to close?"}
+        description={pendingBuilderExitAction === "new-segment"
+          ? "All work will be lost."
+          : "All unsaved work will be lost."}
+        confirmLabel="Yes"
+        cancelLabel="Keep working"
+        variant="destructive"
+        onConfirm={handleConfirmSegmentBuilderClose}
+        icon={RiCloseLine}
       />
     </div>
   );

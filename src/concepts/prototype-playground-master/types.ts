@@ -177,6 +177,8 @@ export type FlowBlock = {
   schedule?: FlowSchedule;
   segmentCreated?: boolean;
   destination?: "Klaviyo" | "Meta" | "Braze";
+  connectedSourceId?: string;
+  connectedAccountIds?: string[];
   subscriptionStatus?: "Subscribed" | "Unsubscribed";
   correctionOpen?: boolean;
   correctionText?: string;

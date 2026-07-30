@@ -713,26 +713,17 @@ function ActivationBuildCard({
               </button>
             </div>
 
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-2 grid grid-cols-1 gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setSendCadence("once-off");
-                  setRecurringHasEndDate("no");
-                  setScheduledEndDate("");
+                  const nextCadence = sendCadence === "re-occurring" ? "once-off" : "re-occurring";
+                  setSendCadence(nextCadence);
+                  if (nextCadence !== "re-occurring") {
+                    setRecurringHasEndDate("no");
+                    setScheduledEndDate("");
+                  }
                 }}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                  sendCadence === "once-off"
-                    ? "border-primary/60 bg-primary/10 text-foreground"
-                    : "border-border bg-card text-foreground hover:bg-accent",
-                )}
-              >
-                Once Off
-              </button>
-              <button
-                type="button"
-                onClick={() => setSendCadence("re-occurring")}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
                   sendCadence === "re-occurring"

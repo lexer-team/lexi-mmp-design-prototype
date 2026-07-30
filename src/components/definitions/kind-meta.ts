@@ -4,8 +4,8 @@ import {
 import type { DefKind } from "@/data/def-registry";
 
 export const KIND_META: Record<DefKind, { icon: typeof RiGroupLine; label: string }> = {
-  term: { icon: RiBookmark3Line, label: "Defined term" },
-  attribute: { icon: RiPriceTag3Line, label: "Attribute" },
+  term: { icon: RiBookmark3Line, label: "Custom Definition" },
+  attribute: { icon: RiPriceTag3Line, label: "Source Definition" },
   metric: { icon: RiBarChartLine, label: "Metric" },
   segment: { icon: RiGroupLine, label: "Segment" },
   dashboard: { icon: RiDashboardLine, label: "Dashboard" },
