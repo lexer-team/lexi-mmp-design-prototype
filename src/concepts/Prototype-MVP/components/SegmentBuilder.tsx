@@ -190,7 +190,7 @@ function DefChip({ cond, variant }: { cond: LogicCondition; variant: "chip" | "u
           onMouseEnter={show}
           onMouseLeave={hide}
         >
-          <DefinitionCard def={def} />
+          <DefinitionCard def={def} hideRuleDetails />
         </div>,
         document.body,
       )}

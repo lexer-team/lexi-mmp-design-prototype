@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RiCheckLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonal2Line, RiCollapseDiagonal2Line } from "@remixicon/react";
@@ -16,7 +17,7 @@ import { ThinkingProcess, type ThinkingStep } from "../lexi-shared-brain/ChatThi
 import { getDef, registerDefs, type DefRef } from "@/data/def-registry";
 import { BRAIN_GROUPS, ENTITY_META } from "../lexi-shared-brain/data";
 import { MOCK_DEFINITIONS } from "@/data/definitions-mock";
-import { ACTIVATIONS, type Activation } from "./activations-mock";
+import { ACTIVATIONS, ACTIVATION_STATUS_META, approvalLabel, getActivation, type Activation } from "./activations-mock";
 import {
   CONVERSATIONS,
   DEFAULT_CONVERSATION_ID,
@@ -435,7 +436,6 @@ function ActivationBuildCard({
       selectedMatch: "mobile_92",
     },
   ]);
-
   const sourceList = [
     { id: "src-meta", name: "Meta Ads" },
     { id: "src-klaviyo", name: "Klaviyo" },
@@ -487,6 +487,7 @@ function ActivationBuildCard({
   const hasSelectedSource = Boolean(selectedSourceId);
   const hasSelectedAccounts = selectedAccounts.length > 0;
   const hasValidFieldMappings = fieldRows.every((row) => Boolean(row.fieldType) && Boolean(row.selectedMatch));
+  const hasAvailableFieldType = fieldTypeOptions.some((option) => !fieldRows.some((row) => row.fieldType === option.value));
   const requiresStartDate = sendTiming === "schedule-send";
   const hasStartDate = !requiresStartDate || Boolean(scheduledStartDate);
   const requiresStartTime = sendTiming === "schedule-send";
@@ -509,16 +510,14 @@ function ActivationBuildCard({
   };
 
   const addMoreFields = () => {
-    setFieldRows((prev) => {
-      return [
-        ...prev,
-        {
-          id: `map-extra-${prev.length + 1}`,
-          fieldType: "email",
-          selectedMatch: "email_98",
-        },
-      ];
-    });
+    setFieldRows((prev) => [
+      ...prev,
+      {
+        id: `map-extra-${prev.length + 1}`,
+        fieldType: "email",
+        selectedMatch: "email_98",
+      },
+    ]);
   };
 
   return (
@@ -1415,6 +1414,7 @@ function StartHero() {
     <div className="flex flex-col items-center gap-4 text-center animate-in fade-in-0 duration-300">
       <LexiMark className="size-11" />
       <h2 className="text-lg font-semibold text-foreground">What are we working on?</h2>
+      <BetaNotice className="mb-0" />
     </div>
   );
 }
@@ -1498,7 +1498,10 @@ interface ChatPanelProps {
 
 export function ChatPanel({ narrow }: ChatPanelProps) {
   const { state, dispatch } = useSession();
-  const mentionGroups = useMemo(() => buildMentionGroups(state.activations), [state.activations]);
+  const mentionGroups = useMemo(
+    () => buildMentionGroups(state.activations),
+    [state.activations],
+  );
   const plusSegmentItems = useMemo<DefRef[]>(() => {
     const savedSegments = Array.from(state.artifacts.values())
       .filter((artifact) => artifact.type === "segment" && artifact.status === "saved" && artifact.body?.kind === "segment")
@@ -2636,6 +2639,37 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
 
     if (triggeredByActivation && CONVERSATIONS.some((conversation) => conversation.id === triggeredByActivation)) {
       dispatch({ type: "SELECT_CONVERSATION", id: triggeredByActivation, autoStart: true });
+      return;
+    }
+
+    const mentionedActivation = mentionIds
+      .map((id) => state.activations.find((activation) => activation.id === id) ?? getActivation(id))
+      .find((activation): activation is Activation => Boolean(activation));
+
+    if (mentionedActivation) {
+      const asksForResults = /\b(result|performance|outcome|audience|profiles|delivery|failed|failure|why|happened)\b/.test(normalizedText);
+      const details = [
+        `**${mentionedActivation.name}** is ${ACTIVATION_STATUS_META[mentionedActivation.status].label.toLowerCase()}.`,
+        `- Channel: ${mentionedActivation.channel}`,
+        `- Timing: ${mentionedActivation.whenLabel}`,
+        `- Approval: ${approvalLabel(mentionedActivation.approval)}`,
+        ...(mentionedActivation.segmentName ? [`- Audience: ${mentionedActivation.segmentName}`] : []),
+        ...(mentionedActivation.result ? [`- Result: ${mentionedActivation.result}`] : []),
+        ...mentionedActivation.invocations.map((invocation) => (
+          `- ${invocation.skill}: ${invocation.result} (${invocation.params})`
+        )),
+        ...(asksForResults && mentionedActivation.history?.length
+          ? (() => {
+              const latest = mentionedActivation.history[mentionedActivation.history.length - 1];
+              const delta = `${latest.delta > 0 ? "+" : ""}${latest.delta}%`;
+              return [`- Latest audience update: ${latest.profilesSent.toLocaleString()} profiles (${delta}); ${latest.note}.`];
+            })()
+          : []),
+        ...(mentionedActivation.trail.length
+          ? [`- Latest activity: ${mentionedActivation.trail[mentionedActivation.trail.length - 1].entry}`]
+          : []),
+      ];
+      appendUserAndLexiText(details.join("\n"));
       return;
     }
 

@@ -30,7 +30,7 @@ import {
 import { getDef } from "@/data/def-registry";
 import type { DefRef } from "@/data/def-registry";
 import type { ContentBlock, ReasoningAssumption } from "./types";
-import { ACTIVATION_STATUS_META, ALWAYS_AVAILABLE_ACTIVATION_ID, approvalLabel, getActivation, type Activation, type ActivationStatus } from "./activations-mock";
+import { ACTIVATION_STATUS_META, ALWAYS_AVAILABLE_ACTIVATION_ID, approvalLabel, DEFAULT_ACTIVATION_HISTORY, getActivation, type Activation, type ActivationStatus } from "./activations-mock";
 import { useSession } from "./store";
 import { ConfirmDialog } from "@/components/ui/Dialog";
 import { buildConditionMenuGroups } from "./condition-menu-groups";
@@ -49,6 +49,7 @@ const RECURRING_LIST_ACTION_HINT: Record<"append" | "maintain" | "update", strin
 export function ActivationsPage({
   onOpenActivation,
   onStartActivationWorkflow,
+  onOpenSegment,
   onOpenSegmentPage,
   prefillSegmentId,
   onPrefillComplete,
@@ -56,6 +57,7 @@ export function ActivationsPage({
 }: {
   onOpenActivation?: (id: string) => void;
   onStartActivationWorkflow?: () => void;
+  onOpenSegment?: (id: string) => void;
   onOpenSegmentPage?: (id: string) => void;
   prefillSegmentId?: string;
   onPrefillComplete?: () => void;
@@ -753,6 +755,7 @@ export function ActivationsPage({
       ? `Scheduled · ${builderScheduledStartDate}${builderScheduledStartTime ? ` ${builderScheduledStartTime}` : ""}`
       : "Scheduled";
     const segmentNameForContext = builderSelectedSegmentName || builderActivationConfirmation.activationName.replace(/\s+activation$/i, "");
+    const linkedSegmentId = builderSelectedSegmentId ?? builderActivationConfirmation.segmentId ?? "seg-unspecified";
 
     dispatch({
       type: "ADD_ARTIFACT",
@@ -764,7 +767,7 @@ export function ActivationsPage({
         savedAt: timestamp,
         body: {
           kind: "activation",
-          segmentId: builderActivationConfirmation.segmentId,
+          segmentId: linkedSegmentId,
           segmentName: segmentNameForContext,
         },
       },
@@ -777,7 +780,7 @@ export function ActivationsPage({
         createdAt: timestamp,
         name: builderActivationConfirmation.activationName,
         context: `From segment: ${segmentNameForContext || "Selected segment"}`,
-        segmentId: builderActivationConfirmation.segmentId,
+        segmentId: linkedSegmentId,
         segmentName: segmentNameForContext,
         channel: builderSelectedSource?.name ?? "Multi-channel",
         category: "MVP activation",
@@ -823,9 +826,9 @@ export function ActivationsPage({
           timing: builderSendTiming === "schedule-send" ? "Schedule Send" : "Send Now",
           cadence: builderSendCadence === "re-occurring" ? "Re-Occuring" : "Once Off",
           customers: [
-            { id: `${activationId}-cust-1`, name: `${segmentNameForContext} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
-            { id: `${activationId}-cust-2`, name: `${segmentNameForContext} - Liam Nguyen`, meta: "AOV $129 · Last purchase 49 days ago" },
-            { id: `${activationId}-cust-3`, name: `${segmentNameForContext} - Mia Rodriguez`, meta: "AOV $151 · Last purchase 62 days ago" },
+            { id: `${activationId}-cust-1`, name: "Ava Thompson", segmentName: segmentNameForContext, lastPurchase: "Last purchase 34 days ago" },
+            { id: `${activationId}-cust-2`, name: "Liam Nguyen", segmentName: segmentNameForContext, lastPurchase: "Last purchase 49 days ago" },
+            { id: `${activationId}-cust-3`, name: "Mia Rodriguez", segmentName: segmentNameForContext, lastPurchase: "Last purchase 62 days ago" },
           ],
         },
       },
@@ -923,6 +926,7 @@ export function ActivationsPage({
                   </div>
                 </TableHead>
                 <TableHead>Activation</TableHead>
+                <TableHead className="w-40">Segment</TableHead>
                 <TableHead>Context</TableHead>
                 <TableHead className="w-36">Channel</TableHead>
                 <TableHead className="w-32">Frequency</TableHead>
@@ -952,6 +956,24 @@ export function ActivationsPage({
                     <TableCell>
                       <span className="font-medium text-foreground">{a.name}</span>
                       <p className="mt-0.5 max-w-xs truncate text-sm text-foreground-secondary">{a.skill}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">Created by {a.createdBy ?? (a.approval.kind === "approved" ? a.approval.by : a.approval.kind === "pending" ? "Pending approval" : "System")}</p>
+                    </TableCell>
+                    <TableCell className="max-w-[10rem] truncate text-sm text-foreground-secondary">
+                      {(a.segmentId && (onOpenSegment ?? onOpenSegmentPage)) ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            (onOpenSegment ?? onOpenSegmentPage)?.(a.segmentId!);
+                          }}
+                          className="max-w-full truncate text-left font-medium text-foreground hover:text-primary"
+                          title={a.segmentName ?? "Segment"}
+                        >
+                          {a.segmentName ?? "Segment"}
+                        </button>
+                      ) : (
+                        <span>{a.segmentName ?? "Not linked"}</span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">{a.context}</TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{a.channel}</TableCell>
@@ -1797,6 +1819,7 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
   const detailPopulation = activation.mvpDetails?.population ?? "Not specified";
   const detailActivationName = activation.mvpDetails?.activationName ?? activation.name;
   const detailActivationDefinition = activation.mvpDetails?.activationDefinition ?? activation.result ?? "Not specified";
+  const detailCreatedBy = activation.createdBy ?? (activation.approval.kind === "approved" ? activation.approval.by : activation.approval.kind === "pending" ? "Pending approval" : "System");
   const detailSegmentUsed = activation.mvpDetails?.segmentName ?? activation.segmentName ?? "Not specified";
   const detailDataSource = activation.mvpDetails?.dataSource ?? activation.channel;
   const detailAccounts = activation.mvpDetails?.accounts?.length
@@ -1812,10 +1835,36 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
   const detailCustomers = activation.mvpDetails?.customers?.length
     ? activation.mvpDetails.customers
     : [
-        { id: `${activation.id}-cust-1`, name: `${detailSegmentUsed} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
-        { id: `${activation.id}-cust-2`, name: `${detailSegmentUsed} - Liam Nguyen`, meta: "AOV $129 · Last purchase 49 days ago" },
-        { id: `${activation.id}-cust-3`, name: `${detailSegmentUsed} - Mia Rodriguez`, meta: "AOV $151 · Last purchase 62 days ago" },
+        { id: `${activation.id}-cust-1`, name: "Ava Thompson", segmentName: detailSegmentUsed, lastPurchase: "Last purchase 34 days ago" },
+        { id: `${activation.id}-cust-2`, name: "Liam Nguyen", segmentName: detailSegmentUsed, lastPurchase: "Last purchase 49 days ago" },
+        { id: `${activation.id}-cust-3`, name: "Mia Rodriguez", segmentName: detailSegmentUsed, lastPurchase: "Last purchase 62 days ago" },
       ];
+
+  const isOneOffActivation = !activation.recurringStartDate && !!activation.scheduledDate;
+  const historyRows = isOneOffActivation
+    ? [{
+        date: activation.scheduledDate ?? "Scheduled",
+        profilesSent: 18240,
+        delta: 0,
+        note: "Single send",
+      }]
+    : (activation.history ?? DEFAULT_ACTIVATION_HISTORY);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const chartValues = historyRows.map((row) => row.profilesSent);
+  const minValue = Math.min(...chartValues) * 0.9;
+  const maxValue = Math.max(...chartValues) * 1.08;
+  const padLeft = 42;
+  const padRight = 10;
+  const padTop = 18;
+  const padBottom = 28;
+  const chartWidth = 520;
+  const chartHeight = 180;
+  const chartInnerWidth = chartWidth - padLeft - padRight;
+  const chartInnerHeight = chartHeight - padTop - padBottom;
+  const pointX = (index: number) => padLeft + (index / Math.max(historyRows.length - 1, 1)) * chartInnerWidth;
+  const pointY = (value: number) => padTop + chartInnerHeight - ((value - minValue) / Math.max(maxValue - minValue, 1)) * chartInnerHeight;
+  const linePath = historyRows.map((row, index) => `${index === 0 ? "M" : "L"} ${pointX(index)} ${pointY(row.profilesSent)}`).join(" ");
+  const hoverPoint = hoveredIndex !== null ? historyRows[hoveredIndex] : null;
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -1827,10 +1876,31 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
         <p className="text-xs text-muted-foreground">{activation.context} · {activation.whenLabel}</p>
       </div>
 
+      {activation.status === "failed" && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+          <div className="flex items-center gap-2">
+            <Badge variant="danger" size="sm">Failed</Badge>
+            <p className="text-xs font-medium text-destructive">Why this activation failed</p>
+          </div>
+          <p className="mt-2 text-sm text-foreground-secondary">
+            The Meta account token expired mid-push, so the audience sync stopped before new customers were added.
+          </p>
+          <div className="mt-3 rounded-lg border border-border bg-background/70 p-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground">Resolution steps</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-foreground-secondary">
+              <li>Refresh the external token and re-authenticate the integration.</li>
+              <li>Confirm the audience mapping and target segment are still valid.</li>
+              <li>Retry the activation once the connection is restored.</li>
+            </ol>
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="details" className="space-y-3">
         <TabsList variant="underline" className="w-full">
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
+          <TabsTrigger value="history">Activation history</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details" className="space-y-3">
@@ -1842,6 +1912,9 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
           <div className="rounded-xl border border-border bg-card p-4">
             <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation name</p>
             <p className="mt-1 text-sm font-medium text-foreground">{detailActivationName}</p>
+
+            <p className="mt-3 text-xs font-medium uppercase tracking-normal text-muted-foreground">Created by</p>
+            <p className="mt-1 text-sm font-medium text-foreground">{detailCreatedBy}</p>
 
             <p className="mt-3 text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation definition</p>
             <p className="mt-1 text-sm text-foreground-secondary">{detailActivationDefinition}</p>
@@ -1898,9 +1971,97 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
               {detailCustomers.map((customer) => (
                 <div key={customer.id} className="rounded-lg border border-border/70 bg-background px-3 py-2">
                   <p className="text-sm font-medium text-foreground">{customer.name}</p>
-                  <p className="mt-0.5 text-xs text-foreground-secondary">{customer.meta}</p>
+                  <p className="mt-1 text-xs text-foreground-secondary">{customer.segmentName ?? detailSegmentUsed}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{customer.lastPurchase ?? customer.meta ?? "Recent purchase data unavailable"}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-3">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation send history</p>
+              <span className="text-xs text-foreground-secondary">Profiles sent</span>
+            </div>
+
+            <div className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-background">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Profiles sent</TableHead>
+                    <TableHead>Delta</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {historyRows.map((row) => (
+                    <TableRow key={row.date} className={row.failed ? "bg-destructive/5" : undefined}>
+                      <TableCell className={row.failed ? "font-medium text-destructive" : "font-medium text-foreground"}>{row.date}</TableCell>
+                      <TableCell className={row.failed ? "tabular-nums text-destructive" : "tabular-nums text-foreground-secondary"}>{row.profilesSent.toLocaleString()}</TableCell>
+                      <TableCell className={row.failed ? "text-destructive" : row.delta >= 0 ? "text-emerald-600" : "text-destructive"}>
+                        {row.delta > 0 ? "+" : ""}{row.delta}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Volume trend</p>
+              <span className="text-xs text-foreground-secondary">Hover data points for deltas</span>
+            </div>
+
+            <div className="relative overflow-hidden rounded-lg border border-border/70 bg-background p-2">
+              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-[210px] w-full" preserveAspectRatio="xMidYMid meet">
+                {[0, 1, 2, 3].map((tick) => {
+                  const y = padTop + (chartInnerHeight * tick) / 3;
+                  const value = Math.round(maxValue - ((maxValue - minValue) * tick) / 3);
+                  return (
+                    <g key={tick}>
+                      <line x1={padLeft} x2={chartWidth - padRight} y1={y} y2={y} stroke="currentColor" strokeOpacity={0.08} />
+                      <text x={padLeft - 8} y={y + 4} textAnchor="end" fontSize={10} fill="currentColor" fillOpacity={0.5}>{value.toLocaleString()}</text>
+                    </g>
+                  );
+                })}
+
+                <path d={linePath} fill="none" stroke="oklch(62.698% 0.10432 189.917)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+
+                {historyRows.map((row, index) => {
+                  const isFailedPoint = Boolean(row.failed);
+                  const pointColor = isFailedPoint ? "oklch(56.3% 0.224 18.58)" : "oklch(62.698% 0.10432 189.917)";
+                  return (
+                    <g key={`${row.date}-${index}`}>
+                      <circle
+                        cx={pointX(index)}
+                        cy={pointY(row.profilesSent)}
+                        r={hoveredIndex === index ? 6 : 4}
+                        fill={hoveredIndex === index ? pointColor : isFailedPoint ? "#f97316" : "white"}
+                        stroke={pointColor}
+                        strokeWidth={2}
+                        onMouseEnter={() => setHoveredIndex(index)}
+                        onMouseLeave={() => setHoveredIndex(null)}
+                      />
+                    </g>
+                  );
+                })}
+
+                {historyRows.map((row, index) => (
+                  <text key={`${row.date}-axis-${index}`} x={pointX(index)} y={chartHeight - 6} textAnchor="middle" fontSize={9} fill="currentColor" fillOpacity={0.45}>{row.date}</text>
+                ))}
+              </svg>
+
+              {hoverPoint && (
+                <div className="pointer-events-none absolute min-w-[120px] rounded-lg border border-border bg-popover/95 p-2 shadow-sm" style={{ left: `${(pointX(historyRows.indexOf(hoverPoint)) / chartWidth) * 100}%`, top: `${Math.max(10, pointY(hoverPoint.profilesSent) / chartHeight * 100 - 12)}%`, transform: "translate(-50%, -100%)" }}>
+                  <div className={hoverPoint.failed ? "text-[10px] font-medium uppercase tracking-normal text-destructive" : "text-[10px] font-medium uppercase tracking-normal text-muted-foreground"}>{hoverPoint.date}</div>
+                  <div className={hoverPoint.failed ? "mt-1 text-sm font-semibold text-destructive" : "mt-1 text-sm font-semibold text-foreground"}>{hoverPoint.profilesSent.toLocaleString()} sent</div>
+                  <div className={hoverPoint.failed ? "text-xs text-destructive" : hoverPoint.delta >= 0 ? "text-xs text-emerald-600" : "text-xs text-destructive"}>{hoverPoint.delta > 0 ? "+" : ""}{hoverPoint.delta}% vs prior</div>
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>

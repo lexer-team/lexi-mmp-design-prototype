@@ -205,6 +205,14 @@ export type ContentBlock =
       activationDescription: string;
     }
   | {
+      type: "activationEdit";
+      activationId: string;
+    }
+  | {
+      type: "activationSummary";
+      activationId: string;
+    }
+  | {
       type: "activationConnect";
       activationName: string;
       segmentName: string;

@@ -1,0 +1,40 @@
+<svg width="1200" height="800" viewBox="0 0 1200 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1200" y2="800" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111111"/>
+      <stop offset="1" stop-color="#320C20"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="800" rx="28" fill="url(#bg2)"/>
+  <rect x="76" y="72" width="1048" height="656" rx="24" fill="#0F0F0F" stroke="#CD4496" stroke-opacity="0.5"/>
+
+  <text x="140" y="162" fill="#FCDAEB" font-size="52" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">BLACK FRIDAY DOORBUSTERS</text>
+  <text x="140" y="214" fill="#FFFFFF" font-size="30" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">EMAIL BLAST · 48 HOUR COUNTDOWN</text>
+
+  <g transform="translate(140 270)">
+    <rect x="0" y="0" width="280" height="250" rx="16" fill="#1A1A1A" stroke="#CD4496"/>
+    <text x="24" y="52" fill="#FCDAEB" font-size="24" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">Outerwear</text>
+    <text x="24" y="124" fill="#FFFFFF" font-size="52" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">40%</text>
+    <text x="24" y="164" fill="#FFFFFF" font-size="24" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">OFF</text>
+  </g>
+
+  <g transform="translate(460 270)">
+    <rect x="0" y="0" width="280" height="250" rx="16" fill="#1A1A1A" stroke="#CD4496"/>
+    <text x="24" y="52" fill="#FCDAEB" font-size="24" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">Denim</text>
+    <text x="24" y="124" fill="#FFFFFF" font-size="52" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">35%</text>
+    <text x="24" y="164" fill="#FFFFFF" font-size="24" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">OFF</text>
+  </g>
+
+  <g transform="translate(780 270)">
+    <rect x="0" y="0" width="280" height="250" rx="16" fill="#1A1A1A" stroke="#CD4496"/>
+    <text x="24" y="52" fill="#FCDAEB" font-size="24" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">Accessories</text>
+    <text x="24" y="124" fill="#FFFFFF" font-size="52" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">50%</text>
+    <text x="24" y="164" fill="#FFFFFF" font-size="24" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">OFF</text>
+  </g>
+
+  <rect x="140" y="584" width="320" height="64" rx="12" fill="#CD4496"/>
+  <text x="196" y="625" fill="#FFFFFF" font-size="28" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">OPEN OFFER</text>
+
+  <text x="520" y="626" fill="#FCDAEB" font-size="22" font-family="'Mona Sans', Arial, sans-serif">Send window: 6am-10am • Channel: Email</text>
+</svg>

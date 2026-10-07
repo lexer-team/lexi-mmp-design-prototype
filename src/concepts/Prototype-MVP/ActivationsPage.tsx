@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
@@ -21,16 +22,41 @@ import {
 } from "@/components/ui/Table";
 import ActivationFlowBlock from "./components/ActivationFlowBlock";
 import {
-  RiSearchLine, RiBroadcastLine, RiGroupLine, RiShieldCheckLine,
+  RiSearchLine, RiBroadcastLine, RiGroupLine, RiShieldCheckLine, RiLockLine,
   RiPlayLine, RiTimeLine, RiFlag2Line, RiArrowRightSLine, RiPriceTag3Line,
   RiFullscreenLine, RiFullscreenExitLine, RiCloseLine,
 } from "@remixicon/react";
 import { getDef } from "@/data/def-registry";
 import type { ContentBlock } from "./types";
-import { ACTIVATION_STATUS_META, ALWAYS_AVAILABLE_ACTIVATION_ID, approvalLabel, getActivation, type Activation, type ActivationStatus } from "./activations-mock";
+import { ACTIVATION_STATUS_META, ALWAYS_AVAILABLE_ACTIVATION_ID, approvalLabel, DEFAULT_ACTIVATION_HISTORY, getActivation, getActivationDestinationPlatform, getActivationPlatformType, type Activation, type ActivationStatus } from "./activations-mock";
 import { useSession } from "./store";
 import { buildMentionGroups } from "./ChatPanel";
 import { ConfirmDialog } from "@/components/ui/Dialog";
+
+function getActivationCreatedBy(activation: Activation) {
+  const creator = activation.createdBy;
+  if (creator && !["System", "Lexi automation", "Pending approval"].includes(creator)) return creator;
+  return activation.approval.kind === "approved" ? activation.approval.by : "Amy";
+}
+
+function formatDetailDate(value?: string) {
+  if (!value) return "Not set";
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatDetailTime(value?: string) {
+  if (!value) return "Not set";
+  const time = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!time) return value;
+  const hour = Number(time[1]);
+  if (Number.isNaN(hour) || hour < 0 || hour > 23) return value;
+  return `${hour % 12 || 12}:${time[2]} ${hour >= 12 ? "pm" : "am"}`;
+}
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
@@ -142,6 +168,7 @@ export function ActivationsPage({
 
   const shown = activations.filter(
     (a) =>
+      a.status !== "awaiting-approval" &&
       (status === "all" || a.status === status) &&
       (matches(a.name) || matches(a.context)),
   );
@@ -179,23 +206,48 @@ export function ActivationsPage({
     return time ? `${date} ${time}` : date;
   };
 
-  const activationStartDateTime = (activation: Activation) => {
-    const startDate = activation.recurringStartDate ?? activation.scheduledDate;
-    const startTime = activation.scheduledTime;
-    return formatDateTime(startDate, startTime);
+  const activationLatestSync = (activation: Activation) => {
+    const syncRows = activation.history?.filter((row) => row.note.startsWith("Manual delta sync:")) ?? [];
+    return syncRows[syncRows.length - 1];
+  };
+
+  const activationSendDate = (activation: Activation) => {
+    const scheduledDate = formatIsoDate(activation.scheduledDate ?? activation.recurringStartDate);
+    if (scheduledDate) return scheduledDate;
+
+    if (activation.status === "sent" || activation.status === "completed") {
+      const createdDate = formatIsoDate(activation.createdAt);
+      if (createdDate) return createdDate;
+      return activation.whenLabel.replace(/^(?:Sent|Completed)\s*[·:]?\s*/i, "") || activation.whenLabel;
+    }
+
+    const liveSince = activation.whenLabel.match(/^Live since\s+(.+)$/i)?.[1];
+    return liveSince ?? formatIsoDate(activation.createdAt) ?? "-";
   };
 
   const activationEndDateTime = (activation: Activation) => {
-    return formatDateTime(activation.recurringEndDate, activation.recurringEndTime);
+    return formatDateTime(activation.recurringEndDate ?? activation.scheduledEndDate, activation.recurringEndTime);
   };
 
-  const activationRecurringTime = (activation: Activation) => {
-    const direct = activation.recurringTime ?? activation.mvpDetails?.recurringTime;
+  const activationDeliveryTime = (activation: Activation) => {
+    const isRecurring = activationCadence(activation).toLowerCase().includes("recurr");
+    const direct = isRecurring
+      ? activation.recurringTime ?? activation.mvpDetails?.recurringTime
+      : activation.scheduledTime;
     if (direct) return formatClock(direct) ?? direct;
 
-    const fromLabel = activation.whenLabel.match(/daily at\s+([^,]+)/i)?.[1]?.trim();
-    if (fromLabel) return fromLabel;
-    return "-";
+    if (isRecurring) {
+      const fromLabel = activation.whenLabel.match(/daily at\s+([^,]+)/i)?.[1]?.trim();
+      if (fromLabel) return fromLabel;
+      return "-";
+    }
+
+    let idHash = 0;
+    for (const character of activation.id) idHash = (idHash * 31 + character.charCodeAt(0)) >>> 0;
+    const minutesAfterEight = (idHash % 40) * 15;
+    const hour = 8 + Math.floor(minutesAfterEight / 60);
+    const minute = String(minutesAfterEight % 60).padStart(2, "0");
+    return formatClock(`${String(hour).padStart(2, "0")}:${minute}`) ?? "-";
   };
 
   const activationFrequency = (activation: Activation) => {
@@ -206,17 +258,17 @@ export function ActivationsPage({
   };
 
   const activationCadence = (activation: Activation) => {
-    const baseCadence = activation.mvpDetails?.cadence
-      ?? (activation.recurringStartDate ? "Re-Occuring" : "Once Off");
+    const baseCadence = activation.activationCadence ?? activation.mvpDetails?.cadence
+      ?? (activation.recurringStartDate ? "Recurring" : "Once Off");
     return baseCadence;
   };
 
   const activationWhen = (activation: Activation) => {
     const frequency = activationFrequency(activation);
     const cadence = activation.mvpDetails?.cadence
-      ?? (activation.recurringStartDate ? "Re-Occuring" : "Once Off");
+      ?? (activation.recurringStartDate ? "Recurring" : "Once Off");
 
-    const isRecurring = cadence.toLowerCase().includes("re-occ");
+    const isRecurring = cadence.toLowerCase().includes("recurr");
     const isScheduled = frequency === "Schedule Send";
 
     const createdDate = formatIsoDate(activation.recurringStartDate)
@@ -434,14 +486,16 @@ export function ActivationsPage({
                   </div>
                 </TableHead>
                 <TableHead>Activation</TableHead>
+                <TableHead className="w-40">Created by</TableHead>
                 <TableHead>Context</TableHead>
-                <TableHead className="w-36">Channel</TableHead>
+                <TableHead className="w-40">Destination platform</TableHead>
+                <TableHead className="w-36">Platform type</TableHead>
                 <TableHead className="w-32">Frequency</TableHead>
                 <TableHead className="w-56">Cadence</TableHead>
                 <TableHead className="w-40">Status</TableHead>
-                <TableHead className="w-44">Start date</TableHead>
+                <TableHead className="w-44">Send date</TableHead>
                 <TableHead className="w-44">End date</TableHead>
-                <TableHead className="w-40">Scheduled Time</TableHead>
+                <TableHead className="w-40">Delivery time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -466,19 +520,31 @@ export function ActivationsPage({
                       <span className="font-medium text-foreground">{a.name}</span>
                       <p className="mt-0.5 max-w-xs truncate text-sm text-foreground-secondary">{a.skill}</p>
                     </TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{getActivationCreatedBy(a)}</TableCell>
                     <TableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">{a.context}</TableCell>
-                    <TableCell className="text-sm text-foreground-secondary">{a.channel}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{getActivationDestinationPlatform(a)}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{getActivationPlatformType(a)}</TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{activationFrequency(a)}</TableCell>
-                    <TableCell className="max-w-[18rem] truncate text-sm text-foreground-secondary">{activationCadence(a)}</TableCell>
+                    <TableCell className="max-w-[18rem] text-sm text-foreground-secondary">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{activationCadence(a)}</span>
+                        {activationLatestSync(a) ? <Badge variant="secondary" size="sm">Synced</Badge> : null}
+                      </div>
+                    </TableCell>
                     <TableCell><Badge variant={s.variant} size="sm">{s.label}</Badge></TableCell>
-                    <TableCell className="text-sm text-foreground-secondary">{activationStartDateTime(a)}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">
+                      <div>{activationSendDate(a)}</div>
+                      {activationLatestSync(a) ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">Synced {activationLatestSync(a)?.date}</p>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{activationEndDateTime(a)}</TableCell>
-                    <TableCell className="text-sm text-foreground-secondary">{activationRecurringTime(a)}</TableCell>
+                    <TableCell className="text-sm text-foreground-secondary">{activationDeliveryTime(a)}</TableCell>
                   </TableRow>
                 );
               })}
               {shown.length === 0 && (
-                <TableRow><TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -574,17 +640,32 @@ export function ActivationsPage({
 
 // ─── Activation detail (body for the side panel) ───────────────────────────────
 
-export function ActivationDetail({ activation, onOpenSegment, categoryOptions, onCategoryChange }: {
+export interface ActivationEditDraft {
+  activationDefinition: string;
+  cadence: "Once Off" | "Recurring";
+  recurringDeliveryTime: string;
+  recurringEndDate: string;
+}
+
+export function ActivationDetail({ activation, onOpenSegment, categoryOptions, onCategoryChange, isEditing = false, editDraft, onEditDraftChange }: {
   activation: Activation;
   onOpenSegment?: (id: string) => void;
   categoryOptions?: string[];
   onCategoryChange?: (category: string) => void;
+  isEditing?: boolean;
+  editDraft?: ActivationEditDraft;
+  onEditDraftChange?: (patch: Partial<ActivationEditDraft>) => void;
 }) {
+  const [activeTab, setActiveTab] = useState("details");
+  useEffect(() => {
+    if (isEditing) setActiveTab("details");
+  }, [isEditing]);
   const s = ACTIVATION_STATUS_META[activation.status];
 
   const detailPopulation = activation.mvpDetails?.population ?? "Not specified";
   const detailActivationName = activation.mvpDetails?.activationName ?? activation.name;
-  const detailActivationDefinition = activation.mvpDetails?.activationDefinition ?? activation.result ?? "Not specified";
+  const detailActivationDefinition = activation.mvpDetails?.activationDefinition ?? activation.activationDefinition ?? activation.result ?? "Not specified";
+  const detailCreatedBy = getActivationCreatedBy(activation);
   const detailSegmentUsed = activation.mvpDetails?.segmentName ?? activation.segmentName ?? "Not specified";
   const detailDataSource = activation.mvpDetails?.dataSource ?? activation.channel;
   const detailAccounts = activation.mvpDetails?.accounts?.length
@@ -592,18 +673,65 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
     : "No accounts selected";
   const detailFieldMapping = activation.mvpDetails?.fieldMapping?.length
     ? activation.mvpDetails.fieldMapping
-    : ["No field mapping configured"];
+    : [
+        "Email -> Email address (98%)",
+        "Phone -> Mobile (92%)",
+        "First name -> First Name (96%)",
+        "Last name -> Last Name (95%)",
+      ];
+  const rankedFieldMappings = detailFieldMapping
+    .map((mapping, index) => ({
+      mapping: mapping.replace(/\s*\(Primary key\)/i, ""),
+      index,
+      coverage: Number(mapping.match(/(\d+(?:\.\d+)?)%/)?.[1] ?? -1),
+    }))
+    .sort((left, right) => right.coverage - left.coverage || left.index - right.index);
+  const hasRankedFieldMappings = rankedFieldMappings[0]?.coverage >= 0;
   const detailTiming = activation.mvpDetails?.timing
     ?? (activation.scheduledDate || activation.recurringStartDate ? "Schedule Send" : "Send Now");
-  const detailCadence = activation.mvpDetails?.cadence
-    ?? (activation.recurringStartDate ? "Re-Occuring" : "Once Off");
+  const detailCadence = activation.activationCadence ?? activation.mvpDetails?.cadence
+    ?? (activation.recurringStartDate ? "Recurring" : "Once Off");
+  const detailSendDate = activation.scheduledDate ?? activation.recurringStartDate
+    ?? (activation.status === "sent" || activation.status === "completed" ? activation.createdAt : undefined);
+  const detailEndDate = detailCadence === "Recurring" ? activation.recurringEndDate : undefined;
+  const detailDeliveryTime = detailCadence === "Recurring"
+    ? activation.recurringTime ?? activation.mvpDetails?.recurringTime
+    : activation.scheduledTime;
   const detailCustomers = activation.mvpDetails?.customers?.length
     ? activation.mvpDetails.customers
     : [
-        { id: `${activation.id}-cust-1`, name: `${detailSegmentUsed} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
-        { id: `${activation.id}-cust-2`, name: `${detailSegmentUsed} - Liam Nguyen`, meta: "AOV $129 · Last purchase 49 days ago" },
-        { id: `${activation.id}-cust-3`, name: `${detailSegmentUsed} - Mia Rodriguez`, meta: "AOV $151 · Last purchase 62 days ago" },
+        { id: `${activation.id}-cust-1`, name: "Ava Thompson", segmentName: detailSegmentUsed, lastPurchase: "Last purchase 34 days ago" },
+        { id: `${activation.id}-cust-2`, name: "Liam Nguyen", segmentName: detailSegmentUsed, lastPurchase: "Last purchase 49 days ago" },
+        { id: `${activation.id}-cust-3`, name: "Mia Rodriguez", segmentName: detailSegmentUsed, lastPurchase: "Last purchase 62 days ago" },
       ];
+
+  const isOneOffActivation = !activation.recurringStartDate && !!activation.scheduledDate;
+  const baseHistoryRows = isOneOffActivation
+    ? [{
+        date: activation.scheduledDate ?? "Scheduled",
+        profilesSent: 18240,
+        delta: 0,
+        note: "Single send",
+      }]
+    : (activation.history ?? DEFAULT_ACTIVATION_HISTORY);
+  const historyRows = activation.history ?? baseHistoryRows;
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const failedHistoryIndex = historyRows.findIndex((row) => row.failed);
+  const chartValues = historyRows.map((row) => row.profilesSent);
+  const minValue = Math.min(...chartValues) * 0.9;
+  const maxValue = Math.max(...chartValues) * 1.08;
+  const padLeft = 42;
+  const padRight = 10;
+  const padTop = 18;
+  const padBottom = 28;
+  const chartWidth = 520;
+  const chartHeight = 180;
+  const chartInnerWidth = chartWidth - padLeft - padRight;
+  const chartInnerHeight = chartHeight - padTop - padBottom;
+  const pointX = (index: number) => padLeft + (index / Math.max(historyRows.length - 1, 1)) * chartInnerWidth;
+  const pointY = (value: number) => padTop + chartInnerHeight - ((value - minValue) / Math.max(maxValue - minValue, 1)) * chartInnerHeight;
+  const linePath = historyRows.map((row, index) => `${index === 0 ? "M" : "L"} ${pointX(index)} ${pointY(row.profilesSent)}`).join(" ");
+  const hoverPoint = hoveredIndex !== null ? historyRows[hoveredIndex] : null;
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -615,10 +743,31 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
         <p className="text-xs text-muted-foreground">{activation.context} · {activation.whenLabel}</p>
       </div>
 
-      <Tabs defaultValue="details" className="space-y-3">
+      {activation.status === "failed" && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+          <div className="flex items-center gap-2">
+            <Badge variant="danger" size="sm">Failed</Badge>
+            <p className="text-xs font-medium text-destructive">Why this activation failed</p>
+          </div>
+          <p className="mt-2 text-sm text-foreground-secondary">
+            The Meta account token expired mid-push, so the audience sync stopped before new customers were added.
+          </p>
+          <div className="mt-3 rounded-lg border border-border bg-background/70 p-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground">Resolution steps</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-foreground-secondary">
+              <li>Refresh the external token and re-authenticate the integration.</li>
+              <li>Confirm the audience mapping and target segment are still valid.</li>
+              <li>Retry the activation once the connection is restored.</li>
+            </ol>
+          </div>
+        </div>
+      )}
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <TabsList variant="underline" className="w-full">
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
+          <TabsTrigger value="history">Activation history</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details" className="space-y-3">
@@ -631,8 +780,20 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
             <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation name</p>
             <p className="mt-1 text-sm font-medium text-foreground">{detailActivationName}</p>
 
+            <p className="mt-3 text-xs font-medium uppercase tracking-normal text-muted-foreground">Created by</p>
+            <p className="mt-1 text-sm font-medium text-foreground">{detailCreatedBy}</p>
+
             <p className="mt-3 text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation definition</p>
-            <p className="mt-1 text-sm text-foreground-secondary">{detailActivationDefinition}</p>
+            {isEditing && editDraft && onEditDraftChange ? (
+              <Textarea
+                className="mt-1"
+                rows={3}
+                value={editDraft.activationDefinition}
+                onChange={(event) => onEditDraftChange({ activationDefinition: event.target.value })}
+              />
+            ) : (
+              <p className="mt-1 text-sm text-foreground-secondary">{detailActivationDefinition}</p>
+            )}
 
             <p className="mt-3 text-xs font-medium uppercase tracking-normal text-muted-foreground">Segment used</p>
             {onOpenSegment && activation.segmentId ? (
@@ -657,24 +818,56 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
 
           <div className="rounded-xl border border-border bg-card p-4">
             <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Field mapping</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground-secondary">
-              {detailFieldMapping.map((mapping, index) => (
-                <li key={`${activation.id}-map-${index}`}>{mapping}</li>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-foreground-secondary">
+              {rankedFieldMappings.map(({ mapping }, index) => (
+                <li key={`${activation.id}-map-${index}`} className={hasRankedFieldMappings && index === 0 ? "font-semibold text-foreground" : undefined}>
+                  {mapping}{hasRankedFieldMappings && index === 0 ? <span className="ml-1 font-bold text-primary" aria-label="Primary key" title="Primary key">*</span> : null}
+                </li>
               ))}
-            </ul>
+            </ol>
+            {hasRankedFieldMappings ? (
+              <p className="mt-2 text-xs text-muted-foreground"><span className="font-bold text-primary">*</span> Primary key</p>
+            ) : null}
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Timing and cadence</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-border/70 bg-background px-2.5 py-2">
-                <p className="text-xs text-muted-foreground">Timing</p>
-                <p className="mt-1 text-sm font-medium text-foreground">{detailTiming}</p>
-              </div>
-              <div className="rounded-lg border border-border/70 bg-background px-2.5 py-2">
-                <p className="text-xs text-muted-foreground">Cadence</p>
-                <p className="mt-1 text-sm font-medium text-foreground">{detailCadence}</p>
-              </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Timing</p>
+              <p className="mt-2 text-sm font-semibold text-foreground">{detailTiming}</p>
+              <dl className="mt-3 space-y-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Delivery time</dt>
+                  <dd className="mt-0.5 text-sm font-medium text-foreground">
+                    {isEditing
+                      ? <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground"><RiLockLine className="size-3.5" />{formatDetailTime(detailDeliveryTime)}</span>
+                      : formatDetailTime(detailDeliveryTime)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Send date</dt>
+                  <dd className="mt-0.5 text-sm font-medium text-foreground">
+                    {isEditing
+                      ? <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground"><RiLockLine className="size-3.5" />{formatDetailDate(detailSendDate)}</span>
+                      : formatDetailDate(detailSendDate)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">End date</dt>
+                  <dd className="mt-0.5 text-sm font-medium text-foreground">
+                    {isEditing
+                      ? <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground"><RiLockLine className="size-3.5" />{detailEndDate ? formatDetailDate(detailEndDate) : "No end date"}</span>
+                      : detailEndDate ? formatDetailDate(detailEndDate) : "No end date"}
+                  </dd>
+                </div>
+              </dl>
+              {isEditing ? <p className="mt-3 text-xs italic text-muted-foreground">Scheduling Activations coming soon</p> : null}
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Cadence</p>
+              <p className={cn("mt-2 text-sm font-semibold", isEditing ? "inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground" : "text-foreground")}>
+                {isEditing ? <RiLockLine className="size-3.5" /> : null}{detailCadence}
+              </p>
+              {isEditing ? <p className="mt-3 text-xs italic text-muted-foreground">Recurring Activations coming soon</p> : null}
             </div>
           </div>
         </TabsContent>
@@ -686,9 +879,103 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
               {detailCustomers.map((customer) => (
                 <div key={customer.id} className="rounded-lg border border-border/70 bg-background px-3 py-2">
                   <p className="text-sm font-medium text-foreground">{customer.name}</p>
-                  <p className="mt-0.5 text-xs text-foreground-secondary">{customer.meta}</p>
+                  <p className="mt-1 text-xs text-foreground-secondary">{customer.segmentName}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{customer.lastPurchase}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-3">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation send history</p>
+              <span className="text-xs text-foreground-secondary">Profiles sent</span>
+            </div>
+
+            <div className="mt-3 overflow-hidden rounded-lg border border-border/70 bg-background">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Profiles sent</TableHead>
+                    <TableHead>Delta</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {historyRows.map((row, index) => (
+                    <TableRow key={`${row.date}-${index}`} className={row.failed ? "bg-destructive/5" : undefined}>
+                      <TableCell className={row.failed ? "font-medium text-destructive" : "font-medium text-foreground"}>
+                        <div>{row.date}</div>
+                        {row.note.startsWith("Manual delta sync:") ? (
+                          <p className="mt-0.5 text-xs font-normal text-foreground-secondary">{row.note}</p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className={row.failed ? "tabular-nums text-destructive" : "tabular-nums text-foreground-secondary"}>{row.profilesSent.toLocaleString()}</TableCell>
+                      <TableCell className={row.failed ? "text-destructive" : row.delta >= 0 ? "text-emerald-600" : "text-destructive"}>
+                        {row.delta > 0 ? "+" : ""}{row.delta}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Volume trend</p>
+              <span className="text-xs text-foreground-secondary">Hover data points for deltas</span>
+            </div>
+
+            <div className="relative overflow-hidden rounded-lg border border-border/70 bg-background p-2">
+              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-[210px] w-full" preserveAspectRatio="xMidYMid meet">
+                {[0, 1, 2, 3].map((tick) => {
+                  const y = padTop + (chartInnerHeight * tick) / 3;
+                  const value = Math.round(maxValue - ((maxValue - minValue) * tick) / 3);
+                  return (
+                    <g key={tick}>
+                      <line x1={padLeft} x2={chartWidth - padRight} y1={y} y2={y} stroke="currentColor" strokeOpacity={0.08} />
+                      <text x={padLeft - 8} y={y + 4} textAnchor="end" fontSize={10} fill="currentColor" fillOpacity={0.5}>{value.toLocaleString()}</text>
+                    </g>
+                  );
+                })}
+
+                <path d={linePath} fill="none" stroke="oklch(62.698% 0.10432 189.917)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+
+                {historyRows.map((row, index) => {
+                  const isFailedPoint = Boolean(row.failed);
+                  const pointColor = isFailedPoint ? "oklch(56.3% 0.224 18.58)" : "oklch(62.698% 0.10432 189.917)";
+                  return (
+                    <g key={`${row.date}-${index}`}>
+                      <circle
+                        cx={pointX(index)}
+                        cy={pointY(row.profilesSent)}
+                        r={hoveredIndex === index ? 6 : 4}
+                        fill={hoveredIndex === index ? pointColor : isFailedPoint ? "#f97316" : "white"}
+                        stroke={pointColor}
+                        strokeWidth={2}
+                        onMouseEnter={() => setHoveredIndex(index)}
+                        onMouseLeave={() => setHoveredIndex(null)}
+                      />
+                    </g>
+                  );
+                })}
+
+                {historyRows.map((row, index) => (
+                  <text key={`${row.date}-axis-${index}`} x={pointX(index)} y={chartHeight - 6} textAnchor="middle" fontSize={9} fill="currentColor" fillOpacity={0.45}>{row.date}</text>
+                ))}
+              </svg>
+
+              {hoverPoint && (
+                <div className="pointer-events-none absolute min-w-[120px] rounded-lg border border-border bg-popover/95 p-2 shadow-sm" style={{ left: `${(pointX(historyRows.indexOf(hoverPoint)) / chartWidth) * 100}%`, top: `${Math.max(10, pointY(hoverPoint.profilesSent) / chartHeight * 100 - 12)}%`, transform: "translate(-50%, -100%)" }}>
+                  <div className={hoverPoint.failed ? "text-[10px] font-medium uppercase tracking-normal text-destructive" : "text-[10px] font-medium uppercase tracking-normal text-muted-foreground"}>{hoverPoint.date}</div>
+                  <div className={hoverPoint.failed ? "mt-1 text-sm font-semibold text-destructive" : "mt-1 text-sm font-semibold text-foreground"}>{hoverPoint.profilesSent.toLocaleString()} sent</div>
+                  <div className={hoverPoint.failed ? "text-xs text-destructive" : hoverPoint.delta >= 0 ? "text-xs text-emerald-600" : "text-xs text-destructive"}>{hoverPoint.delta > 0 ? "+" : ""}{hoverPoint.delta}% vs prior</div>
+                  {hoverPoint.note.startsWith("Manual delta sync:") ? <div className="mt-1 text-xs text-foreground-secondary">{hoverPoint.note}</div> : null}
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>

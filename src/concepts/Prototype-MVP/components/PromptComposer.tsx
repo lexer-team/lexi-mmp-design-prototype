@@ -444,7 +444,7 @@ export function PromptComposer({
               value={search}
               onChange={(e) => { setSearch(e.target.value); setActiveFlat(0); }}
               onKeyDown={onSearchKeyDown}
-              placeholder={pickerMode === "plus" ? "Search segments…" : "Search segments, metrics…"}
+              placeholder={pickerMode === "plus" ? "Search segments…" : "Search segments and activations…"}
               className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
@@ -513,7 +513,7 @@ export function PromptComposer({
           onMouseEnter={cancelHide}
           onMouseLeave={scheduleHide}
         >
-          <DefinitionCard def={preview.def} />
+          <DefinitionCard def={preview.def} hideRuleDetails />
         </div>,
         document.body,
       )}

@@ -9,9 +9,19 @@ import { KIND_META, ENTITY_LABEL } from "./kind-meta";
 // → logic/value → one key stat (or the allowed values). An expand button at the
 // top right opens the full view; source / owner / where-used live there.
 
-export function DefinitionCard({ def, onExpand }: { def: DefRef; onExpand?: () => void }) {
+export function DefinitionCard({
+  def,
+  onExpand,
+  hideRuleDetails = false,
+}: {
+  def: DefRef;
+  onExpand?: () => void;
+  hideRuleDetails?: boolean;
+}) {
   const meta = KIND_META[def.kind];
   const Icon = meta.icon;
+  const hideSegmentDetails = hideRuleDetails && def.kind === "segment";
+  const hideLogic = hideRuleDetails && (def.kind === "segment" || def.kind === "group");
 
   return (
     <div className="flex w-80 flex-col gap-2.5 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-lg">
@@ -36,12 +46,12 @@ export function DefinitionCard({ def, onExpand }: { def: DefRef; onExpand?: () =
       </div>
 
       {/* Plain-language description */}
-      {def.description && (
+      {def.description && !hideSegmentDetails && (
         <p className="text-sm leading-relaxed text-foreground-secondary">{def.description}</p>
       )}
 
       {/* The logic / value */}
-      {def.logic && (
+      {def.logic && !hideLogic && (
         <div className="rounded-lg bg-muted px-2.5 py-1.5">
           <p className="break-words font-mono text-xs leading-relaxed text-foreground-secondary">{def.logic}</p>
         </div>

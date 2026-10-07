@@ -2,7 +2,7 @@ import { createContext, useContext, useReducer, type Dispatch, type ReactNode } 
 import type { Artifact, ArtifactBody, Pin, RecommendationStep } from "./types";
 import type { DefRef } from "@/data/def-registry";
 import { DEMO_ARTIFACTS } from "./demo-data";
-import { type Activation } from "./activations-mock";
+import { ACTIVATIONS, type Activation, type ActivationHistoryPoint } from "./activations-mock";
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ export interface SessionState {
     messageReactions: Record<string, Record<string, boolean>>;
     turnIndex: number;
     activationBuildState?: {
-      stage: "idle" | "await-segment" | "await-confirmation";
+      stage: "idle" | "await-segment" | "await-confirmation" | "await-cancel-confirmation" | "await-activation-choice";
       segmentId?: string;
       segmentName?: string;
     };
@@ -65,7 +65,9 @@ export type SessionAction =
   | { type: "RESTORE_ARTIFACT"; id: string }
   | { type: "ADD_ARTIFACT"; artifact: Artifact }
   | { type: "ADD_ACTIVATION"; activation: Activation }
+  | { type: "UPDATE_ACTIVATION"; id: string; updates: Partial<Activation> }
   | { type: "UPDATE_ACTIVATION_STATUS"; id: string; status: Activation["status"] }
+  | { type: "UPDATE_ACTIVATION_HISTORY"; id: string; history: ActivationHistoryPoint[] }
   | { type: "UPDATE_ACTIVATION_CATEGORY"; id: string; category: string }
   | { type: "BULK_UPDATE_ACTIVATION_CATEGORY"; ids: string[]; category: string }
   | { type: "DELETE_ACTIVATIONS"; ids: string[] }
@@ -93,7 +95,7 @@ export type SessionAction =
         messageReactions: Record<string, Record<string, boolean>>;
         turnIndex: number;
         activationBuildState?: {
-          stage: "idle" | "await-segment" | "await-confirmation";
+          stage: "idle" | "await-segment" | "await-confirmation" | "await-cancel-confirmation" | "await-activation-choice";
           segmentId?: string;
           segmentName?: string;
         };
@@ -133,12 +135,32 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
     case "ADD_ACTIVATION": {
       return { ...state, activations: [action.activation, ...state.activations] };
     }
+    case "UPDATE_ACTIVATION": {
+      return {
+        ...state,
+        activations: state.activations.map((activation) => (
+          activation.id === action.id
+            ? { ...activation, ...action.updates }
+            : activation
+        )),
+      };
+    }
     case "UPDATE_ACTIVATION_STATUS": {
       return {
         ...state,
         activations: state.activations.map((activation) => (
           activation.id === action.id
             ? { ...activation, status: action.status }
+            : activation
+        )),
+      };
+    }
+    case "UPDATE_ACTIVATION_HISTORY": {
+      return {
+        ...state,
+        activations: state.activations.map((activation) => (
+          activation.id === action.id
+            ? { ...activation, history: action.history }
             : activation
         )),
       };
@@ -401,7 +423,7 @@ const INITIAL_STATE: SessionState = {
   openSourcesIds: null,
   editingSegmentId: null,
   activeConversationId: null,
-  activations: [],
+  activations: ACTIVATIONS,
   chatStarted: false,
   replayNonce: 0,
   autoStart: false,

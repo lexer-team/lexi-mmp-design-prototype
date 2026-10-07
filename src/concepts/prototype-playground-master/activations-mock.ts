@@ -28,11 +28,21 @@ export interface SkillInvocation {
 }
 
 /** The governed record of one execution event. */
+export interface ActivationHistoryPoint {
+  date: string;
+  profilesSent: number;
+  delta: number;
+  note: string;
+  failed?: boolean;
+}
+
 export interface Activation {
   id: string;
   name: string;
   /** ISO timestamp when activation record was created. */
   createdAt?: string;
+  /** Person or system that created the activation. */
+  createdBy?: string;
   /** plain-text campaign/plan this belongs to (non-navigable) */
   context: string;
   segmentId?: string;
@@ -66,8 +76,9 @@ export interface Activation {
     fieldMapping: string[];
     timing: string;
     cadence: string;
-    customers: Array<{ id: string; name: string; meta: string }>;
+    customers: Array<{ id: string; name: string; meta?: string; segmentName?: string; lastPurchase?: string }>;
   };
+  history?: ActivationHistoryPoint[];
 }
 
 // ─── Labels ────────────────────────────────────────────────────────────────
@@ -91,29 +102,120 @@ export function approvalLabel(a: Approval): string {
   return `Approved · ${a.by}`;
 }
 
+export const DEFAULT_ACTIVATION_HISTORY: ActivationHistoryPoint[] = [
+  { date: "Sep 04", profilesSent: 16540, delta: 0, note: "Initial sync" },
+  { date: "Sep 07", profilesSent: 18120, delta: 9.6, note: "Audience refresh" },
+  { date: "Sep 10", profilesSent: 17280, delta: -4.6, note: "Paused ad spend" },
+  { date: "Sep 12", profilesSent: 19350, delta: 11.9, note: "Re-engagement lift" },
+  { date: "Sep 14", profilesSent: 21120, delta: 9.2, note: "Peak delivery" },
+];
+
+export const RECURRING_FAILED_HISTORY: ActivationHistoryPoint[] = [
+  { date: "Sep 04", profilesSent: 16540, delta: 0, note: "Initial sync" },
+  { date: "Sep 07", profilesSent: 18120, delta: 9.6, note: "Audience refresh" },
+  { date: "Sep 10", profilesSent: 17280, delta: -4.6, note: "Paused ad spend" },
+  { date: "Sep 12", profilesSent: 19350, delta: 11.9, note: "Re-engagement lift" },
+  { date: "Sep 14", profilesSent: 12630, delta: -34.7, note: "Audience sync failed", failed: true },
+];
+
 // ─── Seed data ───────────────────────────────────────────────────────────────
 
 export const ACTIVATIONS: Activation[] = [
   {
     id: "ac-dummy-always",
-    name: "Dummy activation — always available",
+    name: "Full-Price Early Adopters activation",
+    createdBy: "Lexi automation",
+    context: "Prototype seed",
+    segmentId: "g-bi-fullprice",
+    segmentName: "Full-Price Early Adopters",
+    channel: "Email",
+    category: "Demo",
+    skill: "Push Meta Audience",
+    approval: { kind: "auto" },
+    status: "failed",
+    whenLabel: "Demo · 08:42 AM",
+    scheduledDate: "2026-12-01",
+    result: "Audience sync did not complete for the scheduled push.",
+    invocations: [
+      { skill: "Push Meta Audience", params: "Demo audience, failed sync", result: "Failed" },
+    ],
+    trail: [
+      { at: "Seed", entry: "This is a permanent demo failure example for the Activations page." },
+      { at: "Root cause", entry: "The Meta account token expired mid-push, so no customers were added to the audience." },
+      { at: "Resolution", entry: "Refresh the token, re-authenticate the integration, and retry the activation after confirming the audience mapping." },
+    ],
+    history: DEFAULT_ACTIVATION_HISTORY,
+  },
+  {
+    id: "ac-demo-one-off",
+    name: "One-off activation — VIP replenishment email",
+    createdBy: "Amy",
     context: "Prototype seed",
     segmentId: "g-bi-fullprice",
     segmentName: "Full-Price Early Adopters",
     channel: "Email",
     category: "Demo",
     skill: "Draft Klaviyo Campaign",
-    approval: { kind: "auto" },
+    approval: { kind: "approved", by: "Amy", at: "today" },
     status: "scheduled",
-    whenLabel: "Scheduled · demo",
-    scheduledDate: "2026-12-01",
-    result: "Persistent demo activation for prototype walkthroughs.",
+    whenLabel: "Scheduled · 2026-11-18",
+    scheduledDate: "2026-11-18",
+    scheduledTime: "09:00",
+    result: "Queued for a single send to the target audience.",
     invocations: [
-      { skill: "Draft Klaviyo Campaign", params: "Demo audience, welcome offer", result: "Scheduled" },
+      { skill: "Draft Klaviyo Campaign", params: "VIP replenishment email, single send", result: "Scheduled" },
     ],
     trail: [
-      { at: "Seed", entry: "Added as a permanent dummy activation for the Activations page." },
+      { at: "Seed", entry: "This demonstrates a one-off activation example for the Activations page." },
     ],
+  },
+  {
+    id: "ac-demo-recurring",
+    name: "Recurring activation — weekly win-back refresh",
+    createdBy: "Lexi automation",
+    context: "Prototype seed",
+    segmentId: "g-bi-hv-lapsed",
+    segmentName: "High-value lapsed",
+    channel: "Email · Paid social",
+    category: "Demo",
+    skill: "Push Meta Audience",
+    approval: { kind: "auto" },
+    status: "live",
+    whenLabel: "Live · weekly cadence",
+    recurringStartDate: "2026-09-01",
+    recurringTime: "09:00",
+    result: "Recurring audience sync is active and refreshes each week.",
+    invocations: [
+      { skill: "Push Meta Audience", params: "Weekly win-back refresh, recurring sync", result: "Live" },
+    ],
+    trail: [
+      { at: "Seed", entry: "This demonstrates a recurring activation example for the Activations page." },
+    ],
+  },
+  {
+    id: "ac-demo-recurring-failed",
+    name: "Recurring failed activation — win-back refresh",
+    context: "Prototype seed",
+    segmentId: "g-bi-hv-lapsed",
+    segmentName: "High-value lapsed",
+    channel: "Email · Paid social",
+    category: "Demo",
+    skill: "Push Meta Audience",
+    approval: { kind: "auto" },
+    status: "failed",
+    whenLabel: "Failed · weekly cadence",
+    recurringStartDate: "2026-09-01",
+    recurringTime: "09:00",
+    result: "The weekly sync failed after the connected audience service stopped refreshing.",
+    invocations: [
+      { skill: "Push Meta Audience", params: "Weekly win-back refresh, recurring sync failed", result: "Failed" },
+    ],
+    trail: [
+      { at: "Seed", entry: "This is a recurring demo failure example for the Activations page." },
+      { at: "Root cause", entry: "The source connection dropped before the refresh completed, causing the latest run to fail." },
+      { at: "Resolution", entry: "Reconnect the source, verify credentials, and rerun the scheduled refresh before the next cadence window." },
+    ],
+    history: RECURRING_FAILED_HISTORY,
   },
   {
     id: "ac-season-w1",
@@ -368,6 +470,27 @@ export const ACTIVATIONS: Activation[] = [
     trail: [
       { at: "Jun 29, 2026", entry: "Draft created from launch-wave performance template." },
       { at: "Jul 3, 2026", entry: "Queued for review with final offer details pending." },
+    ],
+  },
+  {
+    id: "ac-failed-meta-sync",
+    name: "Meta — high intent reactivation sync",
+    context: "Black Friday warm-up sequence",
+    segmentId: "bfs1",
+    segmentName: "BF reactivation core (90-180d)",
+    channel: "Paid social",
+    category: "Black Friday",
+    skill: "Push Meta Audience",
+    approval: { kind: "auto" },
+    status: "failed",
+    whenLabel: "Failed · Jul 4, 2026",
+    result: "Audience sync failed because the Meta account token expired mid-push.",
+    invocations: [
+      { skill: "Push Meta Audience", params: "BF reactivation core with 3-day refresh", result: "Failed" },
+    ],
+    trail: [
+      { at: "Jul 4, 2026 09:18", entry: "Audience push attempted but authentication failed." },
+      { at: "Jul 4, 2026 09:21", entry: "Meta returned an expired token error; no customers were added to the live audience." },
     ],
   },
 ];

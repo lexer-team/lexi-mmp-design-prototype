@@ -322,7 +322,7 @@ function HoverItem({ def, artifact, children }: { def?: DefRef; artifact?: Artif
           onMouseEnter={show}
           onMouseLeave={hide}
         >
-          {def ? <DefinitionCard def={def} /> : (artifact ? <InsightHoverCard artifact={artifact} /> : null)}
+          {def ? <DefinitionCard def={def} hideRuleDetails /> : (artifact ? <InsightHoverCard artifact={artifact} /> : null)}
         </div>,
         document.body
       )}

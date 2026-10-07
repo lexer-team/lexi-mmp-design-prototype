@@ -148,18 +148,29 @@ function InlineCitation({ id }: { id: string }) {
   }
 
   const Icon = KIND_META[def.kind]?.icon;
+  const isActivation = def.kind === "group";
+  const openActivation = () => {
+    if (!isActivation) return;
+    window.dispatchEvent(new CustomEvent("prototype-master:open-activation-panel", {
+      detail: { activationId: id, openPage: true },
+    }));
+  };
 
   return (
     <span
       ref={triggerRef}
-      className="cursor-help underline decoration-dotted decoration-muted-foreground/60 underline-offset-4 inline-flex items-baseline"
+      className="inline-flex items-baseline underline decoration-dotted decoration-muted-foreground/60 underline-offset-4"
       onMouseEnter={show}
       onMouseLeave={hide}
     >
       {Icon && <Icon className="relative top-[1px] mr-0.5 inline size-3 text-muted-foreground" />}
-      <span className="font-medium text-foreground">
-        {def.name}
-      </span>
+      {isActivation ? (
+        <button type="button" onClick={openActivation} title={`Open ${def.name}`} className="cursor-pointer font-medium text-primary hover:text-primary/80">
+          {def.name}
+        </button>
+      ) : (
+        <span className="cursor-help font-medium text-foreground">{def.name}</span>
+      )}
       {open && createPortal(
         <div
           className="fixed z-[9999]"
@@ -167,7 +178,7 @@ function InlineCitation({ id }: { id: string }) {
           onMouseEnter={show}
           onMouseLeave={hide}
         >
-          <DefinitionCard def={def} />
+          <DefinitionCard def={def} hideRuleDetails />
         </div>,
         document.body,
       )}

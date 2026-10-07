@@ -1,8 +1,13 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { RiCheckLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonal2Line, RiCollapseDiagonal2Line } from "@remixicon/react";
+import { Badge } from "@/components/ui/Badge";
+import { ConfirmDialog } from "@/components/ui/Dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { RiCheckLine, RiCloseLine, RiEditLine, RiLockLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonal2Line, RiCollapseDiagonal2Line, RiPlayCircleLine, RiProhibitedLine } from "@remixicon/react";
 import { useSession } from "./store";
 import { RichText, MentionText, stripMentions } from "./components/RichText";
 import { ProposedBlock } from "./components/ProposedBlock";
@@ -14,8 +19,7 @@ import { PromptComposer } from "./components/PromptComposer";
 import { ThinkingProcess, type ThinkingStep } from "../lexi-shared-brain/ChatThinking";
 import { getDef, registerDefs, type DefRef } from "@/data/def-registry";
 import { BRAIN_GROUPS, ENTITY_META } from "../lexi-shared-brain/data";
-import { MOCK_DEFINITIONS } from "@/data/definitions-mock";
-import { ACTIVATIONS, type Activation } from "./activations-mock";
+import { ACTIVATIONS, ACTIVATION_STATUS_META, approvalLabel, DEFAULT_ACTIVATION_HISTORY, estimateReachableProfileCount, getActivation, type Activation, type ActivationHistoryPoint } from "./activations-mock";
 import {
   CONVERSATIONS,
   DEFAULT_CONVERSATION_ID,
@@ -25,10 +29,7 @@ import {
 import { DUMMY_SEGMENT_BY_ID, DUMMY_SEGMENTS, dummySegmentToDefRef } from "./segment-dummy-data";
 import type { Artifact, ContentBlock, Conversation, ReasoningAssumption, StepSpec } from "./types";
 
-// ─── Mention picker content — kept in sync with the Data pages ───────────────
-// The @-mention panel offers the same objects the user sees under Data:
-// segments come from the Segments page (BRAIN_GROUPS); metrics & attributes come
-// from the Definitions page (MOCK_DEFINITIONS, gaps excluded).
+// ─── Mention picker content ──────────────────────────────────────────────────
 
 // Register each saved segment as a resolvable ref so it renders a chip + hover
 // card in the picker and resolves anywhere getDef is used.
@@ -43,12 +44,19 @@ const SEGMENT_REFS: DefRef[] = BRAIN_GROUPS.map((g) => ({
 registerDefs(SEGMENT_REFS);
 
 function activationRef(a: Activation): DefRef {
+  const details = [
+    a.context,
+    a.channel,
+    a.activationCadence,
+    a.profilesReached !== undefined ? `${a.profilesReached.toLocaleString()} profiles reached` : undefined,
+    a.resendCount !== undefined ? `${a.resendCount} resends` : undefined,
+  ].filter(Boolean);
   return {
     id: a.id,
     kind: "group" as const,
     name: a.name,
     entity: "customer",
-    description: `${a.context} · ${a.channel}`,
+    description: details.join(" · "),
     stat: { label: "status", value: a.status },
   };
 }
@@ -58,7 +66,7 @@ function activationRef(a: Activation): DefRef {
 const SEGMENT_PICKER_REFS: DefRef[] = [
   ...DEMO_SEGMENT_DEFS,
   ...SEGMENT_REFS.filter((s) => !DEMO_SEGMENT_DEFS.some((d) => d.id === s.id)),
-];
+].filter((segment) => segment.name === "Holiday win-back");
 
 function segmentCreatedAtMs(artifact: Artifact): number {
   if (artifact.savedAt) {
@@ -76,17 +84,16 @@ function segmentCreatedAtMs(artifact: Artifact): number {
 }
 
 export function buildMentionGroups(activations: Activation[] = ACTIVATIONS): MentionGroup[] {
-  const def = (id: string) => getDef(id);
-  const nonGap = MOCK_DEFINITIONS.filter((d) => d.status !== "gap");
-  const refs = (type: "metric" | "attribute") =>
-    nonGap.filter((d) => d.type === type).map((d) => def(d.id)).filter((d): d is DefRef => Boolean(d));
-  const activationRefs = activations.map(activationRef);
+  const activationRefs = activations
+    .filter((activation) => (
+      activation.name === "Full-Price Early Adopters activation"
+      || activation.name === "Holiday win-back activation"
+    ))
+    .map(activationRef);
   registerDefs(activationRefs);
   return [
     { label: "Segments", items: SEGMENT_PICKER_REFS },
     { label: "Activations", items: activationRefs },
-    { label: "Metrics", items: refs("metric") },
-    { label: "Attributes", items: refs("attribute") },
   ];
 }
 
@@ -127,7 +134,7 @@ type ConversationPlaybackSnapshot = {
   activationBuildState?: ActivationBuildState;
 };
 
-type ActivationBuildStage = "idle" | "await-segment" | "await-confirmation" | "await-cancel-confirmation";
+type ActivationBuildStage = "idle" | "await-segment" | "await-confirmation" | "await-cancel-confirmation" | "await-activation-choice";
 
 type ActivationBuildState = {
   stage: ActivationBuildStage;
@@ -359,9 +366,11 @@ interface ActivationKickoffSegment {
 function ActivationBuildCard({
   block,
   sourceMessageId,
+  onCancelBuild,
 }: {
   block: Extract<ContentBlock, { type: "activationBuild" }>;
   sourceMessageId: string;
+  onCancelBuild: (sourceMessageId: string) => void;
 }) {
   const { state, dispatch } = useSession();
   const [activationName, setActivationName] = useState(block.activationName);
@@ -369,11 +378,12 @@ function ActivationBuildCard({
   const [editingName, setEditingName] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [showActivationConnection, setShowActivationConnection] = useState(false);
-  const [selectedSourceId, setSelectedSourceId] = useState("src-meta");
+  const [selectedSourceId, setSelectedSourceId] = useState("src-klaviyo");
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [connectionConfirmed, setConnectionConfirmed] = useState(false);
   const [approvalSent, setApprovalSent] = useState(false);
   const [showApprovalPanel, setShowApprovalPanel] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [latestActivationId, setLatestActivationId] = useState<string | null>(null);
   const [sendTiming, setSendTiming] = useState<"send-now" | "schedule-send">("send-now");
   const [sendCadence, setSendCadence] = useState<"once-off" | "re-occurring">("once-off");
@@ -427,14 +437,16 @@ function ActivationBuildCard({
       selectedMatch: "mobile_92",
     },
   ]);
+  const [primaryFieldRowId, setPrimaryFieldRowId] = useState("map-email");
+
+  const getFirstAvailableMatch = (fieldType: string, rows: typeof fieldRows, excludedRowId?: string) => (
+    (fieldMatchOptions[fieldType] ?? []).find((option) =>
+      !rows.some((row) => row.id !== excludedRowId && row.selectedMatch === option.value),
+    )?.value ?? ""
+  );
 
   const sourceList = [
-    { id: "src-meta", name: "Meta Ads" },
     { id: "src-klaviyo", name: "Klaviyo" },
-    { id: "src-braze", name: "Braze" },
-    { id: "src-google-ads", name: "Google Ads" },
-    { id: "src-sfmc", name: "Salesforce Marketing Cloud" },
-    { id: "src-amplitude", name: "Amplitude" },
   ];
 
   const accountsBySource: Record<string, Array<{ id: string; name: string; region: "AU" | "NZ" | "USA" }>> = {
@@ -478,7 +490,11 @@ function ActivationBuildCard({
 
   const hasSelectedSource = Boolean(selectedSourceId);
   const hasSelectedAccounts = selectedAccounts.length > 0;
-  const hasValidFieldMappings = fieldRows.every((row) => Boolean(row.fieldType) && Boolean(row.selectedMatch));
+  const hasValidFieldMappings = fieldRows.length > 0
+    && fieldRows.every((row) => Boolean(row.fieldType) && Boolean(row.selectedMatch))
+    && new Set(fieldRows.map((row) => row.fieldType)).size === fieldRows.length
+    && new Set(fieldRows.map((row) => row.selectedMatch)).size === fieldRows.length;
+  const hasAvailableFieldType = fieldTypeOptions.some((option) => !fieldRows.some((row) => row.fieldType === option.value));
   const requiresStartDate = sendTiming === "schedule-send";
   const hasStartDate = !requiresStartDate || Boolean(scheduledStartDate);
   const requiresStartTime = sendTiming === "schedule-send";
@@ -501,16 +517,26 @@ function ActivationBuildCard({
   };
 
   const addMoreFields = () => {
-    setFieldRows((prev) => {
-      return [
-        ...prev,
-        {
-          id: `map-extra-${prev.length + 1}`,
-          fieldType: "email",
-          selectedMatch: "email_98",
-        },
-      ];
-    });
+    const nextFieldType = fieldTypeOptions.find((option) => !fieldRows.some((row) => row.fieldType === option.value));
+    if (!nextFieldType) return;
+
+    let nextRowNumber = fieldRows.length + 1;
+    while (fieldRows.some((row) => row.id === `map-extra-${nextRowNumber}`)) nextRowNumber += 1;
+
+    const newRow = {
+      id: `map-extra-${nextRowNumber}`,
+      fieldType: nextFieldType.value,
+      selectedMatch: getFirstAvailableMatch(nextFieldType.value, fieldRows),
+    };
+    setFieldRows((prev) => [...prev, newRow]);
+    if (fieldRows.length === 0) setPrimaryFieldRowId(newRow.id);
+  };
+
+  const removeFieldMapping = (rowId: string) => {
+    if (fieldRows.length <= 1) return;
+    const remainingRows = fieldRows.filter((row) => row.id !== rowId);
+    setFieldRows(remainingRows);
+    if (primaryFieldRowId === rowId) setPrimaryFieldRowId(remainingRows[0]?.id ?? "");
   };
 
   return (
@@ -523,7 +549,19 @@ function ActivationBuildCard({
 
       <div className="mt-3 rounded-xl border border-border bg-background px-4 py-3">
         <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population volume</p>
-        <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{block.population}</p>
+        <div className="mt-2 grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-foreground-secondary">Profiles in segment</p>
+            <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{block.population}</p>
+          </div>
+          <div className="border-l border-border pl-4">
+            <p className="text-xs text-foreground-secondary">Reachable profiles</p>
+            <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{estimateReachableProfileCount(block.population).toLocaleString()}</p>
+          </div>
+        </div>
+        <p className="mt-3 border-t border-border pt-3 text-xs text-foreground-secondary">
+          Reachable profiles are an estimate after consent checks. Profiles without the required marketing consent are excluded, so this audience is smaller than the full segment.
+        </p>
       </div>
 
       <div className="mt-3 rounded-xl border border-border bg-background p-3">
@@ -579,7 +617,14 @@ function ActivationBuildCard({
         </ul>
       </div>
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setCancelDialogOpen(true)}
+          className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+        >
+          Cancel
+        </button>
         <button
           type="button"
           onClick={() => setShowActivationConnection(true)}
@@ -588,6 +633,17 @@ function ActivationBuildCard({
           Confirm
         </button>
       </div>
+
+      <ConfirmDialog
+        open={cancelDialogOpen}
+        onOpenChange={setCancelDialogOpen}
+        title="Cancel this activation build?"
+        description="Are you sure you want to cancel your activation? All work will be lost."
+        confirmLabel="Yes"
+        cancelLabel="No"
+        variant="destructive"
+        onConfirm={() => onCancelBuild(sourceMessageId)}
+      />
 
       {showActivationConnection ? (
         <>
@@ -644,37 +700,82 @@ function ActivationBuildCard({
           <div className="mt-3 rounded-xl border border-border bg-background p-3">
             <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Field mapping</p>
             <div className="mt-2 space-y-2">
+              <div className="grid grid-cols-[minmax(7rem,auto)_minmax(0,1fr)_auto] gap-2 md:grid-cols-[minmax(7rem,auto)_170px_minmax(0,1fr)_auto]">
+                <p className="text-center text-xs font-medium text-muted-foreground">Primary key</p>
+                <p className="text-xs font-medium text-muted-foreground">Destination field</p>
+                <p className="col-start-2 row-start-2 text-xs font-medium text-muted-foreground md:col-auto md:row-auto">Customer field</p>
+                <span className="col-start-3 row-start-1 md:col-auto md:row-auto" aria-hidden="true" />
+              </div>
               {fieldRows.map((row) => (
-                <div key={row.id} className="grid gap-2 md:grid-cols-[170px_1fr] md:items-center">
-                  <select
-                    value={row.fieldType}
-                    onChange={(e) => {
-                      const nextFieldType = e.target.value;
-                      const defaultMatch = fieldMatchOptions[nextFieldType]?.[0]?.value ?? "";
-                      setFieldRows((prev) => prev.map((item) => (
-                        item.id === row.id
-                          ? { ...item, fieldType: nextFieldType, selectedMatch: defaultMatch }
-                          : item
-                      )));
-                    }}
-                    className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                <div key={row.id} className="grid grid-cols-[minmax(7rem,auto)_minmax(0,1fr)_auto] gap-2 md:grid-cols-[minmax(7rem,auto)_170px_minmax(0,1fr)_auto] md:items-center">
+                  <div className="flex h-9 items-center justify-center">
+                    <Checkbox
+                      aria-label={`Use ${fieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType} as the primary key`}
+                      checked={primaryFieldRowId === row.id}
+                      onCheckedChange={() => setPrimaryFieldRowId(row.id)}
+                      disabled
+                    />
+                  </div>
+                  <div className="relative min-w-0">
+                    <select
+                      aria-label={`Destination field for ${row.fieldType}`}
+                      value={row.fieldType}
+                      onChange={(e) => {
+                        const nextFieldType = e.target.value;
+                        setFieldRows((prev) => prev.map((item) => (
+                          item.id === row.id
+                            ? { ...item, fieldType: nextFieldType, selectedMatch: getFirstAvailableMatch(nextFieldType, prev, row.id) }
+                            : item
+                        )));
+                      }}
+                      disabled
+                      className="h-9 w-full cursor-not-allowed appearance-none rounded-lg border border-input bg-muted px-3 pr-8 text-sm text-muted-foreground opacity-80"
+                    >
+                      {fieldTypeOptions.map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          disabled={fieldRows.some((otherRow) => otherRow.id !== row.id && otherRow.fieldType === option.value)}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <RiLockLine className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  </div>
+                  <div className="relative col-start-2 row-start-2 min-w-0 md:col-auto md:row-auto">
+                    <select
+                      aria-label={`Customer field for ${row.fieldType}`}
+                      value={row.selectedMatch}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setFieldRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, selectedMatch: next } : item)));
+                      }}
+                      disabled
+                      className="h-9 w-full cursor-not-allowed appearance-none rounded-lg border border-input bg-muted px-3 pr-8 text-sm text-muted-foreground opacity-80"
+                    >
+                      {(fieldMatchOptions[row.fieldType] ?? []).map((option) => (
+                        <option
+                          key={option.value}
+                          value={option.value}
+                          disabled={fieldRows.some((otherRow) => otherRow.id !== row.id && otherRow.selectedMatch === option.value)}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <RiLockLine className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  </div>
+                  <button
+                    type="button"
+                    title="Remove field mapping"
+                    aria-label={`Remove ${fieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType} mapping`}
+                    onClick={() => removeFieldMapping(row.id)}
+                    disabled
+                    className="col-start-3 row-start-1 flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:col-auto md:row-auto"
                   >
-                    {fieldTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={row.selectedMatch}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setFieldRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, selectedMatch: next } : item)));
-                    }}
-                    className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
-                  >
-                    {(fieldMatchOptions[row.fieldType] ?? []).map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
+                    <RiCloseLine className="size-4" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -683,11 +784,13 @@ function ActivationBuildCard({
               <button
                 type="button"
                 onClick={addMoreFields}
-                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+                disabled
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Add More Fields
               </button>
             </div>
+            <p className="mt-2 text-right text-xs italic text-muted-foreground">Custom Field Mapping coming soon</p>
           </div>
 
           <div className="mt-3 rounded-xl border border-border bg-background p-3">
@@ -709,20 +812,20 @@ function ActivationBuildCard({
               <button
                 type="button"
                 onClick={() => setSendTiming("schedule-send")}
+                disabled
                 className={cn(
                   "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                  sendTiming === "schedule-send"
-                    ? "border-primary/60 bg-primary/10 text-foreground"
-                    : "border-border bg-card text-foreground hover:bg-accent",
+                  "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-80",
                 )}
               >
-                Schedule Send
+                <span className="inline-flex items-center gap-1.5"><RiLockLine className="size-3.5" aria-hidden="true" />Schedule Send</span>
               </button>
             </div>
 
             <div className="mt-2 grid grid-cols-1 gap-2">
               <button
                 type="button"
+                disabled
                 onClick={() => {
                   const nextCadence = sendCadence === "re-occurring" ? "once-off" : "re-occurring";
                   setSendCadence(nextCadence);
@@ -733,14 +836,13 @@ function ActivationBuildCard({
                 }}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                  sendCadence === "re-occurring"
-                    ? "border-primary/60 bg-primary/10 text-foreground"
-                    : "border-border bg-card text-foreground hover:bg-accent",
+                  "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-80",
                 )}
               >
-                Re-Occuring
+                <span className="inline-flex items-center gap-1.5"><RiLockLine className="size-3.5" aria-hidden="true" />Recurring</span>
               </button>
             </div>
+            <p className="mt-2 text-right text-xs italic text-muted-foreground">Recurring Activations coming soon</p>
 
             {sendTiming === "schedule-send" ? (
               <div className="mt-3 rounded-lg border border-border/70 bg-card p-3">
@@ -839,7 +941,14 @@ function ActivationBuildCard({
               </div>
             ) : null}
 
-            <div className="mt-3 flex justify-end">
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelDialogOpen(true)}
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+              >
+                Cancel
+              </button>
               <button
                 type="button"
                 onClick={() => setConnectionConfirmed(true)}
@@ -921,7 +1030,7 @@ function ActivationBuildCard({
                           const matchLabel = (fieldMatchOptions[row.fieldType] ?? []).find((option) => option.value === row.selectedMatch)?.label ?? row.selectedMatch;
                           return (
                             <li key={`summary-${row.id}`}>
-                              {fieldLabel} {"->"} {matchLabel}
+                              {fieldLabel} {"->"} {matchLabel}{primaryFieldRowId === row.id ? " (Primary key)" : ""}
                             </li>
                           );
                         })}
@@ -934,7 +1043,7 @@ function ActivationBuildCard({
                     </p>
                     <p className="text-foreground">
                       <span className="font-medium">Cadence:</span>{" "}
-                      {sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off"}
+                      {sendCadence === "re-occurring" ? "Recurring" : "Once Off"}
                     </p>
                     <p className="text-foreground">
                       <span className="font-medium">Date range:</span>{" "}
@@ -1017,6 +1126,8 @@ function ActivationBuildCard({
                             context: `From segment: ${block.segmentName}`,
                             segmentId: block.segmentId,
                             segmentName: block.segmentName,
+                            destinationPlatform: selectedSource?.name,
+                            platformType: "Email",
                             channel: selectedSource?.name ?? "Multi-channel",
                             category: "MVP activation",
                             skill: "Activation build",
@@ -1062,10 +1173,10 @@ function ActivationBuildCard({
                               fieldMapping: fieldRows.map((row) => {
                                 const fieldLabel = fieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType;
                                 const matchLabel = (fieldMatchOptions[row.fieldType] ?? []).find((option) => option.value === row.selectedMatch)?.label ?? row.selectedMatch;
-                                return `${fieldLabel} -> ${matchLabel}`;
+                                return `${fieldLabel} -> ${matchLabel}${primaryFieldRowId === row.id ? " (Primary key)" : ""}`;
                               }),
                               timing: sendTiming === "schedule-send" ? "Schedule Send" : "Send Now",
-                              cadence: sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off",
+                              cadence: sendCadence === "re-occurring" ? "Recurring" : "Once Off",
                               recurringTime: sendCadence === "re-occurring" ? recurringSendTime : undefined,
                               customers: [
                                 { id: `${activationId}-cust-1`, name: `${block.segmentName} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
@@ -1101,6 +1212,200 @@ function ActivationBuildCard({
           </div>
         </>
       ) : null}
+
+    </div>
+  );
+}
+
+function ActivationSummaryView({ activationId }: { activationId: string }) {
+  const { state } = useSession();
+  const activation = state.activations.find((item) => item.id === activationId) ?? getActivation(activationId);
+  if (!activation) return <p className="text-sm text-muted-foreground">Activation not found.</p>;
+
+  const description = activation.activationDefinition ?? activation.mvpDetails?.activationDefinition ?? "Not specified";
+  const segment = activation.mvpDetails?.segmentName ?? activation.segmentName ?? "Not specified";
+  const cadence = activation.activationCadence ?? activation.mvpDetails?.cadence ?? (activation.recurringStartDate ? "Recurring" : "Once Off");
+  const timing = activation.mvpDetails?.timing ?? (activation.scheduledDate ? "Schedule Send" : "Send Now");
+  const latestHistory = activation.history?.[activation.history.length - 1];
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-3.5">
+      <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("prototype-master:open-activation-panel", { detail: { activationId: activation.id, openPage: true } }))} className="mb-2 text-left text-sm font-semibold text-primary hover:underline">{activation.name}</button>
+      <div className="space-y-2 text-sm">
+        <div className="flex items-start justify-between gap-3">
+          <span className="shrink-0 text-foreground-secondary">Description</span>
+          <span className="flex items-start gap-1.5 text-right text-foreground">
+            <span>{description}</span>
+            <span aria-hidden="true" title="Description can be updated in chat" className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded border border-amber-200 bg-amber-50 text-amber-600"><RiEditLine className="size-3" /></span>
+          </span>
+        </div>
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Segment</span><span className="text-right text-foreground">{segment}</span></div>
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Channel</span><span className="text-right text-foreground">{activation.channel}</span></div>
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Cadence</span><span className="inline-flex items-center gap-1.5 text-foreground"><RiLockLine className="size-3.5 text-muted-foreground" />{cadence}</span></div>
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Timing</span><span className="inline-flex items-center gap-1.5 text-foreground"><RiLockLine className="size-3.5 text-muted-foreground" />{timing}{activation.scheduledDate ? ` · ${activation.scheduledDate}` : ""}</span></div>
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Status</span><span className="text-right text-foreground">{ACTIVATION_STATUS_META[activation.status].label}</span></div>
+        {activation.profilesReached !== undefined && <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Profiles reached</span><span className="tabular-nums text-foreground">{activation.profilesReached.toLocaleString()}</span></div>}
+        {activation.resendCount !== undefined && <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Resends</span><span className="tabular-nums text-foreground">{activation.resendCount}</span></div>}
+        {latestHistory && <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Latest volume</span><span className="tabular-nums text-foreground">{latestHistory.profilesSent.toLocaleString()} · {latestHistory.date}</span></div>}
+        {activation.result && <div className="border-t border-border pt-2"><span className="text-foreground-secondary">Latest result</span><p className="mt-1 text-foreground">{activation.result}</p></div>}
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Approval</span><span className="text-right text-foreground">{approvalLabel(activation.approval)}</span></div>
+      </div>
+    </div>
+  );
+}
+
+function ActivationEditCard({ block }: { block: Extract<ContentBlock, { type: "activationEdit" }> }) {
+  const { state, dispatch } = useSession();
+  const activation = state.activations.find((item) => item.id === block.activationId) ?? getActivation(block.activationId);
+  const [description, setDescription] = useState(activation?.mvpDetails?.activationDefinition ?? activation?.activationDefinition ?? activation?.result ?? "");
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [confirmRerunOpen, setConfirmRerunOpen] = useState(false);
+
+  const historyRows: ActivationHistoryPoint[] = activation?.history ?? (
+    activation?.scheduledDate && !activation.recurringStartDate
+      ? [{ date: activation.scheduledDate, profilesSent: activation.profilesReached ?? 18240, delta: 0, note: "Single send" }]
+      : DEFAULT_ACTIVATION_HISTORY
+  );
+  const chartValues = historyRows.map((row) => row.profilesSent);
+  const minValue = Math.min(...chartValues) * 0.9;
+  const maxValue = Math.max(...chartValues) * 1.08;
+  const chartWidth = 520;
+  const chartHeight = 180;
+  const padLeft = 42;
+  const padRight = 10;
+  const padTop = 18;
+  const padBottom = 28;
+  const chartInnerWidth = chartWidth - padLeft - padRight;
+  const chartInnerHeight = chartHeight - padTop - padBottom;
+  const pointX = (index: number) => padLeft + (index / Math.max(historyRows.length - 1, 1)) * chartInnerWidth;
+  const pointY = (value: number) => padTop + chartInnerHeight - ((value - minValue) / Math.max(maxValue - minValue, 1)) * chartInnerHeight;
+  const linePath = historyRows.map((row, index) => `${index === 0 ? "M" : "L"} ${pointX(index)} ${pointY(row.profilesSent)}`).join(" ");
+
+  function saveDescription() {
+    if (!activation) return;
+    ensureActivationInState();
+    dispatch({
+      type: "UPDATE_ACTIVATION",
+      id: activation.id,
+      updates: {
+        activationDefinition: description,
+        mvpDetails: activation.mvpDetails
+          ? { ...activation.mvpDetails, activationDefinition: description }
+          : undefined,
+      },
+    });
+    setSaved(true);
+    setEditingDescription(false);
+  }
+
+  function ensureActivationInState() {
+    if (activation && !state.activations.some((item) => item.id === activation.id)) {
+      dispatch({ type: "ADD_ACTIVATION", activation });
+    }
+  }
+
+  function cancelActivation() {
+    if (!activation) return;
+    ensureActivationInState();
+    dispatch({ type: "UPDATE_ACTIVATION_STATUS", id: activation.id, status: "cancelled" });
+    setConfirmCancelOpen(false);
+  }
+
+  function rerunActivation() {
+    if (!activation) return;
+    const now = new Date();
+    const dateLabel = now.toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" });
+    const rerunActivationId = `ac-rerun-${Date.now()}`;
+    dispatch({
+      type: "ADD_ACTIVATION",
+      activation: {
+        ...activation,
+        id: rerunActivationId,
+        createdAt: now.toISOString(),
+        name: `${activation.name} (Reran ${dateLabel})`,
+        status: "scheduled",
+        whenLabel: `Reran · ${dateLabel}`,
+        result: "Activation rerun has been queued.",
+        trail: [{ at: dateLabel, entry: "Activation rerun requested from activation chat card." }, ...activation.trail],
+      },
+    });
+    setConfirmRerunOpen(false);
+    window.dispatchEvent(new CustomEvent("prototype-master:open-activation-panel", { detail: { activationId: rerunActivationId, openPage: true } }));
+  }
+
+  if (!activation) return <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">Activation not found.</div>;
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("prototype-master:open-activation-panel", { detail: { activationId: activation.id, openPage: true } }))} className="text-left text-base font-semibold text-primary hover:underline">{activation.name}</button>
+            <Badge variant={ACTIVATION_STATUS_META[activation.status].variant} size="sm">{ACTIVATION_STATUS_META[activation.status].label}</Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{activation.context} · {activation.whenLabel}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled title="Sync coming soon" className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-sm font-medium text-muted-foreground"><RiLockLine className="size-3.5" />Sync</button>
+          <button type="button" onClick={() => setConfirmRerunOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm font-medium text-foreground hover:bg-accent"><RiPlayCircleLine className="size-3.5" />Re-run</button>
+          <button type="button" onClick={() => setConfirmCancelOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-background px-2.5 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/5"><RiProhibitedLine className="size-3.5" />Cancel activation</button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Activation name<p className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">{activation.name}</p></div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Channel<p className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">{activation.channel}</p></div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary sm:col-span-2">
+          <span>Description</span>
+          <div className="relative">
+            {editingDescription
+              ? <textarea autoFocus value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-16 w-full rounded-lg border border-input bg-background px-3 py-2 pl-11 text-sm text-foreground" />
+              : <p className="min-h-10 rounded-lg border border-border bg-background px-3 py-2 pl-11 text-sm text-foreground-secondary">{activation.activationDefinition ?? activation.mvpDetails?.activationDefinition ?? "Not specified"}</p>}
+            <button type="button" title="Edit description" aria-label="Edit description" onClick={() => { setEditingDescription((current) => !current); setSaved(false); }} className="absolute left-2 top-2 inline-flex size-7 items-center justify-center rounded-md border border-amber-200 bg-amber-50 text-amber-600 transition-colors hover:bg-amber-100"><RiEditLine className="size-4" /></button>
+          </div>
+        </div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Segment used<p className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">{activation.mvpDetails?.segmentName ?? activation.segmentName ?? "Not specified"}</p></div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Cadence<p className="inline-flex w-full items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"><RiLockLine className="size-3.5 shrink-0" />{activation.activationCadence ?? activation.mvpDetails?.cadence ?? "Once Off"}</p></div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Send date<p className="inline-flex w-full items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"><RiLockLine className="size-3.5 shrink-0" />{activation.scheduledDate ?? activation.recurringStartDate ?? "Not specified"}</p></div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary sm:col-span-2">Latest result<p className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground-secondary">{activation.result ?? "No result recorded."}</p></div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-border bg-background p-3">
+          <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation send history</p>
+          <div className="mt-2 overflow-hidden rounded-lg border border-border/70">
+            <Table>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Profiles sent</TableHead><TableHead>Delta</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {historyRows.map((row, index) => <TableRow key={`${row.date}-${index}`}><TableCell><div>{row.date}</div>{row.note.startsWith("Manual delta sync:") ? <p className="mt-0.5 text-xs text-foreground-secondary">{row.note}</p> : null}</TableCell><TableCell className="tabular-nums">{row.profilesSent.toLocaleString()}</TableCell><TableCell>{row.delta > 0 ? "+" : ""}{row.delta}%</TableCell></TableRow>)}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-background p-3">
+          <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Volume trend</p>
+          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label="Profiles sent by date" className="mt-2 h-40 w-full" preserveAspectRatio="xMidYMid meet">
+            {[0, 1, 2, 3].map((tick) => {
+              const y = padTop + (chartInnerHeight * tick) / 3;
+              const value = Math.round(maxValue - ((maxValue - minValue) * tick) / 3);
+              return <g key={tick}><line x1={padLeft} x2={chartWidth - padRight} y1={y} y2={y} stroke="currentColor" strokeOpacity={0.08} /><text x={padLeft - 6} y={y + 4} textAnchor="end" fontSize={10} fill="currentColor" fillOpacity={0.5}>{value.toLocaleString()}</text></g>;
+            })}
+            <path d={linePath} fill="none" stroke="oklch(62.698% 0.10432 189.917)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+            {historyRows.map((row, index) => <g key={`${row.date}-point-${index}`}><circle cx={pointX(index)} cy={pointY(row.profilesSent)} r={4} fill="white" stroke="oklch(62.698% 0.10432 189.917)" strokeWidth={2} /><text x={pointX(index)} y={chartHeight - 6} textAnchor="middle" fontSize={9} fill="currentColor" fillOpacity={0.5}>{row.date}</text></g>)}
+          </svg>
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+        <p className="ml-auto text-xs italic text-muted-foreground">Sync and recurring activations coming soon</p>
+        {saved && <p role="status" className="text-sm text-foreground-secondary">Description updated.</p>}
+        {editingDescription && <button type="button" onClick={saveDescription} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">Save description</button>}
+      </div>
+
+      <ConfirmDialog open={confirmCancelOpen} onOpenChange={setConfirmCancelOpen} variant="destructive" icon={RiProhibitedLine} title="Cancel activation?" description="Are you sure you want to cancel the activation? Sends to the activation platform may be incomplete and you will need to run the activation again." confirmLabel="Yes, cancel activation" cancelLabel="Keep activation" onConfirm={cancelActivation} />
+      <ConfirmDialog open={confirmRerunOpen} onOpenChange={setConfirmRerunOpen} title="Re-run activation?" description="Do you want to rerun the activation again?" confirmLabel="Yes, re-run activation" cancelLabel="Cancel" onConfirm={rerunActivation} />
     </div>
   );
 }
@@ -1119,6 +1424,7 @@ function PlayedBlockView({
   onConfirmReasoning,
   onRejectReasoning,
   onRequestEditReasoning,
+  onCancelActivationBuild,
 }: {
   rb: RevealBlock;
   messageId: string;
@@ -1131,6 +1437,7 @@ function PlayedBlockView({
   onConfirmReasoning?: () => void;
   onRejectReasoning?: () => void;
   onRequestEditReasoning?: () => void;
+  onCancelActivationBuild: (sourceMessageId: string) => void;
 }) {
   const { block } = rb;
   switch (block.type) {
@@ -1215,9 +1522,19 @@ function PlayedBlockView({
     case "activationBuild":
       return (
         <BlockReveal skeleton={<Skeleton className="h-56 w-full" />}>
-          <ActivationBuildCard block={block} sourceMessageId={messageId} />
+          <ActivationBuildCard
+            block={block}
+            sourceMessageId={messageId}
+            onCancelBuild={onCancelActivationBuild}
+          />
         </BlockReveal>
       );
+
+    case "activationEdit":
+      return <ActivationEditCard block={block} />;
+
+    case "activationSummary":
+      return <ActivationSummaryView activationId={block.activationId} />;
 
     case "activationConnect":
       return null;
@@ -1277,6 +1594,7 @@ function MessageView({
   onConfirmReasoning,
   onRejectReasoning,
   onRequestEditReasoning,
+  onCancelActivationBuild,
   reactions,
   onToggleReaction,
 }: {
@@ -1292,6 +1610,7 @@ function MessageView({
   onConfirmReasoning?: () => void;
   onRejectReasoning?: () => void;
   onRequestEditReasoning?: () => void;
+  onCancelActivationBuild: (sourceMessageId: string) => void;
   reactions: ReactionState;
   onToggleReaction: (messageId: string, key: ReactionKey) => void;
 }) {
@@ -1327,6 +1646,7 @@ function MessageView({
             onConfirmReasoning={onConfirmReasoning}
             onRejectReasoning={onRejectReasoning}
             onRequestEditReasoning={onRequestEditReasoning}
+            onCancelActivationBuild={onCancelActivationBuild}
           />
         ))}
         {message.sources && message.sources.length > 0 && <SourcesBar ids={message.sources} />}
@@ -1391,6 +1711,7 @@ function StartHero() {
     <div className="flex flex-col items-center gap-4 text-center animate-in fade-in-0 duration-300">
       <LexiMark className="size-11" />
       <h2 className="text-lg font-semibold text-foreground">What are we working on?</h2>
+      <BetaNotice className="mb-0" />
     </div>
   );
 }
@@ -1474,7 +1795,10 @@ interface ChatPanelProps {
 
 export function ChatPanel({ narrow }: ChatPanelProps) {
   const { state, dispatch } = useSession();
-  const mentionGroups = useMemo(() => buildMentionGroups(state.activations), [state.activations]);
+  const mentionGroups = useMemo(
+    () => buildMentionGroups(state.activations),
+    [state.activations],
+  );
   const plusSegmentItems = useMemo<DefRef[]>(() => {
     const savedSegments = Array.from(state.artifacts.values())
       .filter((artifact) => artifact.type === "segment" && artifact.status === "saved" && artifact.body?.kind === "segment")
@@ -1515,6 +1839,8 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   const [reasoningCancelMode, setReasoningCancelMode] = useState<ReasoningCancelMode | null>(null);
   const [activationBuildState, setActivationBuildState] = useState<ActivationBuildState>(IDLE_ACTIVATION_BUILD_STATE);
   const [pendingActivationCancelId, setPendingActivationCancelId] = useState<string | null>(null);
+  const [pendingActivationDescriptionUpdate, setPendingActivationDescriptionUpdate] = useState<{ activationId: string; description: string } | null>(null);
+  const [lastMentionedActivationId, setLastMentionedActivationId] = useState<string | null>(null);
     const promptReasoningCancelInChat = useCallback(() => {
       const response = "Are you sure you want to cancel? Segment build will be lost.";
       setMessages((ms) => [
@@ -1736,6 +2062,25 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
 
     // No active conversation (blank New Chat) → start the default one.
     if (!conversation) {
+      if (userText) {
+        const response = "I couldn't find a saved workflow for that question. Mention an activation or a segment linked to one, and I'll answer from its recorded results.";
+        setMessages((ms) => [
+          ...ms,
+          { id: nextId(), role: "user", text: userText },
+          {
+            id: nextId(),
+            role: "lexi",
+            blocks: [
+              {
+                id: `pb-${++idRef.current}`,
+                block: { type: "text", content: response },
+                revealed: words(response).length,
+              },
+            ],
+          },
+        ]);
+        return;
+      }
       dispatch({ type: "SELECT_CONVERSATION", id: DEFAULT_CONVERSATION_ID, autoStart: true });
       return;
     }
@@ -1812,7 +2157,6 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   // auto-plays its scripted conversation. Otherwise we fall through to normal play.
   function handleSubmit(text: string, mentionIds: string[]) {
     const activationPrompt = "Select the segment you would you like to activate from the chat";
-    const confirmationPrompt = "Is this the right segment to activate?";
 
     if (pendingActivationCancelId) {
       const normalizedCancelDecision = stripMentions(text)
@@ -1944,46 +2288,59 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
       });
     };
 
-    const segmentConfirmationCard = (segmentId: string, segmentName: string): Extract<ContentBlock, { type: "reasoning" }> => {
+    const activationBuildBlock = (segmentId: string, segmentName: string): Extract<ContentBlock, { type: "activationBuild" }> => {
       const dummy = DUMMY_SEGMENT_BY_ID[segmentId];
       const artifact = state.artifacts.get(segmentId);
-
-      const description = dummy?.summary
-        ?? (artifact?.body?.kind === "segment" ? (artifact.body.purpose ?? "") : "");
       const population = dummy?.population
         ?? (artifact?.body?.kind === "segment" ? (artifact.body.population ?? "2,840") : "2,840");
-      const validation = dummy?.validation
+      const rules = dummy?.validation
         ?? (artifact?.body?.kind === "segment" ? (artifact.body.criteria ?? []) : []);
-      const recommendations = dummy?.recommendations ?? [
-        "Launch with a narrow first wave and validate conversion quality",
-        "Prioritise high-intent windows before broad expansion",
-        "Track incremental revenue and suppression impact",
-      ];
 
       return {
-        type: "reasoning",
-        mode: "confirmation",
-        goal: `Confirm this segment before activation: ${segmentName}`,
-        assumptions: [
-          { id: `activation-population-${segmentId}`, label: "Population", value: population },
-          { id: `activation-segment-name-${segmentId}`, label: "Segment name", value: segmentName },
-          ...(description
-            ? [{ id: `activation-segment-description-${segmentId}`, label: "Segment description", value: description }]
-            : []),
-          ...(validation.length > 0
-            ? validation.map((item, idx) => ({
-                id: `activation-validation-${segmentId}-${idx}`,
-                label: "Validation",
-                value: item,
-              }))
-            : [{ id: `activation-validation-${segmentId}-none`, label: "Validation", value: "No validation available" }]),
-          ...recommendations.map((item, idx) => ({
-            id: `activation-recommendation-${segmentId}-${idx}`,
-            label: "Recommendation",
-            value: item,
-          })),
-        ],
+        type: "activationBuild",
+        segmentId,
+        segmentName,
+        population,
+        rules,
+        activationName: `${segmentName} Activation`,
+        activationDescription: `Activation from Segment: ${segmentName}`,
       };
+    };
+
+    const segmentDefinitionSnapshot = (segmentId: string, segmentName: string) => {
+      const buildBlock = activationBuildBlock(segmentId, segmentName);
+      const artifact = state.artifacts.get(segmentId);
+      const definition = DUMMY_SEGMENT_BY_ID[segmentId]?.summary
+        ?? (artifact?.body?.kind === "segment" ? artifact.body.purpose : undefined)
+        ?? getDef(segmentId)?.description
+        ?? "Definition not recorded.";
+      const snapshotDate = new Date().toLocaleDateString("en-AU", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      return `**${segmentName}**\n\n- Definition: ${definition}\n- As of ${snapshotDate}: ${buildBlock.population} customers in the segment.`;
+    };
+
+    const appendUserAndActivationBuild = (segmentId: string, segmentName: string) => {
+      ensureSegmentArtifact(segmentId, segmentName);
+      const buildBlock = activationBuildBlock(segmentId, segmentName);
+      setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
+      setMessages((ms) => [
+        ...ms,
+        { id: nextId(), role: "user", text },
+        {
+          id: nextId(),
+          role: "lexi",
+          blocks: [
+            {
+              id: `pb-${++idRef.current}`,
+              block: buildBlock,
+              revealed: 1,
+            },
+          ],
+        },
+      ]);
     };
 
     const appendUserAndLexiText = (lexiText: string) => {
@@ -2003,6 +2360,49 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         },
       ]);
     };
+
+    const appendUserAndActivationSummary = (activationId: string) => {
+      setMessages((ms) => [
+        ...ms,
+        { id: nextId(), role: "user", text },
+        {
+          id: nextId(),
+          role: "lexi",
+          blocks: [{ id: `pb-${++idRef.current}`, block: { type: "activationSummary", activationId }, revealed: 1 }],
+        },
+      ]);
+    };
+
+    if (pendingActivationDescriptionUpdate) {
+      const answer = stripMentions(text).trim().toLowerCase().replace(/[.!?]+$/g, "");
+      if (/^(yes|yeah|yep|sure|ok|okay|yes please|yeah please)$/.test(answer)) {
+        const { activationId, description } = pendingActivationDescriptionUpdate;
+        const activation = state.activations.find((item) => item.id === activationId) ?? getActivation(activationId);
+        setPendingActivationDescriptionUpdate(null);
+        if (!activation) {
+          appendUserAndLexiText("I couldn't find that activation, so no changes have been saved.");
+          return;
+        }
+        dispatch({
+          type: "UPDATE_ACTIVATION",
+          id: activation.id,
+          updates: {
+            activationDefinition: description,
+            mvpDetails: activation.mvpDetails
+              ? { ...activation.mvpDetails, activationDefinition: description }
+              : undefined,
+          },
+        });
+        appendUserAndActivationSummary(activation.id);
+        return;
+      }
+      if (/^(no|nope|not now|no thanks|no thank you)$/.test(answer)) {
+        setPendingActivationDescriptionUpdate(null);
+        appendUserAndLexiText("No changes have been saved.");
+        return;
+      }
+      setPendingActivationDescriptionUpdate(null);
+    }
 
     const markLatestActivationConfirmationNo = () => {
       setMessages((ms) => {
@@ -2079,6 +2479,21 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
       .replace(/\s+/g, " ")
       .trim();
 
+    if (activationBuildState.stage === "await-activation-choice") {
+      const segmentId = activationBuildState.segmentId ?? "";
+      const segmentName = activationBuildState.segmentName ?? "Selected segment";
+      if (/^(yes|yeah|yep|sure|ok|okay|yes please|yeah please)$/.test(normalizedTextForActivation)) {
+        appendUserAndActivationBuild(segmentId, segmentName);
+        return;
+      }
+      if (/^(no|nope|not now|no thanks|no thank you)$/.test(normalizedTextForActivation)) {
+        setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
+        appendUserAndLexiText("No problem. What would you like to do with this segment?");
+        return;
+      }
+      setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
+    }
+
     const startsActivationBuild =
       normalizedTextForActivation.includes("activation")
       && (normalizedTextForActivation.includes("build")
@@ -2095,41 +2510,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         return;
       }
 
-      ensureSegmentArtifact(segment.id, segment.name);
-      const detailsCard = segmentConfirmationCard(segment.id, segment.name);
-      setActivationBuildState({ stage: "await-confirmation", segmentId: segment.id, segmentName: segment.name });
-      setMessages((ms) => [
-        ...ms,
-        { id: nextId(), role: "user", text },
-        {
-          id: nextId(),
-          role: "lexi",
-          blocks: [
-            {
-              id: `pb-${++idRef.current}`,
-              block: detailsCard,
-              revealed: 1,
-            },
-            {
-              id: `pb-${++idRef.current}`,
-              block: { type: "text", content: confirmationPrompt },
-              revealed: words(confirmationPrompt).length,
-            },
-            {
-              id: `pb-${++idRef.current}`,
-              block: {
-                type: "actions",
-                actions: [
-                  { id: "activation-segment-yes", label: "Yes" },
-                  { id: "activation-segment-no", label: "No" },
-                  { id: "activation-segment-cancel", label: "Cancel" },
-                ],
-              },
-              revealed: 1,
-            },
-          ],
-        },
-      ]);
+      appendUserAndActivationBuild(segment.id, segment.name);
       return;
     }
 
@@ -2141,41 +2522,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         return;
       }
 
-      ensureSegmentArtifact(segment.id, segment.name);
-      const detailsCard = segmentConfirmationCard(segment.id, segment.name);
-      setActivationBuildState({ stage: "await-confirmation", segmentId: segment.id, segmentName: segment.name });
-      setMessages((ms) => [
-        ...ms,
-        { id: nextId(), role: "user", text },
-        {
-          id: nextId(),
-          role: "lexi",
-          blocks: [
-            {
-              id: `pb-${++idRef.current}`,
-              block: detailsCard,
-              revealed: 1,
-            },
-            {
-              id: `pb-${++idRef.current}`,
-              block: { type: "text", content: confirmationPrompt },
-              revealed: words(confirmationPrompt).length,
-            },
-            {
-              id: `pb-${++idRef.current}`,
-              block: {
-                type: "actions",
-                actions: [
-                  { id: "activation-segment-yes", label: "Yes" },
-                  { id: "activation-segment-no", label: "No" },
-                  { id: "activation-segment-cancel", label: "Cancel" },
-                ],
-              },
-              revealed: 1,
-            },
-          ],
-        },
-      ]);
+      appendUserAndActivationBuild(segment.id, segment.name);
       return;
     }
 
@@ -2590,7 +2937,8 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
       return;
     }
 
-    const triggeredByActivation = mentionIds
+    const explicitlyRequestsActivationAnalysis = /\b(insights?|analyze|analyse|analysis|deep dive|walk me through)\b/.test(normalizedText);
+    const activationInsightMention = mentionIds
       .map((id) => getDef(id))
       .find((d) => {
         if (!d) return false;
@@ -2602,7 +2950,8 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
             || n.includes("vip at-risk")
             || n.includes("lapsed vip")
           );
-      })
+      });
+    const triggeredByActivation = explicitlyRequestsActivationAnalysis && activationInsightMention
       ? (mentionIds
         .map((id) => getDef(id))
         .some((d) => d?.name.toLowerCase().includes("bf reactivation core") || d?.name.toLowerCase().includes("90-180d"))
@@ -2612,6 +2961,91 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
 
     if (triggeredByActivation && CONVERSATIONS.some((conversation) => conversation.id === triggeredByActivation)) {
       dispatch({ type: "SELECT_CONVERSATION", id: triggeredByActivation, autoStart: true });
+      return;
+    }
+
+    const activationFromMention = mentionIds
+      .map((id) => state.activations.find((activation) => activation.id === id) ?? getActivation(id))
+      .find((activation): activation is Activation => Boolean(activation));
+    const normalizeActivationName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const activationFromText = state.activations.find((activation) => (
+      normalizedText.includes(normalizeActivationName(activation.name))
+    ));
+    const mentionedActivation = activationFromMention
+      ?? activationFromText
+      ?? state.activations.find((activation) => activation.id === lastMentionedActivationId)
+      ?? (lastMentionedActivationId ? getActivation(lastMentionedActivationId) : undefined);
+
+    if (mentionedActivation) {
+      setLastMentionedActivationId(mentionedActivation.id);
+      const textWithoutMentionTokens = text.replace(/\[\[[^\]]+\]\]/g, " ").replace(/\s+/g, " ").trim();
+      const descriptionUpdateMatch = textWithoutMentionTokens
+        .trim()
+        .match(/(?:\b(?:update|change|edit|set)\b[\s\S]*?)?\bdescription\b\s+(?:to(?:\s+be)?|as|is|:|=)\s+([\s\S]+)$/i);
+
+      if (descriptionUpdateMatch) {
+        const updatedDescription = descriptionUpdateMatch[1].trim().replace(/^['"]|['"]$/g, "");
+        setPendingActivationDescriptionUpdate({ activationId: mentionedActivation.id, description: updatedDescription });
+        appendUserAndLexiText(`Update [[${mentionedActivation.id}]] description to:\n\n> ${updatedDescription}\n\nAre you sure you want to make this change? Reply Yes or No.`);
+        return;
+      }
+
+      const asksToEditActivation = /\b(edit|update|change|modify|revise)\b/.test(normalizedText);
+      if (asksToEditActivation) {
+        const editBlock: ContentBlock = {
+          type: "activationEdit",
+          activationId: mentionedActivation.id,
+        };
+        setMessages((ms) => [
+          ...ms,
+          { id: nextId(), role: "user", text },
+          {
+            id: nextId(),
+            role: "lexi",
+            blocks: [{ id: `pb-${++idRef.current}`, block: editBlock, revealed: 1 }],
+          },
+        ]);
+        return;
+      }
+
+      appendUserAndActivationSummary(mentionedActivation.id);
+      return;
+    }
+
+    const mentionedSegment = findMentionedSegment();
+    const asksAboutActivationRecord = /\b(result|results|performance|outcome|latest|approval|approved|approver|approve|resend|resends|resent|retry|retries|reach|reached|profile|profiles|delivery|delivered|sent|trend|history|status|live|scheduled|cancelled|who)\b/.test(normalizedText);
+    if (mentionedSegment && asksAboutActivationRecord) {
+      const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const normalizedSegmentName = normalizeName(mentionedSegment.name);
+      const linkedActivations = state.activations.filter((activation) => (
+        activation.segmentId === mentionedSegment.id
+        || (activation.segmentName && normalizeName(activation.segmentName) === normalizedSegmentName)
+      ));
+      const asksForResults = /\b(result|results|performance|outcome|latest)\b/.test(normalizedText);
+      const asksForApproval = /\b(approved|approval|approver|approve|who)\b/.test(normalizedText);
+      const activationSummaries = linkedActivations.map((activation) => {
+        const answers = [
+          ...((activation.activationDefinition ?? activation.mvpDetails?.activationDefinition)
+            ? [`Description: ${activation.activationDefinition ?? activation.mvpDetails?.activationDefinition}`]
+            : []),
+          ...(asksForResults
+            ? [`Latest result: ${activation.result ?? (activation.invocations.map((invocation) => `${invocation.skill}: ${invocation.result}`).join("; ") || "No result is recorded.")}`]
+            : []),
+          ...(asksForApproval ? [`Approval: ${approvalLabel(activation.approval)}.`] : []),
+        ];
+        return `[[${activation.id}]]\n${answers.map((answer) => `- ${answer}`).join("\n")}`;
+      });
+      const response = activationSummaries.length > 0
+        ? `Activation records linked to **${mentionedSegment.name}**:\n\n${activationSummaries.join("\n\n")}`
+        : `${segmentDefinitionSnapshot(mentionedSegment.id, mentionedSegment.name)}\n\nNo activation records are linked to this segment yet.\n\nWould you like to activate this segment?`;
+      if (activationSummaries.length === 0) {
+        setActivationBuildState({
+          stage: "await-activation-choice",
+          segmentId: mentionedSegment.id,
+          segmentName: mentionedSegment.name,
+        });
+      }
+      appendUserAndLexiText(response);
       return;
     }
 
@@ -2636,6 +3070,17 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
       const triggeredBySegment = mentionIds.map((id) => SEGMENT_TRIGGERS[id]).find(Boolean);
       if (triggeredBySegment) {
         dispatch({ type: "SELECT_CONVERSATION", id: triggeredBySegment, autoStart: true });
+        return;
+      }
+
+      const selectedSegment = findMentionedSegment();
+      if (selectedSegment) {
+        setActivationBuildState({
+          stage: "await-activation-choice",
+          segmentId: selectedSegment.id,
+          segmentName: selectedSegment.name,
+        });
+        appendUserAndLexiText(`${segmentDefinitionSnapshot(selectedSegment.id, selectedSegment.name)}\n\nWould you like to activate this segment?`);
         return;
       }
     }
@@ -2766,6 +3211,8 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
     setReasoningCancelMode(null);
     setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
     setPendingActivationCancelId(null);
+    setPendingActivationDescriptionUpdate(null);
+    setLastMentionedActivationId(null);
     bfInsightFollowupIndexRef.current = 0;
   }, [state.activeConversationId]);
 
@@ -2815,6 +3262,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
     turnRef.current = 0;
     setTurnIndex(0);
     setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
+    setLastMentionedActivationId(null);
     idRef.current = 0;
     prevCount.current = 0;
 
@@ -3545,6 +3993,36 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
     }
   }, [bfInsightFollowups, dispatch, handleSubmit, launchActivationFromSegment, promptForSegmentClarification, reasoningCancelMode, restartSegmentBuildPrompt, state.activeConversationId, state.artifacts]);
 
+  function handleCancelActivationBuild(sourceMessageId: string) {
+    const response = "Activation build cancelled.";
+    setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
+    setMessages((current) => {
+      const retainedMessages: PlayedMessage[] = [];
+      for (const message of current) {
+        if (message.role === "lexi" && message.id === sourceMessageId) {
+          const blocks = message.blocks.filter((item) => item.block.type !== "activationBuild");
+          if (blocks.length > 0) retainedMessages.push({ ...message, blocks });
+        } else {
+          retainedMessages.push(message);
+        }
+      }
+      return [
+        ...retainedMessages,
+        {
+          id: nextId(),
+          role: "lexi",
+          blocks: [
+            {
+              id: `pb-${++idRef.current}`,
+              block: { type: "text", content: response },
+              revealed: words(response).length,
+            },
+          ],
+        },
+      ];
+    });
+  }
+
   return (
     <div className={cn("flex h-full flex-col bg-background", narrow && "border-l border-border")}>
       {/* Centre→bottom transition: a 3-row grid whose trailing spacer collapses from
@@ -3583,6 +4061,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
                     onSegmentOpenPanel={handleOpenSegmentPanel}
                     onSegmentApprove={handleSegmentApproved}
                     onSegmentActivate={handleSegmentActivate}
+                    onCancelActivationBuild={handleCancelActivationBuild}
                     onConfirmReasoning={
                       i === lastIdx && pendingVerify && nextTurn
                         ? () => {
@@ -3640,7 +4119,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
             placeholder={empty ? "Message Lexi..." : "Reply to Lexi..."}
             onSubmit={handleSubmit}
             disabled={busy}
-            enableMentions={false}
+            enableMentions
           />
           {empty ? (
             <StartPrompts

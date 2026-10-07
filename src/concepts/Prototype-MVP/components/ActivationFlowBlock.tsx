@@ -5,6 +5,7 @@ import { getDef } from "@/data/def-registry";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
 import {
   Select,
   SelectTrigger,
@@ -18,7 +19,7 @@ import type { Activation } from "../activations-mock";
 import { getBrainGroup } from "../../lexi-shared-brain/data";
 
 const WINDOW_OPTIONS = [90, 120, 180, 365] as const;
-const DESTINATION_OPTIONS = ["Klaviyo", "Meta", "Braze"] as const;
+const DESTINATION_OPTIONS = ["Klaviyo"] as const;
 const CUSTOMER_COUNTS: Record<number, string> = {
   90: "6,412",
   120: "5,530",
@@ -213,7 +214,14 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
     return name.length > 0 && PLAYBOOK_TAKEN.includes(name);
   }, [pendingName]);
   const canSaveName = pendingName.trim().length > 0 && !isNameTaken;
-  const fieldMapping = block.fieldMapping ?? {
+  const fieldMapping = block.fieldMapping?.rows.length
+    ? {
+        ...block.fieldMapping,
+        rows: block.fieldMapping.rows.length === 1
+          ? block.fieldMapping.rows.map((row) => ({ ...row, primary: true }))
+          : block.fieldMapping.rows,
+      }
+    : {
     rows: [
       {
         id: "row-email",
@@ -387,6 +395,8 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
       context: destination === "Meta" ? "Meta Ads · audience" : `${destination} campaign`,
       segmentId: block.segmentId,
       segmentName: audienceName,
+      destinationPlatform: destination,
+      platformType: destination === "Meta" ? "Paid social" : "Email",
       channel,
       skill,
       approval: { kind: "auto" },
@@ -631,6 +641,16 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
       });
       return;
     }
+
+    const currentRow = fieldMapping.rows.find((row) => row.id === rowId);
+    const usedInOtherRows = fieldMapping.rows.some(
+      (row) => row.id !== rowId && row.selected === value,
+    );
+
+    if (usedInOtherRows && value !== currentRow?.selected) {
+      return;
+    }
+
     const field = FIELD_CATALOG.find((item) => item.id === value);
     updateFieldRow(rowId, {
       selected: value,
@@ -649,10 +669,16 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
   };
 
   const handleRemoveRow = (rowId: string) => {
+    if (fieldMapping.rows.length <= 1) return;
+    const removedPrimary = fieldMapping.rows.some((row) => row.id === rowId && row.primary);
+    const remainingRows = fieldMapping.rows.filter((row) => row.id !== rowId);
     updateBlock({
       fieldMapping: {
         ...fieldMapping,
-        rows: fieldMapping.rows.filter((row) => row.id !== rowId),
+        rows: remainingRows.map((row, index) => ({
+          ...row,
+          primary: remainingRows.length === 1 || (removedPrimary && index === 0) ? true : row.primary,
+        })),
       },
     });
   };
@@ -664,6 +690,16 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
   const handleSearchPick = (rowId: string, fieldId: string) => {
     const field = FIELD_CATALOG.find((item) => item.id === fieldId);
     if (!field) return;
+
+    const currentRow = fieldMapping.rows.find((row) => row.id === rowId);
+    const usedInOtherRows = fieldMapping.rows.some(
+      (row) => row.id !== rowId && row.selected === field.id,
+    );
+
+    if (usedInOtherRows && field.id !== currentRow?.selected) {
+      return;
+    }
+
     updateBlock({
       fieldMapping: {
         ...fieldMapping,
@@ -793,12 +829,40 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
     });
   };
 
+  const fieldRows = fieldMapping.rows.map((row) => ({
+    ...row,
+    canPrimary: row.canPrimary ?? true,
+  }));
+
+  const getAvailableFieldOptions = (rowId: string, row: (typeof fieldRows)[number]) => {
+    const usedFields = new Set(
+      fieldRows.filter((item) => item.id !== rowId).map((item) => item.selected),
+    );
+
+    const preferredIds = [...new Set([...(row.candidates ?? []), ...FIELD_CATALOG.map((field) => field.id)])]
+      .filter((fieldId) => fieldId === row.selected || !usedFields.has(fieldId));
+
+    return preferredIds.map((fieldId) => {
+      const catalogField = FIELD_CATALOG.find((field) => field.id === fieldId);
+      return {
+        id: fieldId,
+        label: catalogField?.label ?? fieldId,
+        coverage: catalogField?.coverage ?? getFieldCoverage(fieldId),
+      };
+    });
+  };
+
   const searchResults = FIELD_CATALOG.filter((field) => {
     const query = fieldMapping.searchQuery?.trim().toLowerCase() ?? "";
-    return query.length === 0 || field.label.toLowerCase().includes(query) || field.id.toLowerCase().includes(query);
-  });
+    const rowId = fieldMapping.searchRowId;
+    const row = rowId ? fieldRows.find((item) => item.id === rowId) : undefined;
+    const usedFields = new Set(fieldRows.filter((item) => item.id !== rowId).map((item) => item.selected));
 
-  const fieldRows = fieldMapping.rows;
+    const isCurrentSelection = field.id === row?.selected;
+    const isAvailable = isCurrentSelection || !usedFields.has(field.id);
+
+    return isAvailable && (query.length === 0 || field.label.toLowerCase().includes(query) || field.id.toLowerCase().includes(query));
+  });
   const fieldList = fieldRows
     .map((row) => `${row.label.toLowerCase()} (${row.selected})${row.primary ? " — primary" : ""}`)
     .join(", ");
@@ -1290,48 +1354,61 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
           ) : null}
 
           <div className="space-y-3">
-            {fieldRows.map((row) => (
-              <div key={row.id} className="rounded-lg border border-border/70 bg-background p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-foreground">{row.label}</p>
-                      {row.primary ? <Badge variant="success" size="sm">Primary identifier</Badge> : null}
+            {fieldRows.map((row) => {
+              const availableOptions = getAvailableFieldOptions(row.id, row);
+
+              return (
+                <div key={row.id} className="rounded-lg border border-border/70 bg-background p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground">{row.label}</p>
+                        {row.primary ? <Badge variant="success" size="sm">Primary identifier</Badge> : null}
+                      </div>
+                      <p className="mt-1 text-sm text-foreground-secondary">
+                        Using your field {getFieldLabel(row.selected)} — {row.coverage}% populated{row.note ? ` · ${row.note}` : ""}
+                      </p>
                     </div>
-                    <p className="mt-1 text-sm text-foreground-secondary">
-                      Using your field {getFieldLabel(row.selected)} — {row.coverage}% populated{row.note ? ` · ${row.note}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2 min-w-[12rem]">
-                    <Select value={row.selected} onValueChange={(value) => handleFieldSelect(row.id, value)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Choose field" />
-                      </SelectTrigger>
-                      <SelectContent className="w-full">
-                        {row.candidates.map((candidate) => (
-                          <SelectItem key={candidate} value={candidate}>
-                            {getFieldLabel(candidate)} — {getFieldCoverage(candidate)}%
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={`search-${row.id}`}>Search another field…</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <div className="flex flex-wrap gap-2">
-                      {row.canPrimary && !row.primary ? (
-                        <Button size="sm" variant="outline" onClick={() => handleTogglePrimary(row.id)}>
-                          Set primary
-                        </Button>
-                      ) : null}
-                      {row.removable ? (
-                        <Button size="icon" variant="ghost" onClick={() => handleRemoveRow(row.id)}>
-                          <RiCloseLine className="size-4" />
-                        </Button>
-                      ) : null}
+                    <div className="flex flex-col gap-2 min-w-[12rem]">
+                      <Select value={row.selected} onValueChange={(value) => handleFieldSelect(row.id, value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Choose field" />
+                        </SelectTrigger>
+                        <SelectContent className="w-full">
+                          {availableOptions.map((candidate) => (
+                            <SelectItem key={candidate.id} value={candidate.id}>
+                              {candidate.label} — {candidate.coverage}%
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={`search-${row.id}`}>Search another field…</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        {row.canPrimary ? (
+                          <label className="flex items-center gap-2 text-sm text-foreground-secondary">
+                            <Checkbox
+                              checked={row.primary}
+                              onCheckedChange={() => handleTogglePrimary(row.id)}
+                              aria-label={`Use ${row.label} as primary key`}
+                            />
+                            <span>Primary key</span>
+                          </label>
+                        ) : null}
+
+                        <div className="ml-auto flex items-center gap-2">
+                          {row.removable ? (
+                            <Button size="icon" variant="ghost" disabled={fieldMapping.rows.length <= 1} onClick={() => handleRemoveRow(row.id)}>
+                              <RiCloseLine className="size-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {includeSubscription ? (

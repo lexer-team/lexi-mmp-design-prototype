@@ -1,0 +1,39 @@
+<svg width="1200" height="800" viewBox="0 0 1200 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="800" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1A1A1A"/>
+      <stop offset="1" stop-color="#3A0A24"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="160" y1="120" x2="1040" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FCDAEB"/>
+      <stop offset="1" stop-color="#CD4496"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="800" rx="28" fill="url(#bg)"/>
+  <circle cx="980" cy="180" r="220" fill="#CD4496" fill-opacity="0.18"/>
+  <circle cx="220" cy="650" r="260" fill="#A82071" fill-opacity="0.2"/>
+
+  <rect x="80" y="70" width="1040" height="660" rx="24" fill="#121212" fill-opacity="0.72" stroke="#CD4496" stroke-opacity="0.5"/>
+
+  <text x="140" y="170" fill="#FCDAEB" font-size="56" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">BLACK FRIDAY</text>
+  <text x="140" y="230" fill="#FFFFFF" font-size="36" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">EMAIL CAMPAIGN HERO</text>
+
+  <g transform="translate(610 200)">
+    <path d="M120 60 C120 20 80 10 60 10 C40 10 0 20 0 60 L0 320 L120 320 Z" fill="url(#accent)"/>
+    <path d="M0 75 L-65 130 L-45 165 L0 135 Z" fill="#CD4496"/>
+    <path d="M120 75 L185 130 L165 165 L120 135 Z" fill="#CD4496"/>
+    <rect x="46" y="132" width="28" height="188" fill="#A82071" fill-opacity="0.45"/>
+    <path d="M45 42 L75 42 L60 68 Z" fill="#1B1B1B"/>
+    <rect x="35" y="320" width="50" height="24" rx="12" fill="#A82071"/>
+  </g>
+
+  <rect x="140" y="310" width="360" height="66" rx="14" fill="#CD4496"/>
+  <text x="170" y="353" fill="#FFFFFF" font-size="32" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">UP TO 60% OFF</text>
+
+  <text x="140" y="430" fill="#FCDAEB" font-size="28" font-family="'Mona Sans', Arial, sans-serif" font-weight="700">Featured: BF Hoodie Sweater</text>
+  <text x="140" y="474" fill="#FFFFFF" font-size="22" font-family="'Mona Sans', Arial, sans-serif">Launch: Nov 22 • Audience: high-intent online</text>
+
+  <rect x="140" y="536" width="250" height="64" rx="12" fill="#FCDAEB"/>
+  <text x="192" y="577" fill="#A82071" font-size="28" font-family="'Mona Sans', Arial, sans-serif" font-weight="800">SHOP NOW</text>
+</svg>

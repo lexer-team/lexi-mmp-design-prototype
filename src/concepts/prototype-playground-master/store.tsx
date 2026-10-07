@@ -2,7 +2,7 @@ import { createContext, useContext, useReducer, type Dispatch, type ReactNode } 
 import type { Artifact, ArtifactBody, Pin, RecommendationStep } from "./types";
 import type { DefRef } from "@/data/def-registry";
 import { DEMO_ARTIFACTS } from "./demo-data";
-import { type Activation } from "./activations-mock";
+import { ACTIVATIONS, type Activation } from "./activations-mock";
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -401,7 +401,7 @@ const INITIAL_STATE: SessionState = {
   openSourcesIds: null,
   editingSegmentId: null,
   activeConversationId: null,
-  activations: [],
+  activations: ACTIVATIONS,
   chatStarted: false,
   replayNonce: 0,
   autoStart: false,
