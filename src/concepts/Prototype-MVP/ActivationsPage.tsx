@@ -10,6 +10,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { getAudienceLabel, getAudienceWarning } from "@/lib/activation-audience";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/Table";
 import ActivationFlowBlock from "./components/ActivationFlowBlock";
 import {
-  RiSearchLine, RiBroadcastLine, RiGroupLine, RiShieldCheckLine, RiLockLine,
+  RiSearchLine, RiBroadcastLine, RiGroupLine, RiShieldCheckLine,
   RiPlayLine, RiTimeLine, RiFlag2Line, RiArrowRightSLine, RiPriceTag3Line,
   RiFullscreenLine, RiFullscreenExitLine, RiCloseLine,
 } from "@remixicon/react";
@@ -519,6 +520,11 @@ export function ActivationsPage({
                     <TableCell>
                       <span className="font-medium text-foreground">{a.name}</span>
                       <p className="mt-0.5 max-w-xs truncate text-sm text-foreground-secondary">{a.skill}</p>
+                      {a.mvpDetails?.population ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {a.mvpDetails.audience ? getAudienceLabel(a.mvpDetails.audience) : "Population"}: {a.mvpDetails.population}
+                        </p>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{getActivationCreatedBy(a)}</TableCell>
                     <TableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">{a.context}</TableCell>
@@ -663,8 +669,11 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
   const s = ACTIVATION_STATUS_META[activation.status];
 
   const detailPopulation = activation.mvpDetails?.population ?? "Not specified";
+  const detailAudience = activation.mvpDetails?.audience;
+  const detailPopulationLabel = detailAudience ? getAudienceLabel(detailAudience) : "Population";
+  const detailAudienceWarning = getAudienceWarning(detailAudience);
   const detailActivationName = activation.mvpDetails?.activationName ?? activation.name;
-  const detailActivationDefinition = activation.mvpDetails?.activationDefinition ?? activation.activationDefinition ?? activation.result ?? "Not specified";
+  const detailActivationDefinition = activation.mvpDetails?.activationDefinition ?? activation.result ?? "Not specified";
   const detailCreatedBy = getActivationCreatedBy(activation);
   const detailSegmentUsed = activation.mvpDetails?.segmentName ?? activation.segmentName ?? "Not specified";
   const detailDataSource = activation.mvpDetails?.dataSource ?? activation.channel;
@@ -772,8 +781,16 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
 
         <TabsContent value="details" className="space-y-3">
           <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population</p>
+            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">{detailPopulationLabel}</p>
             <p className="mt-1 text-lg font-semibold text-foreground tabular-nums">{detailPopulation}</p>
+            {detailAudience === "reachable" && activation.mvpDetails?.segmentPopulation ? (
+              <p className="mt-1 text-xs text-foreground-secondary">From a segment of {activation.mvpDetails.segmentPopulation} profiles</p>
+            ) : null}
+            {detailAudienceWarning ? (
+              <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-foreground">
+                {detailAudienceWarning}
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4">
@@ -838,36 +855,61 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
                 <div>
                   <dt className="text-xs text-muted-foreground">Delivery time</dt>
                   <dd className="mt-0.5 text-sm font-medium text-foreground">
-                    {isEditing
-                      ? <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground"><RiLockLine className="size-3.5" />{formatDetailTime(detailDeliveryTime)}</span>
-                      : formatDetailTime(detailDeliveryTime)}
+                    {isEditing && editDraft?.cadence === "Recurring" && onEditDraftChange ? (
+                      <Input
+                        aria-label="Recurring delivery time"
+                        className="h-9"
+                        type="time"
+                        value={editDraft.recurringDeliveryTime}
+                        onChange={(event) => onEditDraftChange({ recurringDeliveryTime: event.target.value })}
+                      />
+                    ) : formatDetailTime(detailDeliveryTime)}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">Send date</dt>
-                  <dd className="mt-0.5 text-sm font-medium text-foreground">
-                    {isEditing
-                      ? <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground"><RiLockLine className="size-3.5" />{formatDetailDate(detailSendDate)}</span>
-                      : formatDetailDate(detailSendDate)}
-                  </dd>
+                  <dd className="mt-0.5 text-sm font-medium text-foreground">{formatDetailDate(detailSendDate)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-muted-foreground">End date</dt>
                   <dd className="mt-0.5 text-sm font-medium text-foreground">
-                    {isEditing
-                      ? <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground"><RiLockLine className="size-3.5" />{detailEndDate ? formatDetailDate(detailEndDate) : "No end date"}</span>
-                      : detailEndDate ? formatDetailDate(detailEndDate) : "No end date"}
+                    {isEditing && editDraft?.cadence === "Recurring" && onEditDraftChange ? (
+                      <Input
+                        aria-label="Recurring end date"
+                        className="h-9"
+                        type="date"
+                        value={editDraft.recurringEndDate}
+                        onChange={(event) => onEditDraftChange({ recurringEndDate: event.target.value })}
+                      />
+                    ) : detailEndDate ? formatDetailDate(detailEndDate) : "No end date"}
                   </dd>
                 </div>
               </dl>
-              {isEditing ? <p className="mt-3 text-xs italic text-muted-foreground">Scheduling Activations coming soon</p> : null}
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Cadence</p>
-              <p className={cn("mt-2 text-sm font-semibold", isEditing ? "inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-muted-foreground" : "text-foreground")}>
-                {isEditing ? <RiLockLine className="size-3.5" /> : null}{detailCadence}
-              </p>
-              {isEditing ? <p className="mt-3 text-xs italic text-muted-foreground">Recurring Activations coming soon</p> : null}
+              {isEditing && editDraft && onEditDraftChange ? (
+                <>
+                  <select
+                    aria-label="Cadence"
+                    className="mt-2 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                    value={editDraft.cadence}
+                    onChange={(event) => onEditDraftChange({ cadence: event.target.value as ActivationEditDraft["cadence"] })}
+                  >
+                    <option value="Once Off">Once Off</option>
+                    <option value="Recurring">Recurring</option>
+                  </select>
+                  {editDraft.cadence !== detailCadence ? (
+                    <p className="mt-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+                      {editDraft.cadence === "Recurring"
+                        ? "Changing this activation to Recurring will automatically sync new and updated profiles on each scheduled run until paused or stopped."
+                        : "Switching to one-off will stop all future scheduled syncs. This activation will only run when you sync it manually."}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="mt-2 text-sm font-semibold text-foreground">{detailCadence}</p>
+              )}
             </div>
           </div>
         </TabsContent>

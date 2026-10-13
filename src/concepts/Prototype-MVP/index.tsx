@@ -52,6 +52,7 @@ import {
   RiFullscreenLine,
   RiFullscreenExitLine,
   RiSettings3Line,
+  RiLockLine,
 } from "@remixicon/react";
 import { getDef } from "@/data/def-registry";
 import { KIND_META } from "@/components/definitions/kind-meta";
@@ -1332,9 +1333,10 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
                 size="xs"
                 variant="outline"
                 className="h-7"
-                onClick={() => setConfirmSyncOpen(true)}
-                disabled={!activation || isEditing}
+                title="Sync coming soon"
+                disabled
               >
+                <RiLockLine className="size-3.5" />
                 Sync
               </Button>
               <Button

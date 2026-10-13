@@ -11,6 +11,8 @@
  * so the detail can cross-link to segment detail.
  */
 
+import type { ActivationAudience } from "@/lib/activation-audience";
+
 export type ActivationStatus =
   | "live" | "scheduled" | "awaiting-approval" | "sent" | "completed" | "failed" | "cancelled";
 
@@ -85,6 +87,8 @@ export interface Activation {
   /** Optional payload captured from MVP activation build in chat. */
   mvpDetails?: {
     population: string;
+    audience?: ActivationAudience;
+    segmentPopulation?: string;
     activationName: string;
     activationDefinition: string;
     segmentName: string;
@@ -99,11 +103,7 @@ export interface Activation {
   history?: ActivationHistoryPoint[];
 }
 
-export function estimateReachableProfileCount(population: string): number {
-  const profileCount = Number(population.replace(/,/g, ""));
-  if (!Number.isFinite(profileCount) || profileCount <= 0) return 0;
-  return Math.min(profileCount - 1, Math.round(profileCount * 0.972));
-}
+export { estimateReachableProfileCount } from "@/lib/activation-audience";
 
 export function getActivationDestinationPlatform(activation: Activation): string {
   if (activation.destinationPlatform) return activation.destinationPlatform;

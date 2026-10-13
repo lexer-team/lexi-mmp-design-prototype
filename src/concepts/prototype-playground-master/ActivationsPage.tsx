@@ -10,6 +10,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { getAudiencePopulation, type ActivationAudience } from "@/lib/activation-audience";
+import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -128,6 +130,11 @@ export function ActivationsPage({
     rules: string[];
     committedText: string;
   } | null>(null);
+  const [builderActivationAudience, setBuilderActivationAudience] = useState<ActivationAudience>("reachable");
+  const selectedActivationPopulation = getAudiencePopulation(
+    builderActivationConfirmation?.population ?? "0",
+    builderActivationAudience,
+  );
   const sessionSegmentRefs = useMemo<DefRef[]>(() => {
     return [...state.artifacts.values()]
       .filter((artifact) => artifact.type === "segment" && artifact.status === "saved" && artifact.body?.kind === "segment")
@@ -810,7 +817,7 @@ export function ActivationsPage({
           { at: dateLabel, entry: "Approved and sent from activation popout." },
         ],
         mvpDetails: {
-          population: builderActivationConfirmation.population,
+          population: selectedActivationPopulation,
           activationName: builderActivationConfirmation.activationName,
           activationDefinition: builderActivationConfirmation.activationDescription,
           segmentName: segmentNameForContext,
@@ -1113,6 +1120,7 @@ export function ActivationsPage({
                           rules: normalizedConditions,
                           committedText: text,
                         });
+                        setBuilderActivationAudience("reachable");
                       }}
                     />
                   </div>
@@ -1126,10 +1134,11 @@ export function ActivationsPage({
                       </span>
                     </div>
 
-                    <div className="mt-3 rounded-xl border border-border bg-background px-4 py-3">
-                      <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population volume</p>
-                      <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{builderActivationConfirmation.population}</p>
-                    </div>
+                    <PopulationVolumeSelector
+                      population={builderActivationConfirmation.population}
+                      audience={builderActivationAudience}
+                      onAudienceChange={setBuilderActivationAudience}
+                    />
 
                     <div className="mt-3 rounded-xl border border-border bg-background p-3">
                       <div className="flex items-center justify-between gap-2">
@@ -1556,7 +1565,7 @@ export function ActivationsPage({
                               <div className="mt-2 space-y-2 text-sm">
                                 <p className="text-foreground"><span className="font-medium">Activation name:</span> {builderActivationConfirmation.activationName}</p>
                                 <p className="text-foreground"><span className="font-medium">Activation definition:</span> {builderActivationConfirmation.activationDescription}</p>
-                                <p className="text-foreground"><span className="font-medium">Population:</span> {builderActivationConfirmation.population}</p>
+                                <p className="text-foreground"><span className="font-medium">Population:</span> {selectedActivationPopulation}</p>
                                 <p className="text-foreground"><span className="font-medium">Data source:</span> {builderSelectedSource?.name ?? "Not selected"}</p>
                                 <p className="text-foreground">
                                   <span className="font-medium">Accounts:</span>{" "}

@@ -1,5 +1,7 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { getAudiencePopulation, type ActivationAudience } from "@/lib/activation-audience";
+import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
 import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -367,6 +369,8 @@ function ActivationBuildCard({
   const { state, dispatch } = useSession();
   const [activationName, setActivationName] = useState(block.activationName);
   const [activationDescription, setActivationDescription] = useState(block.activationDescription);
+  const [activationAudience, setActivationAudience] = useState<ActivationAudience>("reachable");
+  const selectedPopulation = getAudiencePopulation(block.population, activationAudience);
   const [editingName, setEditingName] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [showActivationConnection, setShowActivationConnection] = useState(false);
@@ -515,10 +519,11 @@ function ActivationBuildCard({
         </span>
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-background px-4 py-3">
-        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population volume</p>
-        <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{block.population}</p>
-      </div>
+      <PopulationVolumeSelector
+        population={block.population}
+        audience={activationAudience}
+        onAudienceChange={setActivationAudience}
+      />
 
       <div className="mt-3 rounded-xl border border-border bg-background p-3">
         <div className="flex items-center justify-between gap-2">
@@ -865,7 +870,7 @@ function ActivationBuildCard({
                     </p>
                     <p className="text-foreground">
                       <span className="font-medium">Population:</span>{" "}
-                      {block.population}
+                      {selectedPopulation}
                     </p>
                     <p className="text-foreground">
                       <span className="font-medium">Data source:</span>{" "}
@@ -1001,7 +1006,7 @@ function ActivationBuildCard({
                               { at: dateLabel, entry: "Approved and sent from chat activation card." },
                             ],
                             mvpDetails: {
-                              population: block.population,
+                              population: selectedPopulation,
                               activationName,
                               activationDefinition: activationDescription,
                               segmentName: block.segmentName,

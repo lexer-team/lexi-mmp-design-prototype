@@ -7,6 +7,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { getAudiencePopulation, type ActivationAudience } from "@/lib/activation-audience";
+import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
@@ -307,6 +309,11 @@ export function SegmentsPage({
     population: string;
     rules: string[];
   } | null>(null);
+  const [builderActivationAudience, setBuilderActivationAudience] = useState<ActivationAudience>("reachable");
+  const selectedActivationPopulation = getAudiencePopulation(
+    builderActivationPreview?.population ?? "0",
+    builderActivationAudience,
+  );
   const [builderShowActivationConnection, setBuilderShowActivationConnection] = useState(false);
   const [builderConnectionConfirmed, setBuilderConnectionConfirmed] = useState(false);
   const [builderActivationApprovedSent, setBuilderActivationApprovedSent] = useState(false);
@@ -591,6 +598,7 @@ export function SegmentsPage({
       population: builderApprovedPayload.population.trim() || "2,840",
       rules,
     });
+    setBuilderActivationAudience("reachable");
     setBuilderShowActivationConnection(false);
     setBuilderConnectionConfirmed(false);
     setBuilderActivationApprovedSent(false);
@@ -650,7 +658,7 @@ export function SegmentsPage({
           { at: dateLabel, entry: "Approved and sent from segment builder." },
         ],
         mvpDetails: {
-          population: builderActivationPreview.population,
+          population: selectedActivationPopulation,
           activationName: builderActivationPreview.activationName,
           activationDefinition: builderActivationPreview.activationDescription,
           segmentName,
@@ -1206,10 +1214,11 @@ export function SegmentsPage({
                         </span>
                       </div>
 
-                      <div className="mt-3 rounded-xl border border-border bg-background px-4 py-3">
-                        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population volume</p>
-                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{builderActivationPreview.population}</p>
-                      </div>
+                      <PopulationVolumeSelector
+                        population={builderActivationPreview.population}
+                        audience={builderActivationAudience}
+                        onAudienceChange={setBuilderActivationAudience}
+                      />
 
                       <div className="mt-3 rounded-xl border border-border bg-background p-3">
                         <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Activation name</p>
@@ -1580,7 +1589,7 @@ export function SegmentsPage({
                                 <div className="mt-2 space-y-2 text-sm">
                                   <p className="text-foreground"><span className="font-medium">Activation name:</span> {builderActivationPreview.activationName}</p>
                                   <p className="text-foreground"><span className="font-medium">Activation definition:</span> {builderActivationPreview.activationDescription}</p>
-                                  <p className="text-foreground"><span className="font-medium">Population:</span> {builderActivationPreview.population}</p>
+                                  <p className="text-foreground"><span className="font-medium">Population:</span> {selectedActivationPopulation}</p>
                                   <p className="text-foreground"><span className="font-medium">Data source:</span> {builderSelectedSource?.name ?? "Not selected"}</p>
                                 </div>
                               </div>

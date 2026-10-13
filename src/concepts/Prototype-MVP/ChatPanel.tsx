@@ -1,5 +1,7 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { getAudienceLabel, getAudiencePopulation, getAudienceWarning, type ActivationAudience } from "@/lib/activation-audience";
+import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
 import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -19,7 +21,7 @@ import { PromptComposer } from "./components/PromptComposer";
 import { ThinkingProcess, type ThinkingStep } from "../lexi-shared-brain/ChatThinking";
 import { getDef, registerDefs, type DefRef } from "@/data/def-registry";
 import { BRAIN_GROUPS, ENTITY_META } from "../lexi-shared-brain/data";
-import { ACTIVATIONS, ACTIVATION_STATUS_META, approvalLabel, DEFAULT_ACTIVATION_HISTORY, estimateReachableProfileCount, getActivation, type Activation, type ActivationHistoryPoint } from "./activations-mock";
+import { ACTIVATIONS, ACTIVATION_STATUS_META, approvalLabel, DEFAULT_ACTIVATION_HISTORY, getActivation, type Activation, type ActivationHistoryPoint } from "./activations-mock";
 import {
   CONVERSATIONS,
   DEFAULT_CONVERSATION_ID,
@@ -375,6 +377,10 @@ function ActivationBuildCard({
   const { state, dispatch } = useSession();
   const [activationName, setActivationName] = useState(block.activationName);
   const [activationDescription, setActivationDescription] = useState(block.activationDescription);
+  const [activationAudience, setActivationAudience] = useState<ActivationAudience>("reachable");
+  const selectedPopulation = getAudiencePopulation(block.population, activationAudience);
+  const audienceWarning = getAudienceWarning(activationAudience);
+  const selectedProfileCount = Number(selectedPopulation.replace(/,/g, ""));
   const [editingName, setEditingName] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [showActivationConnection, setShowActivationConnection] = useState(false);
@@ -392,7 +398,6 @@ function ActivationBuildCard({
   const [scheduledStartTime, setScheduledStartTime] = useState("");
   const [recurringSendTime, setRecurringSendTime] = useState("09:00");
   const [scheduledEndDate, setScheduledEndDate] = useState("");
-
   const fieldTypeOptions = [
     { value: "email", label: "Email" },
     { value: "phone", label: "Phone" },
@@ -547,22 +552,11 @@ function ActivationBuildCard({
         </span>
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-background px-4 py-3">
-        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population volume</p>
-        <div className="mt-2 grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-foreground-secondary">Profiles in segment</p>
-            <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{block.population}</p>
-          </div>
-          <div className="border-l border-border pl-4">
-            <p className="text-xs text-foreground-secondary">Reachable profiles</p>
-            <p className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{estimateReachableProfileCount(block.population).toLocaleString()}</p>
-          </div>
-        </div>
-        <p className="mt-3 border-t border-border pt-3 text-xs text-foreground-secondary">
-          Reachable profiles are an estimate after consent checks. Profiles without the required marketing consent are excluded, so this audience is smaller than the full segment.
-        </p>
-      </div>
+      <PopulationVolumeSelector
+        population={block.population}
+        audience={activationAudience}
+        onAudienceChange={setActivationAudience}
+      />
 
       <div className="mt-3 rounded-xl border border-border bg-background p-3">
         <div className="flex items-center justify-between gap-2">
@@ -1007,9 +1001,14 @@ function ActivationBuildCard({
                       {activationDescription}
                     </p>
                     <p className="text-foreground">
-                      <span className="font-medium">Population:</span>{" "}
-                      {block.population}
+                      <span className="font-medium">{getAudienceLabel(activationAudience)}:</span>{" "}
+                      {selectedPopulation}
                     </p>
+                    {audienceWarning ? (
+                      <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-foreground">
+                        {audienceWarning}
+                      </p>
+                    ) : null}
                     <p className="text-foreground">
                       <span className="font-medium">Data source:</span>{" "}
                       {selectedSource?.name ?? "Not selected"}
@@ -1133,6 +1132,13 @@ function ActivationBuildCard({
                             skill: "Activation build",
                             approval: { kind: "approved", by: "Izac", at: dateLabel },
                             status: activationStatus,
+                            profilesReached: selectedProfileCount,
+                            history: [{
+                              date: dateLabel,
+                              profilesSent: selectedProfileCount,
+                              delta: 0,
+                              note: activationStatus === "scheduled" ? "Scheduled selected audience" : "Initial send to selected audience",
+                            }],
                             whenLabel: `Approved and sent · ${dateLabel}`,
                             scheduledDate: sendTiming === "schedule-send"
                               ? (scheduledStartDate || undefined)
@@ -1162,7 +1168,9 @@ function ActivationBuildCard({
                               { at: dateLabel, entry: "Approved and sent from chat activation card." },
                             ],
                             mvpDetails: {
-                              population: block.population,
+                              population: selectedPopulation,
+                              audience: activationAudience,
+                              segmentPopulation: block.population,
                               activationName,
                               activationDefinition: activationDescription,
                               segmentName: block.segmentName,
