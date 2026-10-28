@@ -14,11 +14,11 @@ Everything else inherits from this. All in one file.
 
 - [ ] **Font:** Inter (body + display), `font-feature-settings: 'cv11'`, letter-spacing `-0.02em` on display sizes
 - [ ] **Type scale:** keep current scale (Tailwind defaults already match UUI's text-xs→xl: 12/18 … 20/30)
-- [ ] **Brand scale:** `--color-brand-50…950` → Lexer teal (existing stops). UUI's `brand-25` is an ultra-light tint for subtle fills (banner/active-nav/hover backgrounds); skip it for now — **ask Izac before adding a brand-25 stop** when a component build actually calls for it
+- [ ] **Brand scale:** `--color-brand-50…950` → Lexer teal (existing stops). UUI's `brand-25` is an ultra-light tint for subtle fills (banner/active-nav/hover backgrounds); skip it for now — **ask Amy before adding a brand-25 stop** when a component build actually calls for it
 - [ ] **Radii:** `--radius: 0.5rem` (UUI buttons/inputs = 8px, cards = 12px via `rounded-xl`)
 - [ ] **Shadows:** UUI `shadow-xs` `0 1px 2px rgb(16 24 40 / .05)`, `shadow-sm/md` equivalents
 - [ ] **Focus ring:** UUI-style 4px soft ring (`ring-4 ring-brand-500/24`-ish) replacing current 2px ring
-- [ ] ~~**Semantic token retune**~~ — implemented then **reverted by Izac (12 Jun): UUI color values didn't look good; original Lexer palette kept.** Table below retained for reference only:
+- [ ] ~~**Semantic token retune**~~ — implemented then **reverted by Amy (12 Jun): UUI color values didn't look good; original Lexer palette kept.** Table below retained for reference only:
 
 | shadcn var | Light | Dark | Note |
 |---|---|---|---|
@@ -72,7 +72,7 @@ All built 12 Jun on shadcn foundation (Radix primitives + sonner), UUI-skinned, 
 - [x] Toggle / Checkbox / Radio (Radix)
 - [x] Breadcrumbs
 - [x] Pagination
-- ~~Progress bar~~ — skipped per Izac
+- ~~Progress bar~~ — skipped per Amy
 - [x] Toast / Notification (sonner, mounted in App)
 - [x] Metrics card (chart-less)
 
@@ -83,7 +83,7 @@ All built 12 Jun on shadcn foundation (Radix primitives + sonner), UUI-skinned, 
 1. **DesignSystem page as review surface** — each phase ends with `src/pages/DesignSystem.tsx` updated to show everything that changed (all variants, sizes, colors, token swatches). Run `npm run dev`, open the page, toggle light/dark.
 2. **Real pages in context** — component APIs are unchanged, so spot-check Chat, DataPanel, KnowledgePanel for anything that looks off in situ.
 3. **Git diff per phase** — each phase is one commit-sized change (Phase 0 = `index.css` only), reviewable and cleanly revertible.
-4. **Checkpoint** — work stops after each phase with a summary of what changed and what to look at; next phase starts only after Izac signs off.
+4. **Checkpoint** — work stops after each phase with a summary of what changed and what to look at; next phase starts only after Amy signs off.
 
 ## Verification
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/Dialog";
@@ -259,18 +259,52 @@ export function CanvasPage({
     };
   }
 
-  const findOpenPosition = (width: number, height: number): Position => {
-    const canvasWidth = canvasRef.current?.clientWidth ?? 1200;
-    const maxX = Math.max(CANVAS_PADDING, canvasWidth - width - CANVAS_PADDING);
-    const step = 24;
-    const y = CANVAS_PADDING + Math.max(0, widgets.length - 1) * step;
-    return { x: CANVAS_PADDING + ((widgets.length * step) % Math.max(step, maxX - CANVAS_PADDING + step)), y };
+  useLayoutEffect(() => {
+    const canvasWidth = canvasRef.current?.clientWidth;
+    if (!canvasWidth) return;
+
+    const start = 24;
+    const gap = 24;
+    let x = start;
+    let y = start;
+    let rowHeight = 0;
+    const positions: Record<string, Position> = {};
+
+    for (const widget of widgets) {
+      const card = cardRefs.current[widget.id];
+      const size = getCardDimensions(widget.id, widget.kind);
+      const measuredWidth = card?.offsetWidth ?? size.width;
+      const measuredHeight = card?.offsetHeight ?? size.height;
+
+      if (x > start && x + measuredWidth > canvasWidth - start) {
+        x = start;
+        y += rowHeight + gap;
+        rowHeight = 0;
+      }
+
+      positions[widget.id] = { x, y };
+      x += measuredWidth + gap;
+      rowHeight = Math.max(rowHeight, measuredHeight);
+    }
+
+    setWidgetPositions(positions);
+  }, []);
+
+  const findOpenPosition = (): Position => {
+    const canvasTop = canvasRef.current?.getBoundingClientRect().top ?? 0;
+    const bottomEdge = widgets.reduce((maxBottom, widget) => {
+      const card = cardRefs.current[widget.id];
+      if (card) return Math.max(maxBottom, card.getBoundingClientRect().bottom - canvasTop);
+      const position = widgetPositions[widget.id] ?? { x: CANVAS_PADDING, y: CANVAS_PADDING };
+      return Math.max(maxBottom, position.y + getCardDimensions(widget.id, widget.kind).height);
+    }, CANVAS_PADDING);
+    return { x: 24, y: bottomEdge + 24 };
   };
 
   const addWidget = () => {
     const id = `w-${Date.now()}`;
     const size = getDefaultCardSize(nextWidget);
-    const position = findOpenPosition(size.width, size.height);
+    const position = findOpenPosition();
     setWidgetSizes((prev) => ({ ...prev, [id]: size }));
     setWidgetPositions((prev) => ({ ...prev, [id]: position }));
     setWidgets((prev) => [...prev, { id, kind: nextWidget }]);

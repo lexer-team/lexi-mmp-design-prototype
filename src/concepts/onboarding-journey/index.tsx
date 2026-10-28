@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { CustomConnectionPage, StandardConnectionPage, IntegrationHealthBanner, DisconnectedConnectionGuidance, IntegrationLogo, type IntegrationConnectionDraft } from "../prototype-playground-master/IntegrationConnectionPages";
 import { LexerLogo } from "@/components/layout/LexerLogo";
+import { PrototypeOptionsButton } from "@/components/layout/PrototypeOptionsButton";
 import { LexiIcon } from "@/components/chat/LexiIcon";
+import { FloatingLexiChat } from "@/components/chat/FloatingLexiChat";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -21,6 +24,8 @@ import {
 } from "@/components/ui/DropdownMenu";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { TooltipProvider } from "@/components/ui/Tooltip";
+import { RoleManagerDialog } from "@/components/admin/RoleManagerDialog";
+import { BusinessContextPage as UpdatedBusinessContextPage } from "../Prototype-MVP";
 import {
   RiSidebarFoldLine,
   RiMessage2Line,
@@ -58,11 +63,14 @@ import { KIND_META } from "@/components/definitions/kind-meta";
 import { ChatPanel } from "./ChatPanel";
 import { buildMentionGroups } from "./ChatPanel";
 import { ContextPanel } from "./ContextPanel";
+import { PromptComposer } from "./components/PromptComposer";
 import { SegmentsPage, DefinitionsPage, MetricsPage, BenchmarksPage, ScorecardPage, DashboardsPage, InsightsPage } from "./pages";
 import { PlaybookPage } from "./PlaybookPage";
+import { SkillsPage } from "../Prototype-MVP/SkillsPage";
 import { SpacePage } from "./SpacePage";
 import { SpacesPage } from "./SpacesPage";
 import { ActivationsPage, ActivationDetail } from "./ActivationsPage";
+import { CanvasPage } from "../prototype-playground-master/CanvasPage";
 import { ACTIVATION_STATUS_META, getActivation, type ActivationStatus } from "./activations-mock";
 import { INITIAL_SPACES, type Space } from "./spaces-data";
 import { GroupDetail } from "../lexi-shared-brain-v2/GroupDetail";
@@ -70,7 +78,7 @@ import { BRAIN_GROUPS } from "../lexi-shared-brain/data";
 import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 
-type Page = "welcome" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
+type Page = "welcome" | "canvas" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "skills" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "connect-accounts" | "activations" | "context" | "users";
 type OnboardingStep = "welcome" | "users" | "integrations" | "context" | "completed";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
@@ -97,6 +105,8 @@ type OnboardingGuidance = {
   disclaimerVisible: boolean;
   onAcknowledge: () => void;
   onNext: () => void;
+  onSkip: () => void;
+  onFinishSetupLater: () => void;
   nextLabel: string;
   promptTitle: string;
   promptDescription: string;
@@ -115,7 +125,7 @@ const EMPTY_SAVED_ITEMS: SavedSpaceItems = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MOCK_USER = { firstName: "Izac", initials: "IH", org: "Lexer" };
+const MOCK_USER = { firstName: "Amy", initials: "AV", org: "Lexer" };
 
 registerDefs([...DEMO_DEFS, ...DEMO_SEGMENT_DEFS]);
 
@@ -145,6 +155,8 @@ function SegmentV1Inner() {
   const [showChatSyncPopup, setShowChatSyncPopup] = useState(false);
   const [showChatSyncDisclaimer, setShowChatSyncDisclaimer] = useState(false);
   const [chatSyncNoticeConsumed, setChatSyncNoticeConsumed] = useState(false);
+  const [setupIncomplete, setSetupIncomplete] = useState(false);
+  const [setupResumeStep, setSetupResumeStep] = useState<OnboardingStep>("users");
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   // Activation detail opens in a right inset panel (like the segment side panel),
   // independent of the chat-driven slot.
@@ -171,6 +183,20 @@ function SegmentV1Inner() {
   const isChat = page === "chat";
   const onboardingActive = onboardingStep !== "completed";
   const showSidebar = !onboardingActive;
+  const finishSetupLater = () => {
+    setSetupResumeStep(onboardingStep);
+    setOnboardingStep("completed");
+    setPage("chat");
+    setSetupIncomplete(true);
+    setShowChatSyncPopup(false);
+    setShowChatSyncDisclaimer(false);
+    dispatch({ type: "NEW_CHAT" });
+  };
+  const resumeSetup = () => {
+    setSetupIncomplete(false);
+    setOnboardingStep(setupResumeStep);
+    setPage(setupResumeStep === "users" ? "users" : setupResumeStep === "integrations" ? "integrations" : "context");
+  };
   const usersOnboarding = onboardingStep === "users"
     ? {
       disclaimerVisible: usersStepAcknowledged,
@@ -179,6 +205,11 @@ function SegmentV1Inner() {
         setOnboardingStep("integrations");
         setPage("integrations");
       },
+      onSkip: () => {
+        setOnboardingStep("integrations");
+        setPage("integrations");
+      },
+      onFinishSetupLater: finishSetupLater,
       nextLabel: "Next: Connect your accounts",
       promptTitle: "Set up accounts",
       promptDescription: "Complete your own account setup first. When you are finished, you may create and invite additional users, or do it later when you are ready.",
@@ -194,6 +225,11 @@ function SegmentV1Inner() {
         setOnboardingStep("context");
         setPage("context");
       },
+      onSkip: () => {
+        setOnboardingStep("context");
+        setPage("context");
+      },
+      onFinishSetupLater: finishSetupLater,
       nextLabel: "Next: Set up your context",
       promptTitle: "Connect your required sources",
       promptDescription: "Link your core integrations so Lexi can reason over live customer, campaign, and conversion signals.",
@@ -208,11 +244,14 @@ function SegmentV1Inner() {
       onNext: () => {
         setOnboardingStep("completed");
         setPage("chat");
+        setSetupIncomplete(false);
         if (!chatSyncNoticeConsumed) {
           setShowChatSyncPopup(true);
           setShowChatSyncDisclaimer(true);
         }
       },
+      onSkip: finishSetupLater,
+      onFinishSetupLater: finishSetupLater,
       nextLabel: "Ask a question!",
       promptTitle: "Describe your business context in plain language",
       promptDescription: "Lexi will translate and apply this when working with you.",
@@ -581,12 +620,14 @@ function SegmentV1Inner() {
 
   const activeConv = CONVERSATIONS.find((c) => c.id === state.activeConversationId);
   const activeConversationPinned = state.activeConversationId != null && pinnedChatIds.includes(state.activeConversationId);
-  const headerTitle = page === "welcome" ? "Welcome"
+  const headerTitle = page === "canvas" ? "Canvas"
+    : page === "welcome" ? "Welcome"
     : page === "space" ? "Spaces"
     : page === "space-detail" ? (selectedSpace?.name ?? "Space")
     : page === "segments" ? "Segments"
     : page === "segment-detail" ? (detailArtifact?.name ?? "Segment detail")
     : page === "definitions" ? "Definitions"
+    : page === "skills" ? "Skills"
     : page === "metrics" ? "Metrics"
     : page === "benchmarks" ? "Benchmarks"
     : page === "scorecard" ? "Scorecard"
@@ -598,13 +639,14 @@ function SegmentV1Inner() {
     : page === "context" ? "Context"
     : page === "sources" ? "Sources"
     : page === "integrations" ? "Integrations"
+    : page === "connect-accounts" ? "Connect Accounts"
     : page === "activations" ? "Activations"
     : (activeConv?.title ?? "New chat");
-  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail";
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
+  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "definitions" || page === "skills";
+  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations" || page === "connect-accounts";
   const inSpace = page === "space" || page === "space-detail";
   const inActivations = page === "activations";
-  const HeaderIcon = isChat ? RiMessage2Line : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
+  const HeaderIcon = isChat ? RiMessage2Line : page === "canvas" ? RiDashboardLine : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
   const sidebarCollapsed = collapsed && !sidebarHovered;
 
   return (
@@ -712,11 +754,43 @@ function SegmentV1Inner() {
               <RiLayoutRightLine className="size-4" />
             </button>
           )}
+          <PrototypeOptionsButton />
         </header>
 
         {/* Content */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {page === "welcome" ? (
+          {page === "canvas" ? (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <CanvasPage
+                userName={MOCK_USER.firstName}
+                activationCounts={{
+                  all: state.activations.length,
+                  live: state.activations.filter((item) => item.status === "live").length,
+                  scheduled: state.activations.filter((item) => item.status === "scheduled").length,
+                  awaitingApproval: state.activations.filter((item) => item.status === "awaiting-approval").length,
+                  sent: state.activations.filter((item) => item.status === "sent").length,
+                  completed: state.activations.filter((item) => item.status === "completed").length,
+                  failed: state.activations.filter((item) => item.status === "failed").length,
+                }}
+                segmentCount={Array.from(state.artifacts.values()).filter((artifact) => artifact.type === "segment").length}
+                dashboardCount={3}
+                metricCount={12}
+                trackerCount={3}
+                onNavigate={(nextPage) => setPage(nextPage)}
+                onOpenChat={() => { dispatch({ type: "NEW_CHAT" }); setPage("chat"); }}
+                onStartSegment={() => {
+                  dispatch({ type: "NEW_CHAT" });
+                  setPage("chat");
+                  window.setTimeout(() => window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text: "Build a new segment" } })), 40);
+                }}
+                onStartActivation={() => {
+                  dispatch({ type: "NEW_CHAT" });
+                  setPage("chat");
+                  window.setTimeout(() => window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text: "Build a new activation" } })), 40);
+                }}
+              />
+            </div>
+          ) : page === "welcome" ? (
             <WelcomeOnboardingPage
               onEnter={() => {
                 setOnboardingStep("users");
@@ -770,7 +844,20 @@ function SegmentV1Inner() {
               />
             </div>
           ) : page === "definitions" ? (
-            <div className="min-w-0 flex-1 overflow-hidden"><DefinitionsPage /></div>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <Tabs defaultValue="source" className="flex h-full min-h-0 flex-row">
+                <TabsList variant="underline" className="w-60 shrink-0 flex-col items-stretch gap-1 border-b-0 border-r border-border px-3 py-4">
+                  <TabsTrigger value="source" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Source Definitions</TabsTrigger>
+                  <TabsTrigger value="calculated" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Calculated Definitions</TabsTrigger>
+                  <TabsTrigger value="custom" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Custom Definitions</TabsTrigger>
+                </TabsList>
+                <TabsContent value="source" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><DefinitionsPage /></TabsContent>
+                <TabsContent value="calculated" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><MetricsPage /></TabsContent>
+                <TabsContent value="custom" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><PlaybookPage initialTab="glossary" /></TabsContent>
+              </Tabs>
+            </div>
+          ) : page === "skills" ? (
+            <div className="min-w-0 flex-1 overflow-hidden"><SkillsPage /></div>
           ) : page === "metrics" ? (
             <div className="min-w-0 flex-1 overflow-hidden"><MetricsPage /></div>
           ) : page === "benchmarks" ? (
@@ -805,6 +892,10 @@ function SegmentV1Inner() {
             <div className="min-w-0 flex-1 overflow-y-auto">
               <BusinessContextPage onboarding={contextOnboarding} />
             </div>
+          ) : page === "connect-accounts" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <IntegrationsPage title="Connect Accounts" newConnectionsOnly />
+            </div>
           ) : page === "integrations" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <IntegrationsPage onboarding={integrationsOnboarding} />
@@ -837,6 +928,12 @@ function SegmentV1Inner() {
                 {isChat && showChatSyncDisclaimer && (
                   <div className="mx-4 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                     Your data is still syncing from your connected sources. Some answers may be incomplete until this finishes - we'll let you know as soon as everything's ready.
+                  </div>
+                )}
+                {isChat && setupIncomplete && (
+                  <div role="alert" className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">
+                    <p><span className="font-semibold">Setup is incomplete.</span> Some features require setup to be completed, including your team, data sources, and business context.</p>
+                    <Button size="sm" variant="outline" className="border-rose-300 text-rose-900 hover:bg-rose-100 dark:border-rose-800 dark:text-rose-200 dark:hover:bg-rose-900/40" onClick={resumeSetup}>Continue setup</Button>
                   </div>
                 )}
                 <ChatPanel />
@@ -926,6 +1023,21 @@ function SegmentV1Inner() {
           onAction={() => {
             setShowChatSyncPopup(false);
             setChatSyncNoticeConsumed(true);
+          }}
+        />
+      )}
+      {!isChat && (
+        <FloatingLexiChat
+          Composer={PromptComposer}
+          mentionGroups={buildMentionGroups(state.activations)}
+          pageContext={`Current page: ${headerTitle}`}
+          onOpenFullChat={(prompt, usePageContext) => {
+            dispatch({ type: "NEW_CHAT" });
+            setPage("chat");
+            if (prompt.trim()) {
+              const text = usePageContext ? `[Page context: ${headerTitle}] ${prompt}` : prompt;
+              window.setTimeout(() => window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text } })), 40);
+            }
           }}
         />
       )}
@@ -1740,11 +1852,15 @@ function OnboardingLexiModal({
   description,
   actionLabel,
   onAction,
+  onSkip,
+  onFinishSetupLater,
 }: {
   title: string;
   description: string;
   actionLabel: string;
   onAction: () => void;
+  onSkip?: () => void;
+  onFinishSetupLater?: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/35 backdrop-blur-sm">
@@ -1757,8 +1873,10 @@ function OnboardingLexiModal({
             <p className="text-sm font-semibold text-foreground">Lexi</p>
             <p className="mt-1 text-sm text-foreground-secondary">{title}</p>
             <p className="mt-2 text-xs text-muted-foreground">{description}</p>
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={onAction}>{actionLabel}</Button>
+              {onSkip && <Button size="sm" variant="outline" onClick={onSkip}>Skip to next step</Button>}
+              {onFinishSetupLater && <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={onFinishSetupLater}>Finish setup later</Button>}
             </div>
           </div>
         </div>
@@ -1783,6 +1901,7 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   };
 
   const [roleOptions, setRoleOptions] = useState(["Admin", "Manager", "User", "Viewer"]);
+  const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [teamOptions, setTeamOptions] = useState(["Operations", "Growth", "Data", "Marketing", "Lifecycle"]);
   const timeZoneOptions = [
     "Australia/Sydney",
@@ -1795,8 +1914,8 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   const [users, setUsers] = useState<ManagedUser[]>([
     {
       id: "usr-1",
-      fullName: "Izac Hall",
-      email: "izac@lexer.ai",
+      fullName: "Amy Vong",
+      email: "amy@lexer.ai",
       role: "Admin",
       team: "Operations",
       timeZone: "Australia/Sydney",
@@ -1853,6 +1972,18 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
 
   const selectedUser = selectedUserId ? users.find((u) => u.id === selectedUserId) ?? null : null;
 
+  const renameRole = (oldName: string, newName: string) => {
+    setRoleOptions((current) => current.map((role) => role === oldName ? newName : role));
+    setUsers((current) => current.map((user) => user.role === oldName ? { ...user, role: newName, lastUpdated: "Just now" } : user));
+    setNewUserRole((current) => current === oldName ? newName : current);
+  };
+
+  const deleteRole = (role: string, fallbackRole: string) => {
+    setRoleOptions((current) => current.filter((item) => item !== role));
+    setUsers((current) => current.map((user) => user.role === role ? { ...user, role: fallbackRole, lastUpdated: "Just now" } : user));
+    setNewUserRole((current) => current === role ? fallbackRole : current);
+  };
+
   const updateSelectedUser = (updater: (user: ManagedUser) => ManagedUser) => {
     if (!selectedUserId) return;
     setUsers((prev) => prev.map((user) => (
@@ -1899,9 +2030,14 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
 
   return (
     <div className={cn("relative flex h-full flex-col px-6 py-6", onboarding && "pb-24")}>
-      <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">Users</h1>
-        <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold text-foreground">Users</h1>
+          <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
+        </div>
+        <RoleManagerDialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen} roles={roleOptions}
+          onCreateRole={(role) => setRoleOptions((current) => [...current, role])}
+          onRenameRole={renameRole} onDeleteRole={deleteRole} />
       </div>
 
       {onboarding?.disclaimerVisible && (
@@ -1952,7 +2088,7 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                         onChange={(e) => {
                           const value = e.target.value;
                           if (value === "__add_role__") {
-                            setShowAddRole(true);
+                            setRolesDialogOpen(true);
                             return;
                           }
                           setNewUserRole(value);
@@ -2256,6 +2392,8 @@ function UsersPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
           description={onboarding.promptDescription}
           actionLabel={onboarding.actionLabel}
           onAction={onboarding.onAcknowledge}
+          onSkip={onboarding.onSkip}
+          onFinishSetupLater={onboarding.onFinishSetupLater}
         />
       )}
     </div>
@@ -3024,6 +3162,24 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
     });
   };
 
+  if (onboarding) {
+    return (
+      <>
+        <UpdatedBusinessContextPage onboarding={onboarding} />
+        {!onboarding.disclaimerVisible && (
+          <OnboardingLexiModal
+            title={onboarding.promptTitle}
+            description={onboarding.promptDescription}
+            actionLabel={onboarding.actionLabel}
+            onAction={onboarding.onAcknowledge}
+            onSkip={onboarding.onSkip}
+            onFinishSetupLater={onboarding.onFinishSetupLater}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className={cn("relative flex h-full flex-col px-6 py-6", onboarding && "pb-24")}>
       <div className="mb-4 flex flex-col gap-1">
@@ -3370,14 +3526,16 @@ function BusinessContextPage({ onboarding }: { onboarding?: OnboardingGuidance }
           description={onboarding.promptDescription}
           actionLabel={onboarding.actionLabel}
           onAction={onboarding.onAcknowledge}
+          onSkip={onboarding.onSkip}
+          onFinishSetupLater={onboarding.onFinishSetupLater}
         />
       )}
     </div>
   );
 }
 
-function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
-  type IntegrationStatus = "Connected" | "Available" | "Disconnected";
+function IntegrationsPage({ onboarding, title = "Integrations", newConnectionsOnly = false }: { onboarding?: OnboardingGuidance; title?: string; newConnectionsOnly?: boolean }) {
+  type IntegrationStatus = "Connected" | "Available" | "Disconnected" | "Pending";
   type IntegrationRecord = {
     id: string;
     name: string;
@@ -3385,6 +3543,8 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     status: IntegrationStatus;
     summary: string;
     updated: string;
+    syncDirection?: IntegrationConnectionDraft["syncDirection"];
+    connectionType?: IntegrationConnectionDraft["connectionType"];
   };
   type AccountDraft = {
     accountName: string;
@@ -3402,6 +3562,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   };
 
   const [query, setQuery] = useState("");
+  const [connectionPage, setConnectionPage] = useState<"overview" | "standard" | "custom">("standard");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [openIntegrationId, setOpenIntegrationId] = useState<string | null>(null);
   const [panelExpanded, setPanelExpanded] = useState(false);
@@ -3445,7 +3606,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     };
   };
 
-  const [integrations, setIntegrations] = useState<IntegrationRecord[]>(INITIAL_INTEGRATIONS);
+  const [integrations, setIntegrations] = useState<IntegrationRecord[]>(() => INITIAL_INTEGRATIONS.filter((integration) => integration.status !== "Available"));
   const [accountDrafts, setAccountDrafts] = useState<Record<string, AccountDraft>>({});
   const [connectedAccountsByIntegration, setConnectedAccountsByIntegration] = useState<Record<string, ConnectedAccount[]>>(() => {
     const seeded: Record<string, ConnectedAccount[]> = {};
@@ -3728,13 +3889,25 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     openFivetranMockLogin(integrationId);
   };
 
+  const openConnectedIntegration = (draft: IntegrationConnectionDraft) => {
+    setIntegrations((current) => current.some((integration) => integration.id === draft.id)
+      ? current
+      : [{ ...draft, status: "Pending", updated: draft.connectionType === "Custom" ? "Awaiting scoping" : "Awaiting authorization" }, ...current]);
+    if (draft.connectionType === "Custom") return;
+    setSelectedCategory("All");
+    setQuery("");
+    setConnectionPage("standard");
+    setOpenIntegrationId(draft.id);
+    setPanelExpanded(false);
+  };
+
   const disconnectIntegration = (integrationId: string) => {
     setConnectedAccountsByIntegration((prev) => ({ ...prev, [integrationId]: [] }));
     setActiveAccountIdByIntegration((prev) => ({ ...prev, [integrationId]: null }));
 
     setIntegrations((prev) => prev.map((item) => (
       item.id === integrationId
-        ? { ...item, status: "Available", updated: "Not connected" }
+        ? { ...item, status: "Disconnected", updated: "Disconnected just now" }
         : item
     )));
   };
@@ -3770,7 +3943,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
 
   const categories = [
     "All",
-    "Available sources",
     "Connected sources",
     "Disconnected sources",
     ...Array.from(new Set(integrations.map((integration) => integration.category))).sort((a, b) => a.localeCompare(b)),
@@ -3783,6 +3955,8 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     return "Bidirectional";
   };
 
+  const syncDirectionForIntegration = (integration: IntegrationRecord) => integration.syncDirection ?? syncDirectionForCategory(integration.category);
+
   const syncDirectionIcon = (direction: "Inbound" | "Outbound" | "Bidirectional") => {
     if (direction === "Inbound") return <RiArrowLeftCircleLine className="size-4" />;
     if (direction === "Outbound") return <RiArrowRightCircleLine className="size-4" />;
@@ -3791,14 +3965,12 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
 
   const q = query.trim().toLowerCase();
   const filtered = integrations.filter((integration) => {
-    const availableOnly = selectedCategory === "Available sources";
     const connectedOnly = selectedCategory === "Connected sources";
     const disconnectedOnly = selectedCategory === "Disconnected sources";
-    const categoryMatch = availableOnly || connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
-    const statusMatch = (availableOnly && integration.status === "Available")
-      || (connectedOnly && integration.status === "Connected")
+    const categoryMatch = connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
+    const statusMatch = (connectedOnly && integration.status === "Connected")
       || (disconnectedOnly && integration.status === "Disconnected")
-      || (!availableOnly && !connectedOnly && !disconnectedOnly);
+      || (!connectedOnly && !disconnectedOnly);
     const nameMatch = q === "" || integration.name.toLowerCase().includes(q);
     return categoryMatch && statusMatch && nameMatch;
   });
@@ -3810,7 +3982,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     integration: IntegrationRecord,
     key: "name" | "category" | "syncDirection" | "summary" | "updated" | "status",
   ) => {
-    if (key === "syncDirection") return syncDirectionForCategory(integration.category).toLowerCase();
+    if (key === "syncDirection") return syncDirectionForIntegration(integration).toLowerCase();
     return integration[key].toLowerCase();
   };
 
@@ -3880,7 +4052,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   }, [showAccountFrame]);
 
   const countFor = (category: string) => {
-    if (category === "Available sources") return integrations.filter((integration) => integration.status === "Available").length;
     if (category === "Connected sources") return integrations.filter((integration) => integration.status === "Connected").length;
     if (category === "Disconnected sources") return integrations.filter((integration) => integration.status === "Disconnected").length;
     if (category === "All") return integrations.length;
@@ -4192,18 +4363,17 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     >
       <TableCell>
         <div className="inline-flex items-center gap-2">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <RiPlugLine className="size-4" />
-          </span>
+          <IntegrationLogo name={integration.name} />
           <span className="font-medium text-foreground">{integration.name}</span>
           {integration.id === "lexer-api" && <Badge variant="default" size="sm">Pinned</Badge>}
         </div>
       </TableCell>
       <TableCell><Badge variant="default" size="sm">{integration.category}</Badge></TableCell>
+      <TableCell><Badge variant={integration.connectionType === "Custom" ? "secondary" : "outline"} size="sm">{integration.connectionType === "Custom" ? "Custom" : "Native"}</Badge></TableCell>
       <TableCell>
         <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-          {syncDirectionIcon(syncDirectionForCategory(integration.category))}
-          <span>{syncDirectionForCategory(integration.category)}</span>
+          {syncDirectionIcon(syncDirectionForIntegration(integration))}
+          <span>{syncDirectionForIntegration(integration)}</span>
         </span>
       </TableCell>
       <TableCell className="border-r border-border text-sm text-foreground-secondary">{integration.summary}</TableCell>
@@ -4232,7 +4402,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
       currentCategory = integration.category;
       groupedRows.push(
         <TableRow key={`category-${currentCategory}`}>
-          <TableCell colSpan={6} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
+          <TableCell colSpan={7} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
             {currentCategory}
           </TableCell>
         </TableRow>,
@@ -4244,9 +4414,17 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   return (
     <div className={cn("relative flex h-full flex-col px-6 py-6", onboarding && "pb-24")}>
       <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">Integrations</h1>
-        <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>
+        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        {!newConnectionsOnly && <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>}
       </div>
+
+      {!newConnectionsOnly && <IntegrationHealthBanner integrations={integrations} onReview={() => {
+        setSelectedCategory("Disconnected sources");
+        setConnectionPage("overview");
+        setQuery("");
+        setOpenIntegrationId(null);
+        setPanelExpanded(false);
+      }} />}
 
       {onboarding?.disclaimerVisible && (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -4255,21 +4433,27 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
       )}
 
       <div className="min-h-0 flex flex-1 gap-4 overflow-hidden">
-        <aside className="w-56 shrink-0 overflow-y-auto rounded-xl border border-border bg-card p-2">
-          <p className="px-2 pb-2 pt-1 text-xs font-semibold text-muted-foreground">Categories</p>
+        <aside className="w-56 shrink-0 space-y-4 overflow-y-auto">
+          <div className="space-y-1 rounded-xl border border-primary bg-card p-2">
+            <p className="px-2 py-1 text-xs font-semibold text-primary">New connection</p>
+            <Button variant="ghost" className="h-auto w-full justify-start whitespace-normal text-left" onClick={() => { setConnectionPage("standard"); setOpenIntegrationId(null); setPanelExpanded(false); }}>Add Standard Connection</Button>
+            <Button variant="ghost" className="h-auto w-full justify-start whitespace-normal text-left" onClick={() => { setConnectionPage("custom"); setOpenIntegrationId(null); setPanelExpanded(false); }}>Add Custom Connection</Button>
+          </div>
+          <div className={cn("rounded-xl border border-border bg-card p-2", newConnectionsOnly && "hidden")}>
+          <p className="px-2 pb-2 pt-1 text-xs font-semibold text-muted-foreground">Connections</p>
           <ul className="flex list-none flex-col gap-1">
             {categories.map((category) => {
               const active = category === selectedCategory;
               return (
                 <li key={category}>
                   <button
-                    onClick={() => setSelectedCategory(category)}
+                    onClick={() => { setSelectedCategory(category); setConnectionPage("overview"); }}
                     className={cn(
                       "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
                       active ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    <span className="truncate">{category}</span>
+                    <span className="truncate">{category === "All" ? "All connections" : category}</span>
                     <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
                   </button>
                   {category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
@@ -4277,9 +4461,16 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
               );
             })}
           </ul>
+          </div>
         </aside>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
+          {connectionPage === "standard" ? (
+            <StandardConnectionPage onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")} onConnect={openConnectedIntegration} directionForCategory={syncDirectionForCategory} />
+          ) : connectionPage === "custom" ? (
+            <CustomConnectionPage onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")} onCreate={openConnectedIntegration} addedBy={MOCK_USER.firstName} requests={integrations.filter((integration) => integration.connectionType === "Custom" && integration.status === "Pending")} />
+          ) : (
+            <>
           <div className="mb-3">
             <div className="relative max-w-md">
               <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -4298,6 +4489,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                 <TableRow>
                   <SortHeader label="Integration" keyName="name" />
                   <SortHeader label="Category" keyName="category" className="w-40" />
+                  <TableHead className="w-36">Connection type</TableHead>
                   <SortHeader label="Sync direction" keyName="syncDirection" className="w-44" />
                   <SortHeader label="Description" keyName="summary" className="border-r border-border" />
                   <SortHeader label="Status" keyName="status" className="w-40" />
@@ -4308,17 +4500,19 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                 {groupedRows}
                 {groupedRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
-                      No integrations match this search and category.
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                      No added connections match this search and category.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
+            </>
+          )}
         </div>
 
-        {openIntegration && !panelExpanded && (
+        {openIntegration && !panelExpanded && connectionPage === "overview" && (
           <button
             className="fixed inset-0 z-30 cursor-default bg-transparent"
             aria-label="Close integration panel"
@@ -4374,7 +4568,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                     <div className="grid grid-cols-1 gap-3">
                       {openIntegration.status === "Disconnected" && (
                         <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          This account has disconnected and needs to be reconnected to avoid disruption.
+                          <DisconnectedConnectionGuidance category={openIntegration.category} />
                         </div>
                       )}
 
@@ -4387,8 +4581,8 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                           <div className="rounded-lg border border-border bg-background p-3">
                             <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
-                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                              {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
+                              <span>{syncDirectionForIntegration(openIntegration)}</span>
                             </div>
                           </div>
                         </div>
@@ -4527,7 +4721,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                       {openIntegration.status === "Disconnected" && (
                         <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
-                          This account has disconnected and needs to be reconnected to avoid disruption.
+                          <DisconnectedConnectionGuidance category={openIntegration.category} />
                         </div>
                       )}
 
@@ -4540,8 +4734,8 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
                           <div className="rounded-xl border border-border bg-card p-4">
                             <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
-                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                              {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
+                              <span>{syncDirectionForIntegration(openIntegration)}</span>
                             </div>
                           </div>
                         </div>
@@ -4682,6 +4876,8 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
           description={onboarding.promptDescription}
           actionLabel={onboarding.actionLabel}
           onAction={onboarding.onAcknowledge}
+          onSkip={onboarding.onSkip}
+          onFinishSetupLater={onboarding.onFinishSetupLater}
         />
       )}
     </div>
@@ -4716,7 +4912,10 @@ function Sidebar({
   const { state, dispatch } = useSession();
   const inSegments = page === "segments" || page === "segment-detail";
   const inActivations = page === "activations";
+  const inKnowledge = page === "context" || page === "definitions" || page === "skills" || (page === "playbook" && playbookSection === "rules");
   const [activationsOpen, setActivationsOpen] = useState(false);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [measureOpen, setMeasureOpen] = useState(false);
   const activationCount = {
     all: state.activations.length,
     live: state.activations.filter((a) => a.status === "live").length,
@@ -4762,6 +4961,7 @@ function Sidebar({
         <div className={cn("flex flex-1 flex-col gap-4 overflow-y-auto py-2", collapsed ? "px-0" : "px-2")}>
           <ul className="flex list-none flex-col gap-0.5">
             <li><NavRow icon={RiAddLine} label="New Chat" main collapsed={collapsed} active={onNewChat} onClick={newChat} /></li>
+            <li><NavRow icon={RiBrainLine} label="Insights" collapsed={collapsed} active={page === "insights"} onClick={() => onNavigate("insights")} /></li>
             <li>
               <NavRow
                 icon={RiGroupLine}
@@ -4794,6 +4994,45 @@ function Sidebar({
               )}
             </li>
             <li><NavRow icon={RiDashboardLine} label="Dashboards" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
+            <li>
+              <NavRow
+                icon={RiBrainLine}
+                label="Knowledge"
+                collapsed={collapsed}
+                active={inKnowledge || knowledgeOpen}
+                onClick={() => setKnowledgeOpen((open) => !open)}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", knowledgeOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setKnowledgeOpen((open) => !open) : undefined}
+                trailingToggleLabel="Toggle Knowledge sections"
+              />
+              {!collapsed && knowledgeOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Context" active={page === "context"} onClick={() => onNavigate("context")} /></li>
+                  <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
+                  <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
+                  <li><SubNavRow label="Skills" active={page === "skills"} onClick={() => onNavigate("skills")} /></li>
+                </ul>
+              )}
+            </li>
+            <li>
+              <NavRow
+                icon={RiArrowLeftRightLine}
+                label="Measure"
+                collapsed={collapsed}
+                active={collapsed ? page === "benchmarks" || page === "scorecard" : (page === "benchmarks" || page === "scorecard") && !measureOpen}
+                onClick={() => onNavigate("benchmarks")}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", measureOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setMeasureOpen((open) => !open) : undefined}
+                trailingToggleLabel="Toggle Measure sections"
+              />
+              {!collapsed && measureOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Benchmarks" active={page === "benchmarks"} onClick={() => onNavigate("benchmarks")} /></li>
+                  <li><SubNavRow label="Score cards" active={page === "scorecard"} onClick={() => onNavigate("scorecard")} /></li>
+                </ul>
+              )}
+            </li>
+            <li><NavRow icon={RiPlanetLine} label="Space" collapsed={collapsed} active={page === "space" || page === "space-detail"} onClick={() => onNavigate("space")} /></li>
             {!collapsed && (
               <li>
                 <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Pinned Chats</div>
@@ -4845,6 +5084,7 @@ function Sidebar({
           </ul>
         </div>
         <div className="space-y-2 p-2">
+          <NavRow icon={RiDashboardLine} label="Canvas" collapsed={collapsed} active={page === "canvas"} onClick={() => onNavigate("canvas")} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {collapsed ? (
@@ -4911,15 +5151,13 @@ function Sidebar({
                             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
                           )}
                         >
-                          <DropdownMenuItem onSelect={() => onNavigate("definitions")}>Source Definitions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => onNavigate("metrics")}>Calculated Defintions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={onOpenGlossary}>Custom Definitions</DropdownMenuItem>
                           <DropdownMenuItem onSelect={onOpenRules}>Rules</DropdownMenuItem>
                           <DropdownMenuItem onSelect={() => onNavigate("sources")}>Sources</DropdownMenuItem>
                         </DropdownMenuPrimitive.SubContent>
                       </DropdownMenuPrimitive.Portal>
                     </DropdownMenuSub>
                     <DropdownMenuItem onSelect={() => onNavigate("integrations")}>Integrations</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigate("connect-accounts")}>Connect Accounts</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onNavigate("context")}>Context</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onNavigate("users")}>Users</DropdownMenuItem>
                   </DropdownMenuPrimitive.SubContent>

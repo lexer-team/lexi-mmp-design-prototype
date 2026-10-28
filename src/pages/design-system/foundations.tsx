@@ -106,7 +106,7 @@ export function FoundationsSections() {
           Three tiers, not two: neutral-700 → 600 → 400 (light) / 50 → 300 → 400 (dark). Reach for
           <span className="font-medium"> secondary</span> before muted — reserve muted (light grey) for side-notes, never regular body text.
         </p>
-        <p className="text-xs text-foreground-secondary">Typeface: Mona Sans (GitHub), display + body. Scale unchanged (Tailwind defaults). Labels use sentence case — no full caps.</p>
+        <p className="text-xs text-foreground-secondary">Typeface: Rubik, display + body. Scale unchanged (Tailwind defaults). Labels use sentence case — no full caps.</p>
       </Section>
 
       <Section id="shadows" title="Shadows">

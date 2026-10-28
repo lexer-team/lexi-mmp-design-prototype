@@ -2,7 +2,6 @@ import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { getAudiencePopulation, type ActivationAudience } from "@/lib/activation-audience";
 import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
-import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RiCheckLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonal2Line, RiCollapseDiagonal2Line } from "@remixicon/react";
@@ -981,7 +980,7 @@ function ActivationBuildCard({
                             channel: selectedSource?.name ?? "Multi-channel",
                             category: "MVP activation",
                             skill: "Activation build",
-                            approval: { kind: "approved", by: "Izac", at: dateLabel },
+                            approval: { kind: "approved", by: "Amy", at: dateLabel },
                             status: activationStatus,
                             whenLabel: `Approved and sent · ${dateLabel}`,
                             scheduledDate: sendTiming === "schedule-send"
@@ -1345,7 +1344,6 @@ function StartHero() {
     <div className="flex flex-col items-center gap-4 text-center animate-in fade-in-0 duration-300">
       <LexiMark className="size-11" />
       <h2 className="text-lg font-semibold text-foreground">What are we working on?</h2>
-      <BetaNotice className="mb-0" />
     </div>
   );
 }

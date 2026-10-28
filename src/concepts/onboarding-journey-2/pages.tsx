@@ -42,7 +42,7 @@ import { InsightDrawer } from "./InsightDetail";
 import { BENCHMARKS } from "./benchmarks-data";
 import { MasterKpisDashboard } from "./dashboards/MasterKpisDashboard";
 import { EnhancedRfmDashboard } from "./dashboards/EnhancedRfmDashboard";
-import { GeneralReportingDashboard } from "./dashboards/GeneralReportingDashboard";
+import { GeneralReportingDashboard } from "../Prototype-MVP/dashboards/GeneralReportingDashboard";
 import { useSession } from "./store";
 import { DUMMY_SEGMENTS } from "./segment-dummy-data";
 
@@ -1106,7 +1106,7 @@ export function ScorecardPage() {
   );
 }
 
-export function DashboardsPage() {
+function LegacyDashboardsPage() {
   const hiddenDashboards = new Set([
     "Engagement Health Monitor",
     "Hero Product Pulse",
@@ -1328,6 +1328,10 @@ export function DashboardsPage() {
       </div>
     </div>
   );
+}
+
+export function DashboardsPage() {
+  return <GeneralReportingDashboard />;
 }
 
 // ─── Insights page (Knowledge) ───────────────────────────────────────────────

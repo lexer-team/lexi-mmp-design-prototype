@@ -63,7 +63,7 @@ const CHANGELOG: { date: string; title: string; items: string[] }[] = [
     title: "Phases 2 & 3 — component library on shadcn foundation",
     items: [
       "Phase 2: Input (+ Field/Label anatomy), Textarea, Select (Radix), Table — design-system skin on shadcn structure.",
-      "Phase 3: Tooltip, Dropdown menu, Dialog, Tabs (underline + segmented), Checkbox, Radio group, Toggle, Breadcrumbs, Pagination, Toast (sonner), Empty state, Featured icon, Metric card. Progress bar skipped per Izac.",
+      "Phase 3: Tooltip, Dropdown menu, Dialog, Tabs (underline + segmented), Checkbox, Radio group, Toggle, Breadcrumbs, Pagination, Toast (sonner), Empty state, Featured icon, Metric card. Progress bar skipped per Amy.",
       "Radix primitives + sonner installed; shadcn component structure used as the foundation throughout.",
       "App sidebar nav items: medium → semibold (semibold nav weight).",
       "Design System page restructured: grouped sections with a sticky side navigation (Foundations / Forms / Actions / Data display / Feedback / Navigation / Patterns / Changelog).",
@@ -93,7 +93,7 @@ const CHANGELOG: { date: string; title: string; items: string[] }[] = [
     date: "2026-06-12",
     title: "Color retune reverted",
     items: [
-      "semantic color values (white bg, neutral-900 fg, etc.) reverted to the original Lexer palette by Izac — colors stay as-is; only structure is adopted.",
+      "semantic color values (white bg, neutral-900 fg, etc.) reverted to the original Lexer palette by Amy — colors stay as-is; only structure is adopted.",
     ],
   },
   {

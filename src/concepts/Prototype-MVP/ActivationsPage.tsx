@@ -33,6 +33,7 @@ import { ACTIVATION_STATUS_META, ALWAYS_AVAILABLE_ACTIVATION_ID, approvalLabel, 
 import { useSession } from "./store";
 import { buildMentionGroups } from "./ChatPanel";
 import { ConfirmDialog } from "@/components/ui/Dialog";
+import { IntegrationLogo } from "../prototype-playground-master/IntegrationConnectionPages";
 
 function getActivationCreatedBy(activation: Activation) {
   const creator = activation.createdBy;
@@ -57,6 +58,30 @@ function formatDetailTime(value?: string) {
   const hour = Number(time[1]);
   if (Number.isNaN(hour) || hour < 0 || hour > 23) return value;
   return `${hour % 12 || 12}:${time[2]} ${hour >= 12 ? "pm" : "am"}`;
+}
+
+function activationSourceIntegrations(activation: Activation) {
+  const sourceText = [
+    getActivationDestinationPlatform(activation),
+    activation.mvpDetails?.dataSource,
+    ...(activation.mvpDetails?.accounts ?? []),
+    activation.channel,
+    activation.skill,
+    ...activation.invocations.map((invocation) => invocation.skill),
+  ].join(" ").toLowerCase();
+  const sources = [
+    ...(sourceText.includes("klaviyo") ? ["Klaviyo"] : []),
+    ...(sourceText.includes("meta") || sourceText.includes("paid social") ? ["Meta Ads"] : []),
+    ...(sourceText.includes("shopify") ? ["Shopify"] : []),
+    ...(sourceText.includes("braze") ? ["Braze"] : []),
+    ...(sourceText.includes("attentive") ? ["Attentive"] : []),
+    ...(sourceText.includes("twilio") || sourceText.includes("sms") ? ["Twilio"] : []),
+  ];
+  if (sources.length > 0) return [...new Set(sources)];
+  if (sourceText.includes("email")) return ["Klaviyo"];
+  if (sourceText.includes("paid social")) return ["Meta Ads"];
+  if (sourceText.includes("sms")) return ["Twilio"];
+  return ["Lexer API"];
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
@@ -489,7 +514,7 @@ export function ActivationsPage({
                 <TableHead>Activation</TableHead>
                 <TableHead className="w-40">Created by</TableHead>
                 <TableHead>Context</TableHead>
-                <TableHead className="w-40">Destination platform</TableHead>
+                <TableHead className="w-48">Destination Platform</TableHead>
                 <TableHead className="w-36">Platform type</TableHead>
                 <TableHead className="w-32">Frequency</TableHead>
                 <TableHead className="w-56">Cadence</TableHead>
@@ -502,6 +527,7 @@ export function ActivationsPage({
             <TableBody>
               {shown.map((a) => {
                 const s = ACTIVATION_STATUS_META[a.status];
+                const sources = activationSourceIntegrations(a);
                 return (
                   <TableRow
                     key={a.id}
@@ -528,7 +554,16 @@ export function ActivationsPage({
                     </TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{getActivationCreatedBy(a)}</TableCell>
                     <TableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">{a.context}</TableCell>
-                    <TableCell className="text-sm text-foreground-secondary">{getActivationDestinationPlatform(a)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1.5" aria-label={`Source integrations: ${sources.join(", ")}`}>
+                        {sources.map((source) => (
+                          <span key={source} title={source} className="inline-flex items-center gap-1.5">
+                            <IntegrationLogo name={source} size="sm" />
+                            <span className="text-xs text-foreground-secondary">{source}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{getActivationPlatformType(a)}</TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{activationFrequency(a)}</TableCell>
                     <TableCell className="max-w-[18rem] text-sm text-foreground-secondary">

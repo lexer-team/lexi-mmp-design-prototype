@@ -2,7 +2,7 @@
 
 **Component:** In-thread agent reasoning indicator
 **Status:** Draft for prototype
-**Author:** Izac
+**Author:** Amy
 **Date:** 2026-06-17
 
 ---

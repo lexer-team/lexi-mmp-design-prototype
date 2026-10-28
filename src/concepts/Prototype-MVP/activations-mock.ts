@@ -332,7 +332,7 @@ export const ACTIVATIONS: Activation[] = [
     channel: "Email · Paid social",
     category: "Seasonal launch",
     skill: "Draft Klaviyo Campaign · Push Meta Audience",
-    approval: { kind: "approved", by: "Izac", at: "2 weeks ago" },
+    approval: { kind: "approved", by: "Amy", at: "2 weeks ago" },
     status: "sent",
     whenLabel: "2 weeks ago",
     scheduledDate: "2026-09-15",
@@ -345,7 +345,7 @@ export const ACTIVATIONS: Activation[] = [
     trail: [
       { at: "2 weeks ago", entry: "Meta audience push proceeded automatically (conservative spend cap)." },
       { at: "2 weeks ago", entry: "Klaviyo campaign flagged for human sign-off before sending." },
-      { at: "2 weeks ago", entry: "Approved by Izac — campaign sent." },
+      { at: "2 weeks ago", entry: "Approved by Amy — campaign sent." },
     ],
   },
   {
@@ -403,7 +403,7 @@ export const ACTIVATIONS: Activation[] = [
     channel: "Email (Klaviyo)",
     category: "Win-back",
     skill: "Draft Klaviyo Campaign",
-    approval: { kind: "approved", by: "Izac", at: "3 days ago" },
+    approval: { kind: "approved", by: "Amy", at: "3 days ago" },
     status: "sent",
     whenLabel: "3 days ago",
     scheduledDate: "2026-09-26",
@@ -412,7 +412,7 @@ export const ACTIVATIONS: Activation[] = [
     invocations: [{ skill: "Draft Klaviyo Campaign", params: "High-value lapsed, 15% off", result: "Sent" }],
     trail: [
       { at: "3 days ago", entry: "Flagged for sign-off." },
-      { at: "3 days ago", entry: "Approved by Izac — sent." },
+      { at: "3 days ago", entry: "Approved by Amy — sent." },
     ],
   },
   {
@@ -460,7 +460,7 @@ export const ACTIVATIONS: Activation[] = [
     channel: "Email (Klaviyo)",
     category: "VIP retention",
     skill: "Draft Klaviyo Campaign",
-    approval: { kind: "approved", by: "Izac", at: "last EOFY" },
+    approval: { kind: "approved", by: "Amy", at: "last EOFY" },
     status: "completed",
     whenLabel: "Last EOFY",
     result: "Sent; VIP churn held at 3.2%.",

@@ -222,13 +222,13 @@ function SidebarPreview() {
         <div className="border-t border-sidebar-border p-2">
           {collapsed ? (
             <div className="flex justify-center py-0.5">
-              <Avatar initials="IH" size="sm" />
+              <Avatar initials="AV" size="sm" />
             </div>
           ) : (
             <button className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent">
-              <Avatar initials="IH" size="sm" />
+              <Avatar initials="AV" size="sm" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-sidebar-foreground">Izac</p>
+                <p className="truncate text-xs font-semibold text-sidebar-foreground">Amy</p>
                 <p className="truncate text-xs text-sidebar-foreground/50">Lexer</p>
               </div>
               <RiArrowUpDownLine className="size-3.5 shrink-0 text-sidebar-foreground/30" />

@@ -31,6 +31,30 @@ import { ACTIVATION_STATUS_META, ALWAYS_AVAILABLE_ACTIVATION_ID, approvalLabel, 
 import { useSession } from "./store";
 import { buildMentionGroups } from "./ChatPanel";
 import { ConfirmDialog } from "@/components/ui/Dialog";
+import { IntegrationLogo } from "../prototype-playground-master/IntegrationConnectionPages";
+
+function activationSourceIntegrations(activation: Activation) {
+  const sourceText = [
+    activation.mvpDetails?.dataSource,
+    ...(activation.mvpDetails?.accounts ?? []),
+    activation.channel,
+    activation.skill,
+    ...activation.invocations.map((invocation) => invocation.skill),
+  ].join(" ").toLowerCase();
+  const sources = [
+    ...(sourceText.includes("klaviyo") ? ["Klaviyo"] : []),
+    ...(sourceText.includes("meta") || sourceText.includes("paid social") ? ["Meta Ads"] : []),
+    ...(sourceText.includes("shopify") ? ["Shopify"] : []),
+    ...(sourceText.includes("braze") ? ["Braze"] : []),
+    ...(sourceText.includes("attentive") ? ["Attentive"] : []),
+    ...(sourceText.includes("twilio") || sourceText.includes("sms") ? ["Twilio"] : []),
+  ];
+  if (sources.length > 0) return [...new Set(sources)];
+  if (sourceText.includes("email")) return ["Klaviyo"];
+  if (sourceText.includes("paid social")) return ["Meta Ads"];
+  if (sourceText.includes("sms")) return ["Twilio"];
+  return ["Lexer API"];
+}
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
@@ -397,6 +421,7 @@ export function ActivationsPage({
                 </TableHead>
                 <TableHead>Activation</TableHead>
                 <TableHead>Context</TableHead>
+                <TableHead className="w-48">Destination Platform</TableHead>
                 <TableHead className="w-36">Channel</TableHead>
                 <TableHead className="w-32">Frequency</TableHead>
                 <TableHead className="w-56">Cadence</TableHead>
@@ -407,6 +432,7 @@ export function ActivationsPage({
             <TableBody>
               {shown.map((a) => {
                 const s = ACTIVATION_STATUS_META[a.status];
+                const sources = activationSourceIntegrations(a);
                 return (
                   <TableRow
                     key={a.id}
@@ -428,6 +454,16 @@ export function ActivationsPage({
                       <p className="mt-1 text-[11px] text-muted-foreground">Created by {a.createdBy ?? (a.approval.kind === "approved" ? a.approval.by : a.approval.kind === "pending" ? "Pending approval" : "System")}</p>
                     </TableCell>
                     <TableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">{a.context}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1.5" aria-label={`Source integrations: ${sources.join(", ")}`}>
+                        {sources.map((source) => (
+                          <span key={source} title={source} className="inline-flex items-center gap-1.5">
+                            <IntegrationLogo name={source} size="sm" />
+                            <span className="text-xs text-foreground-secondary">{source}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{a.channel}</TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{activationFrequency(a)}</TableCell>
                     <TableCell className="max-w-[18rem] truncate text-sm text-foreground-secondary">{activationCadence(a)}</TableCell>
@@ -437,7 +473,7 @@ export function ActivationsPage({
                 );
               })}
               {shown.length === 0 && (
-                <TableRow><TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

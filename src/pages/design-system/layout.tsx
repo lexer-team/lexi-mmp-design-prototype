@@ -321,9 +321,9 @@ function SettingsPagePreview() {
               <PageHeader title="Profile" description="How you appear across the workspace." />
               <Section title="Basics">
                 <div className="flex flex-col gap-4">
-                  <Field label="Full name"><Input defaultValue="Izac Ho" /></Field>
+                  <Field label="Full name"><Input defaultValue="Amy Vong" /></Field>
                   <Field label="Email" hint="Used for sign-in and notifications.">
-                    <Input type="email" defaultValue="izac.ho@lexer.io" />
+                    <Input type="email" defaultValue="amy@lexer.ai" />
                   </Field>
                   <Field label="Bio"><Textarea placeholder="A short description" /></Field>
                 </div>

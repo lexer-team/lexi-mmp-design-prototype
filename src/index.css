@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Rubik:wght@300..900&display=swap");
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -34,7 +35,7 @@
   --color-brand-950: var(--color-teal-950);
 
   /* Typography */
-  --font-sans: "Mona Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Rubik", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   /* Skeuomorphic button elevation: 1px inset ring + inset bottom shade + xs drop */
   --shadow-xs-skeuomorphic: 0 1px 2px 0 rgb(16 24 40 / 0.05), inset 0 0 0 1px rgb(16 24 40 / 0.18), inset 0 -2px 0 0 rgb(16 24 40 / 0.05);

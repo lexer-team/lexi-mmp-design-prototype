@@ -114,8 +114,8 @@ const BADGE_CODE = `import { Badge } from "@/components/ui/Badge";
 
 const AVATAR_CODE = `import { Avatar } from "@/components/ui/Avatar";
 
-<Avatar initials="IH" />
-<Avatar initials="IH" size="lg" online />`;
+<Avatar initials="AV" />
+<Avatar initials="AV" size="lg" online />`;
 
 const TABLE_CODE = `import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, SortableTableHead } from "@/components/ui/Table";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -240,14 +240,14 @@ export function DataSections() {
         ]}
       >
         <Row label="Sizes">
-          <Avatar initials="IH" size="sm" />
-          <Avatar initials="IH" size="md" />
-          <Avatar initials="IH" size="lg" />
+          <Avatar initials="AV" size="sm" />
+          <Avatar initials="AV" size="md" />
+          <Avatar initials="AV" size="lg" />
         </Row>
         <Row label="Online indicator">
-          <Avatar initials="IH" size="sm" online />
-          <Avatar initials="IH" size="md" online />
-          <Avatar initials="IH" size="lg" online />
+          <Avatar initials="AV" size="sm" online />
+          <Avatar initials="AV" size="md" online />
+          <Avatar initials="AV" size="lg" online />
         </Row>
       </ComponentDoc>
 

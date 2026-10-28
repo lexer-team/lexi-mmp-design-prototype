@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { getAudiencePopulation, type ActivationAudience } from "@/lib/activation-audience";
+import { getAudienceLabel, getAudiencePopulation, getAudienceWarning, type ActivationAudience } from "@/lib/activation-audience";
 import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
 import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
@@ -378,6 +378,7 @@ function ActivationBuildCard({
   const [activationDescription, setActivationDescription] = useState(block.activationDescription);
   const [activationAudience, setActivationAudience] = useState<ActivationAudience>("reachable");
   const selectedPopulation = getAudiencePopulation(block.population, activationAudience);
+  const audienceWarning = getAudienceWarning(activationAudience);
   const [editingName, setEditingName] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [showActivationConnection, setShowActivationConnection] = useState(false);
@@ -929,9 +930,14 @@ function ActivationBuildCard({
                       {activationDescription}
                     </p>
                     <p className="text-foreground">
-                      <span className="font-medium">Population:</span>{" "}
+                      <span className="font-medium">{getAudienceLabel(activationAudience)}:</span>{" "}
                       {selectedPopulation}
                     </p>
+                    {audienceWarning ? (
+                      <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-foreground">
+                        {audienceWarning}
+                      </p>
+                    ) : null}
                     <p className="text-foreground">
                       <span className="font-medium">Data source:</span>{" "}
                       {selectedSource?.name ?? "Not selected"}
@@ -1055,7 +1061,7 @@ function ActivationBuildCard({
                             channel: selectedSource?.name ?? "Multi-channel",
                             category: "MVP activation",
                             skill: "Activation build",
-                            approval: { kind: "approved", by: "Izac", at: dateLabel },
+                            approval: { kind: "approved", by: "Amy", at: dateLabel },
                             status: activationStatus,
                             whenLabel: sendTiming === "schedule-send" ? scheduledWhenLabel : `Approved and sent · ${dateLabel}`,
                             scheduledDate: sendTiming === "schedule-send"
@@ -1079,8 +1085,11 @@ function ActivationBuildCard({
                               { at: dateLabel, entry: "Activation connection confirmed." },
                               { at: dateLabel, entry: "Approved and sent from chat activation card." },
                             ],
+                            history: [{ date: dateLabel, profilesSent: Number(selectedPopulation.replace(/,/g, "")), delta: 0, note: "Selected activation audience" }],
                             mvpDetails: {
                               population: selectedPopulation,
+                              audience: activationAudience,
+                              segmentPopulation: block.population,
                               activationName,
                               activationDefinition: activationDescription,
                               segmentName: block.segmentName,

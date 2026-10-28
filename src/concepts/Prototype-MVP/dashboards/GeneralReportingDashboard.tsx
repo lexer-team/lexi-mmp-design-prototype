@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { CalendarDays, ChevronDown, MoreVertical, MoveDown, Plus } from "lucide-react";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { RefreshCw, Info } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { cn } from "@/lib/utils";
 
 type ChangeTone = "positive" | "negative" | "neutral";
@@ -614,7 +618,7 @@ function TopProductsTableCard() {
   );
 }
 
-export function GeneralReportingDashboard() {
+function LegacyGeneralReportingDashboard() {
   const {
     dateRangeLabel,
     viewLabel,
@@ -679,6 +683,328 @@ export function GeneralReportingDashboard() {
 
         <MultiLineTopProductsCard />
         <TopProductsTableCard />
+      </div>
+    </div>
+  );
+}
+
+type DashboardMetric = {
+  label: string;
+  value: string;
+  delta?: string;
+  prior?: string;
+  direction?: "up" | "down";
+  description: string;
+  unavailable?: boolean;
+};
+
+type DashboardPoint = {
+  date: string;
+  revenue: number;
+  revenueLastYear: number;
+  orders: number;
+  ordersLastYear: number;
+  segmentRevenue: number;
+  segmentRevenueLastYear: number;
+  segmentOrders: number;
+  segmentOrdersLastYear: number;
+};
+
+const DASHBOARD_TREND_DATA: DashboardPoint[] = [
+  { date: "28 Sep", revenue: 48000, revenueLastYear: 50000, orders: 312, ordersLastYear: 305, segmentRevenue: 28600, segmentRevenueLastYear: 27500, segmentOrders: 146, segmentOrdersLastYear: 139 },
+  { date: "1 Oct", revenue: 44500, revenueLastYear: 31500, orders: 326, ordersLastYear: 204, segmentRevenue: 26800, segmentRevenueLastYear: 21900, segmentOrders: 153, segmentOrdersLastYear: 105 },
+  { date: "4 Oct", revenue: 47500, revenueLastYear: 45000, orders: 286, ordersLastYear: 272, segmentRevenue: 27900, segmentRevenueLastYear: 26400, segmentOrders: 141, segmentOrdersLastYear: 133 },
+  { date: "7 Oct", revenue: 46500, revenueLastYear: 35000, orders: 305, ordersLastYear: 326, segmentRevenue: 28100, segmentRevenueLastYear: 26100, segmentOrders: 145, segmentOrdersLastYear: 149 },
+  { date: "10 Oct", revenue: 64000, revenueLastYear: 50500, orders: 376, ordersLastYear: 307, segmentRevenue: 38400, segmentRevenueLastYear: 30600, segmentOrders: 182, segmentOrdersLastYear: 151 },
+  { date: "13 Oct", revenue: 39000, revenueLastYear: 46000, orders: 248, ordersLastYear: 340, segmentRevenue: 23400, segmentRevenueLastYear: 28800, segmentOrders: 124, segmentOrdersLastYear: 162 },
+  { date: "16 Oct", revenue: 65000, revenueLastYear: 58000, orders: 360, ordersLastYear: 315, segmentRevenue: 39000, segmentRevenueLastYear: 34800, segmentOrders: 178, segmentOrdersLastYear: 155 },
+  { date: "19 Oct", revenue: 58000, revenueLastYear: 39500, orders: 326, ordersLastYear: 302, segmentRevenue: 34800, segmentRevenueLastYear: 28100, segmentOrders: 161, segmentOrdersLastYear: 147 },
+  { date: "22 Oct", revenue: 69000, revenueLastYear: 34000, orders: 375, ordersLastYear: 218, segmentRevenue: 41400, segmentRevenueLastYear: 24000, segmentOrders: 187, segmentOrdersLastYear: 108 },
+  { date: "25 Oct", revenue: 57000, revenueLastYear: 55000, orders: 322, ordersLastYear: 318, segmentRevenue: 34200, segmentRevenueLastYear: 33000, segmentOrders: 159, segmentOrdersLastYear: 157 },
+];
+
+const SALES_METRICS: DashboardMetric[] = [
+  { label: "Revenue", value: "A$1.37m", delta: "+1.9%", prior: "A$1.34m", direction: "up", description: "Total sales revenue for the selected period." },
+  { label: "Orders", value: "8,166", delta: "+6.1%", prior: "7,694", direction: "up", description: "Orders placed in the selected period." },
+  { label: "Average Order Value", value: "A$167.87", delta: "−3.9%", prior: "A$174.74", direction: "down", description: "Average revenue per order." },
+  { label: "New Customer %", value: "12.8%", delta: "−3.7 pts", prior: "16.5%", direction: "down", description: "Share of orders from new customers." },
+  { label: "Margin %", value: "Not available", description: "Coming after BFCM. Margin needs the cost of goods at the time of sale, which isn't available yet.", unavailable: true },
+];
+
+const SEGMENT_METRICS: DashboardMetric[] = [
+  { label: "Revenue", value: "A$890k", delta: "+2.6%", prior: "A$867k", direction: "up", description: "Revenue from tracked customer segments." },
+  { label: "Orders", value: "4,221", delta: "+5.1%", prior: "4,016", direction: "up", description: "Orders from tracked customer segments." },
+  { label: "Average Order Value", value: "A$210.85", delta: "−2.4%", prior: "A$216.04", direction: "down", description: "Average order value across tracked segments." },
+  { label: "New Customer %", value: "18.4%", delta: "+1.2 pts", prior: "17.2%", direction: "up", description: "New customer share across tracked segments." },
+  { label: "Margin %", value: "Not available", description: "Coming after BFCM. Margin needs the cost of goods at the time of sale, which isn't available yet.", unavailable: true },
+];
+
+function formatDashboardDate(value: string, includeYear = false) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    ...(includeYear ? { year: "numeric" as const } : {}),
+  });
+}
+
+function formatDashboardRange(start: string, end: string) {
+  if (!start || !end) return "Select dates";
+  return `${formatDashboardDate(start)} – ${formatDashboardDate(end, true)}`;
+}
+
+function DashboardMetricCard({ metric }: { metric: DashboardMetric }) {
+  return (
+    <article className={cn(
+      "min-h-[126px] rounded-xl border border-border bg-card p-4",
+      metric.unavailable && "border-dashed bg-background",
+    )}>
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm font-medium text-foreground-secondary">{metric.label}</span>
+        <button type="button" title={metric.description} aria-label={`About ${metric.label}`} className="text-muted-foreground hover:text-foreground">
+          <Info className="size-3.5" />
+        </button>
+      </div>
+      <p className={cn("mt-1 text-2xl font-bold leading-none text-foreground", metric.unavailable && "text-base")}>{metric.value}</p>
+      {metric.unavailable ? (
+        <p className="mt-3 text-xs leading-relaxed text-foreground-secondary">{metric.description}</p>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={cn(
+            "rounded-full px-2 py-0.5 text-xs font-semibold",
+            metric.direction === "up" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive",
+          )}>
+            {metric.direction === "up" ? "↗" : "↘"} {metric.delta}
+          </span>
+          <span className="text-xs text-foreground-secondary">Last year {metric.prior}</span>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function DashboardChartTable({
+  data,
+  measure,
+}: {
+  data: Array<{ date: string; current: number; lastYear: number }>;
+  measure: "revenue" | "orders";
+}) {
+  const formatValue = (value: number) => measure === "revenue"
+    ? `A$${value.toLocaleString("en-AU")}`
+    : value.toLocaleString("en-AU");
+
+  return (
+    <div className="max-h-[250px] overflow-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead className="text-right">This period</TableHead>
+            <TableHead className="text-right">Last year</TableHead>
+            <TableHead className="text-right">Change</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.map((point) => {
+            const change = point.lastYear === 0 ? 0 : ((point.current - point.lastYear) / point.lastYear) * 100;
+            return (
+              <TableRow key={point.date}>
+                <TableCell>{point.date}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatValue(point.current)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatValue(point.lastYear)}</TableCell>
+                <TableCell className={cn("text-right tabular-nums", change >= 0 ? "text-primary" : "text-destructive")}>
+                  {change > 0 ? "+" : ""}{change.toFixed(1)}%
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function DashboardTrendCard({
+  title,
+  measure,
+  data,
+}: {
+  title: string;
+  measure: "revenue" | "orders";
+  data: Array<{ date: string; current: number; lastYear: number }>;
+}) {
+  const [showTable, setShowTable] = useState(false);
+  const axisStep = measure === "revenue" ? 10000 : 100;
+  const maxValue = Math.max(...data.flatMap((point) => [point.current, point.lastYear]));
+  const axisMax = Math.ceil(maxValue / axisStep) * axisStep;
+  const axisTicks = Array.from({ length: axisMax / axisStep + 1 }, (_, index) => index * axisStep);
+  const formatTooltip = (value: number | string, name: string) => [
+    measure === "revenue" ? `A$${Number(value).toLocaleString("en-AU")}` : Number(value).toLocaleString("en-AU"),
+    name,
+  ];
+
+  return (
+    <article className="min-w-0 rounded-xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <span className="text-xs text-foreground-secondary">Daily, both periods</span>
+      </div>
+      {showTable ? (
+        <DashboardChartTable data={data} measure={measure} />
+      ) : (
+        <div className="h-[250px] w-full" aria-label={title}>
+          <ResponsiveContainer width="100%" height="100%">
+            {measure === "revenue" ? (
+              <LineChart data={data} margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={10} interval={0} />
+                <YAxis domain={[0, axisMax]} ticks={axisTicks} tickLine={false} axisLine={false} fontSize={10} width={52} tickFormatter={(value) => `A$${Math.round(Number(value) / 1000)}k`} />
+                <Tooltip formatter={formatTooltip} contentStyle={{ backgroundColor: "var(--popover)", borderColor: "var(--border)", borderRadius: 8 }} />
+                <Legend verticalAlign="bottom" height={25} iconSize={8} />
+                <Line type="monotone" dataKey="current" name="This period" stroke="var(--primary)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="lastYear" name="Last year" stroke="var(--muted-foreground)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            ) : (
+              <BarChart data={data} margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={10} interval={0} />
+                <YAxis domain={[0, axisMax]} ticks={axisTicks} tickLine={false} axisLine={false} fontSize={10} width={36} />
+                <Tooltip formatter={formatTooltip} contentStyle={{ backgroundColor: "var(--popover)", borderColor: "var(--border)", borderRadius: 8 }} />
+                <Legend verticalAlign="bottom" height={25} iconSize={8} />
+                <Bar dataKey="current" name="This period" fill="var(--primary)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="lastYear" name="Last year" fill="var(--muted-foreground)" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      )}
+      <button type="button" onClick={() => setShowTable((visible) => !visible)} className="mt-2 text-xs font-semibold text-foreground-secondary underline-offset-2 hover:text-foreground hover:underline">
+        {showTable ? "Show chart" : "Show as table"}
+      </button>
+    </article>
+  );
+}
+
+function DashboardReportView({
+  mode,
+  start,
+  end,
+}: {
+  mode: "sales" | "segments";
+  start: string;
+  end: string;
+}) {
+  const segmentMode = mode === "segments";
+  const metrics = segmentMode ? SEGMENT_METRICS : SALES_METRICS;
+  const startTime = new Date(`${start}T00:00:00`).getTime();
+  const endTime = new Date(`${end}T00:00:00`).getTime();
+  const points = DASHBOARD_TREND_DATA.map((point, index) => {
+    const progress = index / (DASHBOARD_TREND_DATA.length - 1);
+    const date = Number.isFinite(startTime) && Number.isFinite(endTime)
+      ? new Date(startTime + (endTime - startTime) * progress)
+      : null;
+    const label = date ? date.toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : point.date;
+    return segmentMode
+      ? { date: label, current: point.segmentRevenue, lastYear: point.segmentRevenueLastYear, orders: point.segmentOrders, ordersLastYear: point.segmentOrdersLastYear }
+      : { date: label, current: point.revenue, lastYear: point.revenueLastYear, orders: point.orders, ordersLastYear: point.ordersLastYear };
+  });
+  const revenueData = points.map(({ date, current, lastYear }) => ({ date, current, lastYear }));
+  const ordersData = points.map(({ date, orders, ordersLastYear }) => ({ date, current: orders, lastYear: ordersLastYear }));
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {metrics.map((metric) => <DashboardMetricCard key={metric.label} metric={metric} />)}
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <DashboardTrendCard title={segmentMode ? "Segment Revenue Over Time" : "Revenue Over Time"} measure="revenue" data={revenueData} />
+        <DashboardTrendCard title={segmentMode ? "Segment Orders Over Time" : "Orders Over Time"} measure="orders" data={ordersData} />
+      </div>
+    </>
+  );
+}
+
+export function GeneralReportingDashboard() {
+  const [view, setView] = useState<"sales" | "segments">("sales");
+  const [viewStart, setViewStart] = useState("2026-09-28");
+  const [viewEnd, setViewEnd] = useState("2026-10-25");
+  const [compareStart, setCompareStart] = useState("2025-09-28");
+  const [compareEnd, setCompareEnd] = useState("2025-10-25");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [refreshedAt, setRefreshedAt] = useState("Refreshed just now");
+
+  const refresh = () => setRefreshedAt(`Refreshed ${new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}`);
+
+  return (
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="mx-auto w-full max-w-[1056px] px-4 py-6 md:px-6">
+        <header className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Dashboards</h1>
+            <p className="mt-1 text-xs text-foreground-secondary">Sydney time · Amounts in AUD</p>
+          </div>
+
+          <div className="flex flex-col items-start gap-1.5 lg:items-end">
+            <div className="relative flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setPickerOpen((open) => !open)} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-left hover:bg-accent/40">
+                <span className="flex flex-col">
+                  <span className="text-[10px] font-semibold text-primary">Viewing</span>
+                  <span className="text-xs font-semibold text-foreground">{formatDashboardRange(viewStart, viewEnd)}</span>
+                </span>
+              </button>
+              <span className="text-xs font-semibold text-foreground-secondary">vs.</span>
+              <button type="button" onClick={() => setPickerOpen((open) => !open)} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-left hover:bg-accent/40">
+                <span className="flex flex-col">
+                  <span className="text-[10px] font-semibold text-muted-foreground">Compared to</span>
+                  <span className="text-xs font-semibold text-foreground">{formatDashboardRange(compareStart, compareEnd)}</span>
+                </span>
+              </button>
+              <button type="button" aria-label="Choose date ranges" title="Choose date ranges" onClick={() => setPickerOpen((open) => !open)} className="inline-flex size-10 items-center justify-center rounded-lg border border-border bg-card text-foreground-secondary hover:bg-accent/40 hover:text-foreground">
+                <CalendarDays className="size-4" />
+              </button>
+              <button type="button" onClick={refresh} className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground-secondary hover:bg-accent/40 hover:text-foreground">
+                <RefreshCw className="size-4" />
+                Refresh
+              </button>
+
+              {pickerOpen && (
+                <div className="absolute right-0 top-full z-30 mt-2 w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-lg">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <fieldset className="space-y-2">
+                      <legend className="text-sm font-semibold text-foreground">Viewing</legend>
+                      <label className="block text-xs text-foreground-secondary">Start date<input type="date" value={viewStart} onChange={(event) => setViewStart(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input-border bg-input px-2 text-sm text-foreground" /></label>
+                      <label className="block text-xs text-foreground-secondary">End date<input type="date" value={viewEnd} onChange={(event) => setViewEnd(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input-border bg-input px-2 text-sm text-foreground" /></label>
+                    </fieldset>
+                    <fieldset className="space-y-2">
+                      <legend className="text-sm font-semibold text-foreground">Compared to</legend>
+                      <label className="block text-xs text-foreground-secondary">Start date<input type="date" value={compareStart} onChange={(event) => setCompareStart(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input-border bg-input px-2 text-sm text-foreground" /></label>
+                      <label className="block text-xs text-foreground-secondary">End date<input type="date" value={compareEnd} onChange={(event) => setCompareEnd(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input-border bg-input px-2 text-sm text-foreground" /></label>
+                    </fieldset>
+                  </div>
+                  <div className="mt-4 flex justify-end border-t border-border pt-3">
+                    <button type="button" onClick={() => setPickerOpen(false)} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">Done</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{refreshedAt}</p>
+          </div>
+        </header>
+
+        <Tabs value={view} onValueChange={(value) => setView(value as "sales" | "segments")} className="mt-6">
+          <TabsList variant="underline">
+            <TabsTrigger value="sales">Sales Performance</TabsTrigger>
+            <TabsTrigger value="segments">Segment Performance</TabsTrigger>
+          </TabsList>
+          <TabsContent value="sales" className="mt-4 outline-none">
+            <DashboardReportView mode="sales" start={viewStart} end={viewEnd} />
+          </TabsContent>
+          <TabsContent value="segments" className="mt-4 outline-none">
+            <DashboardReportView mode="segments" start={viewStart} end={viewEnd} />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

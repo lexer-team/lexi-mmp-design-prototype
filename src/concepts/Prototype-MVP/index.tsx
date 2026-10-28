@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LexerLogo } from "@/components/layout/LexerLogo";
+import { PrototypeOptionsButton } from "@/components/layout/PrototypeOptionsButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/RadioGroup";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { ConfirmDialog } from "@/components/ui/Dialog";
+import { ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +27,8 @@ import {
   RiSidebarFoldLine,
   RiMessage2Line,
   RiAddLine,
+  RiEditLine,
+  RiDeleteBinLine,
   RiBrainLine,
   RiDatabase2Line,
   RiArrowRightSLine,
@@ -61,9 +66,11 @@ import { buildMentionGroups } from "./ChatPanel";
 import { ContextPanel } from "./ContextPanel";
 import { SegmentsPage, DefinitionsPage, MetricsPage, BenchmarksPage, ScorecardPage, DashboardsPage, InsightsPage } from "./pages";
 import { PlaybookPage } from "./PlaybookPage";
+import { SkillsPage } from "./SkillsPage";
 import { SpacePage } from "./SpacePage";
 import { SpacesPage } from "./SpacesPage";
 import { ActivationsPage, ActivationDetail, type ActivationEditDraft } from "./ActivationsPage";
+import { CustomConnectionPage, StandardConnectionPage, IntegrationHealthBanner, DisconnectedConnectionGuidance, IntegrationLogo, type IntegrationConnectionDraft } from "../prototype-playground-master/IntegrationConnectionPages";
 import { ACTIVATION_STATUS_META, DEFAULT_ACTIVATION_HISTORY, getActivation, type Activation, type ActivationHistoryPoint, type ActivationStatus } from "./activations-mock";
 import { INITIAL_SPACES, type Space } from "./spaces-data";
 import { GroupDetail } from "../lexi-shared-brain-v2/GroupDetail";
@@ -73,7 +80,8 @@ import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 import { BetaBadge } from "@/components/BetaBadge";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
+type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "skills" | "calendar" | "insights" | "sources" | "integrations" | "connect-accounts" | "activations" | "context" | "users";
+type DefinitionsTab = "source" | "calculated" | "custom";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
 import { registerDefs } from "@/data/def-registry";
@@ -106,7 +114,7 @@ const EMPTY_SAVED_ITEMS: SavedSpaceItems = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MOCK_USER = { firstName: "Izac", initials: "IH", org: "Lexer" };
+const MOCK_USER = { firstName: "Amy", initials: "AV", org: "Lexer" };
 
 registerDefs([...DEMO_DEFS, ...DEMO_SEGMENT_DEFS]);
 
@@ -136,6 +144,7 @@ function SegmentV1Inner() {
   const [activationNavFilter, setActivationNavFilter] = useState<ActivationNavFilter>("all");
   const [openInsightId, setOpenInsightId] = useState<string | null>(null);
   const [playbookSection, setPlaybookSection] = useState<PlaybookSection>("glossary");
+  const [definitionsTab, setDefinitionsTab] = useState<DefinitionsTab>("source");
   // Spaces — local CRUD over the mock list; persists while the app is open.
   const [spaces, setSpaces] = useState<Space[]>(INITIAL_SPACES);
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>("sp-black-friday");
@@ -551,17 +560,19 @@ function SegmentV1Inner() {
     : page === "benchmarks" ? "Benchmarks"
     : page === "scorecard" ? "Scorecard"
     : page === "dashboards" ? "Dashboards"
-    : page === "playbook" ? "Playbook"
+    : page === "playbook" ? (playbookSection === "rules" ? "Rules" : "Playbook")
+    : page === "skills" ? "Skills"
     : page === "calendar" ? "Calendar"
     : page === "insights" ? "Insights"
     : page === "users" ? "Users"
     : page === "context" ? "Context"
     : page === "sources" ? "Sources"
     : page === "integrations" ? "Integrations"
+    : page === "connect-accounts" ? "Connect Accounts"
     : page === "activations" ? "Activations"
     : (activeConv?.title ?? "New chat");
-  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail";
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
+  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "definitions" || page === "skills" || (page === "playbook" && playbookSection === "rules");
+  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations" || page === "connect-accounts";
   const inSpace = page === "space" || page === "space-detail";
   const inActivations = page === "activations";
   const HeaderIcon = isChat ? RiMessage2Line : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
@@ -600,10 +611,6 @@ function SegmentV1Inner() {
             closePopoutPanels();
             setActivationNavFilter(filter);
             setPage("activations");
-          }}
-          onOpenGlossary={() => {
-            setPlaybookSection("glossary");
-            navigateFromSidebar("playbook");
           }}
           onOpenRules={() => {
             setPlaybookSection("rules");
@@ -671,6 +678,7 @@ function SegmentV1Inner() {
               <RiLayoutRightLine className="size-4" />
             </button>
           )}
+          <PrototypeOptionsButton />
         </header>
 
         {/* Content */}
@@ -722,7 +730,18 @@ function SegmentV1Inner() {
               />
             </div>
           ) : page === "definitions" ? (
-            <div className="min-w-0 flex-1 overflow-hidden"><DefinitionsPage /></div>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <Tabs value={definitionsTab} onValueChange={(value) => setDefinitionsTab(value as DefinitionsTab)} className="flex h-full min-h-0 flex-row">
+                <TabsList variant="underline" className="w-60 shrink-0 flex-col items-stretch gap-1 border-b-0 border-r border-border px-3 py-4">
+                  <TabsTrigger value="source" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Source Definitions</TabsTrigger>
+                  <TabsTrigger value="calculated" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Calculated Definitions</TabsTrigger>
+                  <TabsTrigger value="custom" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Custom Definitions</TabsTrigger>
+                </TabsList>
+                <TabsContent value="source" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><DefinitionsPage /></TabsContent>
+                <TabsContent value="calculated" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><MetricsPage /></TabsContent>
+                <TabsContent value="custom" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><PlaybookPage initialTab="glossary" /></TabsContent>
+              </Tabs>
+            </div>
           ) : page === "metrics" ? (
             <div className="min-w-0 flex-1 overflow-hidden"><MetricsPage /></div>
           ) : page === "benchmarks" ? (
@@ -735,6 +754,8 @@ function SegmentV1Inner() {
             <div className="min-w-0 flex-1 overflow-hidden"><PlaybookPage initialTab="calendar" /></div>
           ) : page === "playbook" ? (
             <div className="min-w-0 flex-1 overflow-hidden"><PlaybookPage initialTab={playbookSection} /></div>
+          ) : page === "skills" ? (
+            <div className="min-w-0 flex-1 overflow-hidden"><SkillsPage /></div>
           ) : page === "insights" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
               <InsightsPage
@@ -760,6 +781,10 @@ function SegmentV1Inner() {
           ) : page === "integrations" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <IntegrationsPage />
+            </div>
+          ) : page === "connect-accounts" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <ConnectAccountsPage />
             </div>
           ) : page === "space" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
@@ -2062,7 +2087,37 @@ function UsersPage() {
     lastUpdated: string;
   };
 
+  const rolePermissionOptions = [
+    { id: "chat", label: "Use Lexi chat" },
+    { id: "dashboards", label: "View dashboards" },
+    { id: "segments", label: "Create and manage segments" },
+    { id: "activations", label: "Manage activations" },
+    { id: "integrations", label: "Manage integrations" },
+    { id: "definitions", label: "Manage definitions and rules" },
+    { id: "context", label: "Manage business context" },
+    { id: "users", label: "Manage users and roles" },
+  ];
+  type PermissionAccess = "manage" | "view" | "none";
+
   const [roleOptions, setRoleOptions] = useState(["Admin", "Manager", "Analyst", "Viewer"]);
+  const [rolePermissions, setRolePermissions] = useState<Record<string, string[]>>({
+    Admin: rolePermissionOptions.map((permission) => permission.id),
+    Manager: ["chat", "segments", "activations", "integrations"],
+    Analyst: ["chat", "segments"],
+    Viewer: ["chat"],
+  });
+  const [roleViewPermissions, setRoleViewPermissions] = useState<Record<string, string[]>>({
+    Admin: [],
+    Manager: ["dashboards"],
+    Analyst: ["dashboards"],
+    Viewer: ["dashboards"],
+  });
+  const [roleDescriptions, setRoleDescriptions] = useState<Record<string, string>>({
+    Admin: "Full access to users, roles, data connections and workspace configuration.",
+    Manager: "Manage day-to-day customer programs, segments and activations.",
+    Analyst: "Explore dashboards and build customer segments.",
+    Viewer: "View dashboards and ask Lexi questions.",
+  });
   const [teamOptions, setTeamOptions] = useState(["Operations", "Growth", "Data", "Marketing", "Lifecycle"]);
   const timeZoneOptions = [
     "Australia/Sydney",
@@ -2075,8 +2130,8 @@ function UsersPage() {
   const [users, setUsers] = useState<ManagedUser[]>([
     {
       id: "usr-1",
-      fullName: "Izac Hall",
-      email: "izac@lexer.ai",
+      fullName: "Amy Vong",
+      email: "amy@lexer.ai",
       role: "Admin",
       team: "Operations",
       timeZone: "Australia/Sydney",
@@ -2127,11 +2182,110 @@ function UsersPage() {
   const [newUserTimeZone, setNewUserTimeZone] = useState("Australia/Sydney");
   const [showAddRole, setShowAddRole] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
+  const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
+  const [selectedRoleName, setSelectedRoleName] = useState("Admin");
+  const [roleNameDraft, setRoleNameDraft] = useState("Admin");
+  const [roleDescriptionDraft, setRoleDescriptionDraft] = useState("Full access to users, roles, data connections and workspace configuration.");
+  const [roleError, setRoleError] = useState("");
+  const [deleteRoleConfirmOpen, setDeleteRoleConfirmOpen] = useState(false);
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [createUserCollapsed, setCreateUserCollapsed] = useState(false);
 
   const selectedUser = selectedUserId ? users.find((u) => u.id === selectedUserId) ?? null : null;
+
+  const selectRoleForEdit = (role: string) => {
+    setSelectedRoleName(role);
+    setRoleNameDraft(role);
+    setRoleDescriptionDraft(roleDescriptions[role] ?? "");
+    setRoleError("");
+  };
+
+  const openRolesManager = () => {
+    selectRoleForEdit(roleOptions[0] ?? "");
+    setRolesDialogOpen(true);
+  };
+
+  const createManagedRole = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const role = newRoleName.trim();
+    if (!role) return;
+    if (roleOptions.some((option) => option.toLowerCase() === role.toLowerCase())) {
+      setRoleError("A role with this name already exists.");
+      return;
+    }
+    setRoleOptions((current) => [...current, role]);
+    setRolePermissions((current) => ({ ...current, [role]: [] }));
+    setRoleViewPermissions((current) => ({ ...current, [role]: [] }));
+    setRoleDescriptions((current) => ({ ...current, [role]: "" }));
+    setNewRoleName("");
+    selectRoleForEdit(role);
+  };
+
+  const saveRoleDefinition = () => {
+    const nextName = roleNameDraft.trim();
+    if (!nextName) {
+      setRoleError("Enter a role name.");
+      return;
+    }
+    if (roleOptions.some((role) => role.toLowerCase() === nextName.toLowerCase() && role !== selectedRoleName)) {
+      setRoleError("A role with this name already exists.");
+      return;
+    }
+    const previousName = selectedRoleName;
+    if (previousName !== nextName) {
+      setRoleOptions((current) => current.map((role) => role === previousName ? nextName : role));
+      setRolePermissions((current) => {
+        const next = { ...current, [nextName]: current[previousName] ?? [] };
+        delete next[previousName];
+        return next;
+      });
+      setRoleViewPermissions((current) => {
+        const next = { ...current, [nextName]: current[previousName] ?? [] };
+        delete next[previousName];
+        return next;
+      });
+      setRoleDescriptions((current) => {
+        const next = { ...current, [nextName]: roleDescriptionDraft };
+        delete next[previousName];
+        return next;
+      });
+      setUsers((current) => current.map((user) => user.role === previousName ? { ...user, role: nextName, lastUpdated: "Just now" } : user));
+      setNewUserRole((current) => current === previousName ? nextName : current);
+      setSelectedRoleName(nextName);
+    } else {
+      setRoleDescriptions((current) => ({ ...current, [nextName]: roleDescriptionDraft }));
+    }
+    setRoleError("");
+  };
+
+  const deleteSelectedRole = () => {
+    if (roleOptions.length < 2) return;
+    const removedRole = selectedRoleName;
+    const fallbackRole = roleOptions.find((role) => role !== removedRole) ?? "";
+    setRoleOptions((current) => current.filter((role) => role !== removedRole));
+    setRolePermissions((current) => {
+      const next = { ...current };
+      delete next[removedRole];
+      return next;
+    });
+    setRoleViewPermissions((current) => {
+      const next = { ...current };
+      delete next[removedRole];
+      return next;
+    });
+    setRoleDescriptions((current) => {
+      const next = { ...current };
+      delete next[removedRole];
+      return next;
+    });
+    setUsers((current) => current.map((user) => user.role === removedRole ? { ...user, role: fallbackRole, lastUpdated: "Just now" } : user));
+    setNewUserRole((current) => current === removedRole ? fallbackRole : current);
+    setSelectedRoleName(fallbackRole);
+    setRoleNameDraft(fallbackRole);
+    setRoleDescriptionDraft(roleDescriptions[fallbackRole] ?? "");
+    setDeleteRoleConfirmOpen(false);
+  };
 
   const updateSelectedUser = (updater: (user: ManagedUser) => ManagedUser) => {
     if (!selectedUserId) return;
@@ -2179,10 +2333,131 @@ function UsersPage() {
 
   return (
     <div className="flex h-full flex-col px-6 py-6">
-      <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">Users</h1>
-        <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold text-foreground">Users</h1>
+          <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
+        </div>
+        <Button variant="outline" onClick={openRolesManager}>Manage roles</Button>
       </div>
+
+      <Dialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen}>
+        <DialogContent size="lg" className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Manage roles</DialogTitle>
+            <DialogDescription>Define role descriptions and permissions for your team.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 grid min-h-[26rem] grid-cols-1 divide-y divide-border overflow-hidden rounded-lg border border-border md:grid-cols-[15rem_minmax(0,1fr)] md:divide-x md:divide-y-0">
+            <aside className="flex min-h-0 flex-col p-3">
+              <p className="px-2 pb-2 text-xs font-semibold text-foreground-secondary">Roles</p>
+              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+                {roleOptions.map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => selectRoleForEdit(role)}
+                    className={cn("w-full rounded-md px-2.5 py-2 text-left", selectedRoleName === role ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted/50 hover:text-foreground")}
+                  >
+                    <span className="block text-sm font-medium">{role}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{roleDescriptions[role] || "No description yet"}</span>
+                  </button>
+                ))}
+              </div>
+              <form onSubmit={createManagedRole} className="mt-3 border-t border-border pt-3">
+                <label htmlFor="new-role-name" className="text-xs font-medium text-foreground">New role</label>
+                <div className="mt-1 flex gap-2">
+                  <Input id="new-role-name" value={newRoleName} onChange={(event) => { setNewRoleName(event.target.value); setRoleError(""); }} placeholder="Role name" className="h-9" />
+                  <Button type="submit" size="sm" disabled={!newRoleName.trim()}>Add</Button>
+                </div>
+                {roleError && <p role="alert" className="mt-1 text-xs text-destructive">{roleError}</p>}
+              </form>
+            </aside>
+
+            <section className="min-w-0 overflow-y-auto p-4">
+              {selectedRoleName ? (
+                <>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="min-w-[12rem] flex-1">
+                      <label htmlFor="role-definition-name" className="text-xs font-semibold text-foreground-secondary">Role name</label>
+                      <Input id="role-definition-name" value={roleNameDraft} onChange={(event) => { setRoleNameDraft(event.target.value); setRoleError(""); }} className="mt-1" />
+                    </div>
+                    <Button onClick={saveRoleDefinition} disabled={!roleNameDraft.trim()}>Save role</Button>
+                    <Button variant="destructive" onClick={() => setDeleteRoleConfirmOpen(true)} disabled={roleOptions.length < 2}>Delete</Button>
+                  </div>
+                  {roleError && <p role="alert" className="mt-2 text-xs text-destructive">{roleError}</p>}
+
+                  <div className="mt-4">
+                    <label htmlFor="role-description" className="text-xs font-semibold text-foreground-secondary">Description</label>
+                    <Textarea id="role-description" value={roleDescriptionDraft} onChange={(event) => setRoleDescriptionDraft(event.target.value)} className="mt-1" rows={3} placeholder="Describe this role's responsibilities" />
+                  </div>
+
+                  <fieldset className="mt-5">
+                    <legend className="text-sm font-semibold text-foreground">Permissions</legend>
+                    <div className="mt-2 divide-y divide-border border-y border-border">
+                      {rolePermissionOptions.map((permission) => {
+                        const access: PermissionAccess = (rolePermissions[selectedRoleName] ?? []).includes(permission.id)
+                          ? "manage"
+                          : (roleViewPermissions[selectedRoleName] ?? []).includes(permission.id) ? "view" : "none";
+                        return (
+                          <div key={permission.id} className="grid grid-cols-1 items-center gap-2 py-2.5 text-sm text-foreground md:grid-cols-[minmax(10rem,1fr)_minmax(18rem,1.5fr)]">
+                            <span>{permission.label}</span>
+                            <RadioGroup
+                              value={access}
+                              onValueChange={(value: PermissionAccess) => {
+                                setRolePermissions((current) => {
+                                  const currentPermissions = current[selectedRoleName] ?? [];
+                                  return {
+                                    ...current,
+                                    [selectedRoleName]: value === "manage"
+                                      ? [...new Set([...currentPermissions, permission.id])]
+                                      : currentPermissions.filter((item) => item !== permission.id),
+                                  };
+                                });
+                                setRoleViewPermissions((current) => {
+                                  const currentPermissions = current[selectedRoleName] ?? [];
+                                  return {
+                                    ...current,
+                                    [selectedRoleName]: value === "view"
+                                      ? [...new Set([...currentPermissions, permission.id])]
+                                      : currentPermissions.filter((item) => item !== permission.id),
+                                  };
+                                });
+                              }}
+                              className="grid grid-cols-3 gap-2"
+                              aria-label={`${permission.label} access`}
+                            >
+                              {(["manage", "view", "none"] as const).map((value) => (
+                                <label key={value} className="flex cursor-pointer items-center gap-1.5 text-xs text-foreground-secondary">
+                                  <RadioGroupItem value={value} />
+                                  <span>{value === "view" ? "View Only" : value === "none" ? "No Access" : "Manage"}</span>
+                                </label>
+                              ))}
+                            </RadioGroup>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                </>
+              ) : <p className="text-sm text-muted-foreground">Create a role to define its permissions.</p>}
+            </section>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRolesDialogOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={deleteRoleConfirmOpen}
+        onOpenChange={setDeleteRoleConfirmOpen}
+        variant="destructive"
+        title={`Delete ${selectedRoleName}?`}
+        description={`Users assigned to ${selectedRoleName} will be reassigned to another existing role.`}
+        confirmLabel="Delete role"
+        cancelLabel="Keep role"
+        onConfirm={deleteSelectedRole}
+      />
 
       <div className={cn(
         "grid min-h-0 flex-1 grid-cols-1 gap-4",
@@ -2226,7 +2501,7 @@ function UsersPage() {
                         onChange={(e) => {
                           const value = e.target.value;
                           if (value === "__add_role__") {
-                            setShowAddRole(true);
+                            openRolesManager();
                             return;
                           }
                           setNewUserRole(value);
@@ -2265,6 +2540,8 @@ function UsersPage() {
                                 const exists = roleOptions.some((option) => option.toLowerCase() === role.toLowerCase());
                                 if (!exists) {
                                   setRoleOptions((prev) => [...prev, role]);
+                                  setRolePermissions((prev) => ({ ...prev, [role]: [] }));
+                                  setRoleDescriptions((prev) => ({ ...prev, [role]: "" }));
                                 }
                                 setNewUserRole(role);
                                 setShowAddRole(false);
@@ -2416,7 +2693,13 @@ function UsersPage() {
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold text-muted-foreground">Role</p>
-                      <Input className="mt-1" value={selectedUser.role} onChange={(e) => updateSelectedUser((u) => ({ ...u, role: e.target.value, lastUpdated: "Just now" }))} />
+                      <select
+                        className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground"
+                        value={selectedUser.role}
+                        onChange={(e) => updateSelectedUser((user) => ({ ...user, role: e.target.value, lastUpdated: "Just now" }))}
+                      >
+                        {roleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+                      </select>
                     </div>
                     <div>
                       <p className="text-[11px] font-semibold text-muted-foreground">Team</p>
@@ -2500,11 +2783,19 @@ function UsersPage() {
   );
 }
 
-function BusinessContextPage() {
+export function BusinessContextPage({ onboarding }: {
+  onboarding?: {
+    disclaimerVisible: boolean;
+    disclaimerText: string;
+    onNext: () => void;
+    nextLabel: string;
+  };
+} = {}) {
   type ContextCard = {
     id: string;
     label: string;
     isCustom: boolean;
+    categoryId?: string | null;
     text: string;
     savedText: string;
     isEditing: boolean;
@@ -2513,6 +2804,16 @@ function BusinessContextPage() {
   };
 
   const [cards, setCards] = useState<ContextCard[]>([
+    {
+      id: "new-entry",
+      label: "New entry",
+      isCustom: true,
+      text: "",
+      savedText: "",
+      isEditing: true,
+      isSaved: false,
+      isConfirmed: false,
+    },
     {
       id: "brand",
       label: "Brand",
@@ -2527,20 +2828,20 @@ function BusinessContextPage() {
       id: "brand-name",
       label: "Brand Name(s)",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "Northstar Outfitters is the primary retail brand. Northstar Home is used for the homewares range.",
+      savedText: "Northstar Outfitters is the primary retail brand. Northstar Home is used for the homewares range.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
       id: "brand-context",
       label: "Brand Context",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "A practical outdoor retailer focused on durable gear, helpful advice, and responsible sourcing.",
+      savedText: "A practical outdoor retailer focused on durable gear, helpful advice, and responsible sourcing.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
@@ -2567,10 +2868,10 @@ function BusinessContextPage() {
       id: "data-sources-systems",
       label: "Data sources and systems",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "Commerce orders come from Shopify; loyalty activity is managed in Annex; email engagement is synced from Iterable.",
+      savedText: "Commerce orders come from Shopify; loyalty activity is managed in Annex; email engagement is synced from Iterable.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
@@ -2637,10 +2938,10 @@ function BusinessContextPage() {
       id: "lifecycle-tiers",
       label: "Lifecycle tiers - New/Active/Lapsing/Lapsed thresholds",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "New: first purchase within 30 days. Active: purchase within 180 days. Lapsing: 181-365 days. Lapsed: no purchase in over a year.",
+      savedText: "New: first purchase within 30 days. Active: purchase within 180 days. Lapsing: 181-365 days. Lapsed: no purchase in over a year.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
@@ -2755,6 +3056,38 @@ function BusinessContextPage() {
     },
   ]);
   const [pendingClearCardId, setPendingClearCardId] = useState<string | null>(null);
+  const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string | null>(null);
+  const [blockedDeleteCategoryLabel, setBlockedDeleteCategoryLabel] = useState<string | null>(null);
+  const [activeSectionId, setActiveSectionId] = useState("uncategorised");
+  const [selectedCardId, setSelectedCardId] = useState("new-entry");
+  const [draftEntryLabel, setDraftEntryLabel] = useState("");
+  const [draftEntryText, setDraftEntryText] = useState("");
+  const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [draftCategoryName, setDraftCategoryName] = useState("");
+  const [categoryNameError, setCategoryNameError] = useState("");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [draftEditedCategoryName, setDraftEditedCategoryName] = useState("");
+  const [editCategoryError, setEditCategoryError] = useState("");
+  const [pendingCategoryCardId, setPendingCategoryCardId] = useState<string | null>(null);
+  const [inlineCategoryCardId, setInlineCategoryCardId] = useState<string | null>(null);
+  const [openCategoryDropdownCardId, setOpenCategoryDropdownCardId] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState(() => new Set(["brand"]));
+  const sectionIds = new Set([
+    "brand",
+    "data",
+    "customer-intelligence",
+    "commercial-calendar",
+    "channels-activation",
+    "product-catalog",
+  ]);
+  const entryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    if (selectedCardId) {
+      entryRefs.current[selectedCardId]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedCardId, activeSectionId]);
 
   const updateCard = (cardId: string, updater: (card: ContextCard) => ContextCard) => {
     setCards((prev) => prev.map((card) => (card.id === cardId ? updater(card) : card)));
@@ -2769,19 +3102,57 @@ function BusinessContextPage() {
   };
 
   const updateCardLabel = (cardId: string, label: string) => {
-    updateCard(cardId, (card) => ({ ...card, label }));
+    updateCard(cardId, (card) => ({ ...card, label, isEditing: true, isSaved: false, isConfirmed: false }));
   };
 
   const saveCard = (cardId: string) => {
-    updateCard(cardId, (card) => ({ ...card, savedText: card.text, isSaved: true, isConfirmed: false, isEditing: false }));
+    updateCard(cardId, (card) => card.isCustom && !card.categoryId
+      ? card
+      : ({ ...card, savedText: card.text, isSaved: true, isConfirmed: false, isEditing: false }));
   };
 
   const confirmCard = (cardId: string) => {
-    updateCard(cardId, (card) => ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
+    updateCard(cardId, (card) => card.isCustom && !card.categoryId
+      ? card
+      : ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
   };
 
   const clearCard = (cardId: string) => {
     updateCard(cardId, (card) => ({ ...card, text: "", savedText: "", isSaved: false, isConfirmed: false, isEditing: true }));
+  };
+
+  const deleteEntry = (cardId: string) => {
+    setCards((current) => current.filter((card) => card.id !== cardId));
+    setPendingDeleteEntryId(null);
+    if (selectedCardId === cardId) setSelectedCardId("");
+  };
+
+  const cancelCategoryRename = () => {
+    setEditingCategoryId(null);
+    setDraftEditedCategoryName("");
+    setEditCategoryError("");
+  };
+
+  const deleteCategory = (categoryId: string) => {
+    if (sectionIds.has(categoryId)) {
+      setCards((current) => current.filter((card) => card.id !== categoryId));
+    } else {
+      setCustomCategories((current) => current.filter((category) => category.id !== categoryId));
+    }
+    if (activeSectionId === categoryId) {
+      const fallbackEntry = cards.find((card) => card.isCustom && !card.categoryId);
+      setActiveSectionId("uncategorised");
+      setSelectedCardId(fallbackEntry?.id ?? "");
+    }
+    if (editingCategoryId === categoryId) cancelCategoryRename();
+  };
+
+  const requestDeleteCategory = (section: { id: string; label: string; entries: ContextCard[] }) => {
+    if (section.entries.length > 0) {
+      setBlockedDeleteCategoryLabel(section.label);
+      return;
+    }
+    deleteCategory(section.id);
   };
 
   const addMoreCard = () => {
@@ -2790,7 +3161,7 @@ function BusinessContextPage() {
       ...prev,
       {
         id,
-        label: "New context box",
+        label: "New entry",
         isCustom: true,
         text: "",
         savedText: "",
@@ -2799,9 +3170,112 @@ function BusinessContextPage() {
         isConfirmed: false,
       },
     ]);
+    setActiveSectionId("uncategorised");
+    setSelectedCardId(id);
+  };
+
+  const addSectionEntry = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const label = draftEntryLabel.trim();
+    if (!label || activeSectionId === "uncategorised") return;
+
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const text = draftEntryText.trim();
+    setCards((prev) => [...prev, {
+      id,
+      label,
+      isCustom: true,
+      categoryId: activeSectionId,
+      text,
+      savedText: text,
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: false,
+    }]);
+    setSelectedCardId(id);
+    setDraftEntryLabel("");
+    setDraftEntryText("");
+  };
+
+  const startCategoryCreation = (cardId: string | null = null) => {
+    setPendingCategoryCardId(cardId);
+    setDraftCategoryName("");
+    setCategoryNameError("");
+    setIsCreatingCategory(true);
+  };
+
+  const startInlineCategoryCreation = (cardId: string) => {
+    setPendingCategoryCardId(cardId);
+    setDraftCategoryName("");
+    setCategoryNameError("");
+    setInlineCategoryCardId(cardId);
+    setOpenCategoryDropdownCardId(cardId);
+  };
+
+  const createCategory = () => {
+    const label = draftCategoryName.trim();
+    if (!label) return false;
+    const existingLabels = [
+      ...cards.filter((card) => sectionIds.has(card.id)).map((card) => card.label),
+      ...customCategories.map((category) => category.label),
+    ];
+    if (existingLabels.some((existing) => existing.toLocaleLowerCase() === label.toLocaleLowerCase())) {
+      setCategoryNameError("That category already exists.");
+      return false;
+    }
+
+    const id = `category-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setCustomCategories((current) => [...current, { id, label }]);
+    if (pendingCategoryCardId) {
+      setCards((current) => current.map((card) => card.id === pendingCategoryCardId ? { ...card, categoryId: id } : card));
+      setSelectedCardId(pendingCategoryCardId);
+    }
+    setActiveSectionId(id);
+    setExpandedSections((current) => new Set(current).add(id));
+    setPendingCategoryCardId(null);
+    setIsCreatingCategory(false);
+    setInlineCategoryCardId(null);
+    setOpenCategoryDropdownCardId(null);
+    setDraftCategoryName("");
+    setCategoryNameError("");
+    return true;
+  };
+
+  const startCategoryRename = (category: { id: string; label: string }) => {
+    setEditingCategoryId(category.id);
+    setDraftEditedCategoryName(category.label);
+    setEditCategoryError("");
+  };
+
+  const saveCategoryRename = () => {
+    const label = draftEditedCategoryName.trim();
+    if (!editingCategoryId || !label) return;
+    const existingCategories = [
+      ...cards.filter((card) => sectionIds.has(card.id)).map((card) => ({ id: card.id, label: card.label })),
+      ...customCategories,
+    ];
+    if (existingCategories.some((category) => category.id !== editingCategoryId
+      && category.label.toLocaleLowerCase() === label.toLocaleLowerCase())) {
+      setEditCategoryError("That category already exists.");
+      return;
+    }
+    if (sectionIds.has(editingCategoryId)) {
+      updateCard(editingCategoryId, (card) => ({ ...card, label }));
+    } else {
+      setCustomCategories((current) => current.map((category) => category.id === editingCategoryId ? { ...category, label } : category));
+    }
+    cancelCategoryRename();
+  };
+
+  const changeCardCategory = (cardId: string, categoryId: string) => {
+    setCards((current) => current.map((card) => card.id === cardId ? { ...card, categoryId } : card));
+    setActiveSectionId(categoryId);
+    setExpandedSections((current) => new Set(current).add(categoryId));
+    setSelectedCardId(cardId);
   };
 
   const saveEntirePage = () => {
+    if (cards.some((card) => card.isCustom && !card.categoryId)) return;
     setCards((prev) => prev.map((card) => ({
       ...card,
       savedText: card.text,
@@ -2811,14 +3285,41 @@ function BusinessContextPage() {
     })));
   };
 
-  const sectionIds = new Set([
-    "brand",
-    "data",
-    "customer-intelligence",
-    "commercial-calendar",
-    "channels-activation",
-    "product-catalog",
-  ]);
+  let currentCategoryId: string | null = null;
+  const sections = cards.reduce<Array<{ id: string; label: string; entries: ContextCard[] }>>((groups, card) => {
+    if (sectionIds.has(card.id)) {
+      currentCategoryId = card.id;
+      groups.push({ id: card.id, label: card.label, entries: [] });
+      return groups;
+    }
+    const categoryId = card.categoryId ?? (card.isCustom ? null : currentCategoryId);
+    if (categoryId) groups.find((section) => section.id === categoryId)?.entries.push(card);
+    return groups;
+  }, customCategories.map((category) => ({ ...category, entries: [] })))
+    .sort((first, second) => first.label.localeCompare(second.label));
+  const uncategorisedEntries = cards.filter((card) => card.isCustom && !card.categoryId);
+  const visibleEntries = activeSectionId === "uncategorised"
+    ? uncategorisedEntries
+    : sections.find((section) => section.id === activeSectionId)?.entries ?? [];
+  const activeSectionLabel = activeSectionId === "uncategorised"
+    ? "New Entry"
+    : sections.find((section) => section.id === activeSectionId)?.label ?? "Context";
+
+  const selectSection = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    setExpandedSections((current) => new Set(current).add(sectionId));
+    const firstEntry = sections.find((section) => section.id === sectionId)?.entries[0];
+    setSelectedCardId(firstEntry?.id ?? "");
+  };
+
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections((current) => {
+      const next = new Set(current);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
 
   return (
     <div className="flex h-full flex-col px-6 py-6">
@@ -2827,95 +3328,228 @@ function BusinessContextPage() {
         <p className="text-sm text-foreground-secondary">Capture your business context so Lexer can build your semantic layer.</p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-          <div className="grid grid-cols-1 gap-4">
-            {cards.map((card) => {
-              if (sectionIds.has(card.id)) {
-                return (
-                  <div key={card.id} className="pt-2">
-                    <h2 className="text-base font-semibold text-foreground">{card.label}</h2>
-                    <div className="mt-2 border-b border-border" />
-                  </div>
-                );
-              }
+      {onboarding?.disclaimerVisible && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {onboarding.disclaimerText}
+        </div>
+      )}
 
-              const editing = card.isEditing;
-              const saved = card.isSaved;
-              const confirmed = card.isConfirmed;
-              const lockByConfirmation = confirmed && !editing;
+      <div className="flex min-h-0 flex-1 gap-4">
+        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-border pr-3">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSectionId("uncategorised");
+              if (uncategorisedEntries.length) setSelectedCardId(uncategorisedEntries[0].id);
+              else addMoreCard();
+            }}
+            className={cn(
+              "mb-3 flex min-h-11 items-center rounded-lg border px-3 text-left text-sm font-semibold transition-colors",
+              activeSectionId === "uncategorised"
+                ? "border-primary/40 bg-primary/5 text-foreground"
+                : "border-border bg-card text-foreground hover:bg-accent",
+            )}
+          >
+            <RiAddLine className="mr-2 size-4 shrink-0" />
+            New Entry
+          </button>
 
+          {isCreatingCategory ? (
+            <div className="mb-3 rounded-lg border border-border bg-card p-2">
+              <Input
+                value={draftCategoryName}
+                onChange={(event) => {
+                  setDraftCategoryName(event.target.value);
+                  setCategoryNameError("");
+                }}
+                placeholder="Category name"
+                aria-label="Category name"
+                autoFocus
+              />
+              {categoryNameError && <p className="mt-1 text-xs text-destructive">{categoryNameError}</p>}
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => {
+                  setIsCreatingCategory(false);
+                  setPendingCategoryCardId(null);
+                  setCategoryNameError("");
+                }}>
+                  Cancel
+                </Button>
+                <Button type="button" size="sm" disabled={!draftCategoryName.trim()} onClick={createCategory}>Save</Button>
+              </div>
+            </div>
+          ) : (
+            <Button type="button" variant="outline" size="sm" className="mb-3 w-full justify-start" onClick={() => startCategoryCreation()}>
+              <RiAddLine className="mr-2 size-4" />
+              New Category
+            </Button>
+          )}
+
+          <nav aria-label="Context categories" className="space-y-1">
+            {sections.map((section) => {
+              const expanded = expandedSections.has(section.id);
               return (
-                <div key={card.id} className="rounded-xl border border-border bg-background p-3">
-                  {card.isCustom ? (
-                    <Input
-                      value={card.label}
-                      readOnly={!editing}
-                      onChange={(e) => updateCardLabel(card.id, e.target.value)}
-                      className="h-8 text-sm font-semibold read-only:cursor-default read-only:bg-muted/25"
-                    />
-                  ) : (
-                    <p className="text-sm font-semibold text-foreground">{card.label}</p>
-                  )}
-
-                  <p className="mt-3 text-[11px] font-semibold text-muted-foreground">Description</p>
-                  <Textarea
-                    rows={4}
-                    value={card.text}
-                    readOnly={!editing}
-                    onChange={(e) => updateCardText(card.id, e.target.value)}
-                    className="mt-1 min-h-20 read-only:cursor-default read-only:bg-muted/25"
-                  />
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!editing || lockByConfirmation}
-                      onClick={() => setPendingClearCardId(card.id)}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => startEditing(card.id)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!editing || lockByConfirmation}
-                      onClick={() => saveCard(card.id)}
-                    >
-                      {saved && !editing ? "Saved" : "Save"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={!editing || lockByConfirmation}
-                      onClick={() => confirmCard(card.id)}
-                    >
-                      {confirmed && !editing ? "Confirmed" : "Confirm"}
-                    </Button>
+                <div key={section.id}>
+                  <div className={cn("group flex items-center rounded-lg transition-colors", activeSectionId === section.id ? "bg-accent" : "hover:bg-accent/60")}>
+                    {editingCategoryId === section.id ? (
+                      <div className="min-w-0 flex-1 px-2 py-1">
+                        <Input
+                          value={draftEditedCategoryName}
+                          onChange={(event) => {
+                            setDraftEditedCategoryName(event.target.value);
+                            setEditCategoryError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              saveCategoryRename();
+                            } else if (event.key === "Escape") cancelCategoryRename();
+                          }}
+                          aria-label={`Rename ${section.label}`}
+                          autoFocus
+                          className="h-8 min-w-0 flex-1"
+                        />
+                        {editCategoryError && <p className="mt-1 text-xs text-destructive">{editCategoryError}</p>}
+                        <div className="mt-1 flex justify-end gap-1">
+                          <Button type="button" size="sm" className="h-7 px-2 text-xs" disabled={!draftEditedCategoryName.trim()} onClick={saveCategoryRename}>Save</Button>
+                          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={cancelCategoryRename}>Cancel</Button>
+                          <Button type="button" variant="outline" size="sm" className="h-7 border-destructive/30 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => requestDeleteCategory(section)}>Delete</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => selectSection(section.id)} className="min-w-0 flex-1 px-3 py-2 text-left text-sm font-semibold text-foreground">
+                          {section.label}
+                        </button>
+                        <button type="button" aria-label={`Edit category ${section.label}`} title={`Edit ${section.label}`} onClick={() => startCategoryRename(section)} className="rounded-md p-1 text-muted-foreground/50 opacity-50 transition-opacity hover:bg-background hover:text-foreground hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100">
+                          <RiEditLine className="size-3" />
+                        </button>
+                      </>
+                    )}
+                    <button type="button" aria-label={`${expanded ? "Collapse" : "Expand"} ${section.label}`} aria-expanded={expanded} onClick={() => toggleSection(section.id)} className="mr-1 rounded-md p-1.5 text-muted-foreground hover:text-foreground">
+                      <RiArrowDownSLine className={cn("size-4 transition-transform", !expanded && "-rotate-90")} />
+                    </button>
                   </div>
-
-                  {saved && !confirmed && !editing && (
-                    <p className="mt-2 text-xs text-foreground-secondary">
-                      Changes have been saved but not approved or applied to your context layer.
-                    </p>
+                  {expanded && (
+                    <div className="ml-3 space-y-0.5 border-l border-border py-1 pl-2">
+                      {section.entries.map((entry) => (
+                        <button key={entry.id} type="button" onClick={() => {
+                          setActiveSectionId(section.id);
+                          setSelectedCardId(entry.id);
+                        }} className={cn("w-full rounded-md px-2 py-1.5 text-left text-xs leading-5 transition-colors", selectedCardId === entry.id ? "bg-primary/10 font-medium text-foreground" : "text-foreground-secondary hover:bg-accent hover:text-foreground")}>
+                          {entry.label}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               );
             })}
+          </nav>
+        </aside>
+
+        <section className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card p-4">
+          <h2 className="mb-4 text-base font-semibold text-foreground">{activeSectionLabel}</h2>
+          {activeSectionId !== "uncategorised" && (
+            <form onSubmit={addSectionEntry} className="mb-4 rounded-lg border border-border bg-background p-3">
+              <p className="mb-2 text-sm font-semibold text-foreground">Add an entry to {activeSectionLabel}</p>
+              <Input value={draftEntryLabel} onChange={(event) => setDraftEntryLabel(event.target.value)} placeholder="Entry name" aria-label="Entry name" className="mb-2" />
+              <Textarea rows={3} value={draftEntryText} onChange={(event) => setDraftEntryText(event.target.value)} placeholder="Add context details" aria-label="Entry details" />
+              <div className="mt-2 flex justify-end">
+                <Button type="submit" size="sm" disabled={!draftEntryLabel.trim()}><RiAddLine className="mr-1 size-4" />Add entry</Button>
+              </div>
+            </form>
+          )}
+          <div className="space-y-4">
+            {visibleEntries.map((card) => {
+              const editing = card.isEditing;
+              const saved = card.isSaved;
+              const confirmed = card.isConfirmed;
+              const lockByConfirmation = confirmed && !editing;
+              const entryCategoryId = card.categoryId ?? (activeSectionId === "uncategorised" ? "" : activeSectionId);
+              const entryCategoryLabel = sections.find((section) => section.id === entryCategoryId)?.label;
+
+              return (
+                <div key={card.id} ref={(element) => { entryRefs.current[card.id] = element; }} className={cn("scroll-m-4 rounded-xl border border-border bg-background p-3", selectedCardId === card.id && "ring-2 ring-primary/20")}>
+                  {selectedCardId === card.id ? (
+                    <Input value={card.label} onChange={(event) => updateCardLabel(card.id, event.target.value)} aria-label="Entry name" className="h-8 text-sm font-semibold" />
+                  ) : (
+                    <p className="text-sm font-semibold text-foreground">{card.label}</p>
+                  )}
+                  <DropdownMenu open={openCategoryDropdownCardId === card.id} onOpenChange={(open) => setOpenCategoryDropdownCardId(open ? card.id : null)}>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" aria-label={`Category for ${card.label}`} className="mt-2 flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input-border bg-input px-3 text-left text-sm shadow-xs focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/40">
+                        <span className={entryCategoryLabel ? "text-foreground" : "text-muted-foreground"}>{entryCategoryLabel ?? "Choose a category"}</span>
+                        <RiArrowDownSLine className="size-4 shrink-0 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-80 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
+                      {sections.map((section) => <DropdownMenuItem key={section.id} onSelect={() => changeCardCategory(card.id, section.id)}>{section.label}</DropdownMenuItem>)}
+                      <DropdownMenuSeparator />
+                      {inlineCategoryCardId === card.id ? (
+                        <div className="space-y-2 p-2">
+                          <Input value={draftCategoryName} onChange={(event) => {
+                            setDraftCategoryName(event.target.value);
+                            setCategoryNameError("");
+                          }} onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              createCategory();
+                            } else if (event.key !== "Escape") event.stopPropagation();
+                          }} placeholder="Category name" aria-label="New category name" autoFocus />
+                          {categoryNameError && <p className="text-xs text-destructive">{categoryNameError}</p>}
+                          <div className="space-y-1">
+                            <DropdownMenuItem disabled={!draftCategoryName.trim()} onSelect={(event) => {
+                              if (!createCategory()) event.preventDefault();
+                            }}>Save</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => {
+                              setInlineCategoryCardId(null);
+                              setPendingCategoryCardId(null);
+                              setDraftCategoryName("");
+                              setCategoryNameError("");
+                            }}>Cancel</DropdownMenuItem>
+                          </div>
+                        </div>
+                      ) : (
+                        <DropdownMenuItem onSelect={(event) => {
+                          event.preventDefault();
+                          startInlineCategoryCreation(card.id);
+                        }}><RiAddLine />Add a new category...</DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {card.isCustom && !card.categoryId && <p className="mt-1 text-xs text-muted-foreground">Choose a category before saving this entry.</p>}
+                  <p className="mt-3 text-[11px] font-semibold text-muted-foreground">Description</p>
+                  <Textarea rows={4} value={card.text} readOnly={!editing} onChange={(event) => updateCardText(card.id, event.target.value)} className="mt-1 min-h-20 read-only:cursor-default read-only:bg-muted/25" />
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                    <Button variant="outline" size="sm" disabled={!editing || lockByConfirmation} onClick={() => setPendingClearCardId(card.id)}>Clear</Button>
+                    <Button variant="outline" size="sm" onClick={() => startEditing(card.id)}>Edit</Button>
+                    <Button variant="outline" size="sm" disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId)} onClick={() => saveCard(card.id)}>{saved && !editing ? "Saved" : "Save"}</Button>
+                    <Button size="sm" disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId)} onClick={() => confirmCard(card.id)}>{confirmed && !editing ? "Confirmed" : "Confirm"}</Button>
+                    <Button variant="ghost" size="sm" className="ml-auto text-destructive hover:text-destructive" onClick={() => setPendingDeleteEntryId(card.id)}><RiDeleteBinLine className="mr-1 size-4" />Delete</Button>
+                  </div>
+                  {saved && !confirmed && !editing && <p className="mt-2 text-xs text-foreground-secondary">Changes have been saved but not approved or applied to your context layer.</p>}
+                </div>
+              );
+            })}
           </div>
-        </div>
+        </section>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-        <Button variant="outline" onClick={addMoreCard}>Add more</Button>
-        <Button onClick={saveEntirePage}>Save</Button>
-      </div>
+      {onboarding ? (
+        <div className="sticky bottom-0 mt-4 flex items-center justify-end border-t border-border bg-background/95 pt-4 backdrop-blur">
+          <Button onClick={onboarding.onNext} disabled={!onboarding.disclaimerVisible}>
+            {onboarding.nextLabel}
+            <RiArrowRightSLine className="size-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+          <Button variant="outline" onClick={addMoreCard}>New entry</Button>
+          <Button onClick={saveEntirePage} disabled={uncategorisedEntries.length > 0}>Save</Button>
+        </div>
+      )}
 
       <ConfirmDialog
         open={pendingClearCardId != null}
@@ -2934,12 +3568,38 @@ function BusinessContextPage() {
           setPendingClearCardId(null);
         }}
       />
+      <ConfirmDialog
+        open={pendingDeleteEntryId != null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteEntryId(null); }}
+        variant="destructive"
+        icon={RiDeleteBinLine}
+        title="Delete this entry?"
+        description="This entry and its description will be permanently removed."
+        confirmLabel="Delete entry"
+        cancelLabel="Keep entry"
+        onConfirm={() => { if (pendingDeleteEntryId) deleteEntry(pendingDeleteEntryId); }}
+      />
+      <Dialog open={blockedDeleteCategoryLabel != null} onOpenChange={(open) => {
+        if (!open) setBlockedDeleteCategoryLabel(null);
+      }}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Category has entries</DialogTitle>
+            <DialogDescription>Move or delete all entries in “{blockedDeleteCategoryLabel}” before deleting this category.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter><Button onClick={() => setBlockedDeleteCategoryLabel(null)}>Got it</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function IntegrationsPage() {
-  type IntegrationStatus = "Connected" | "Available" | "Disconnected";
+function ConnectAccountsPage() {
+  return <IntegrationsPage title="Connect Accounts" newConnectionsOnly />;
+}
+
+function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }: { title?: string; newConnectionsOnly?: boolean }) {
+  type IntegrationStatus = "Connected" | "Available" | "Disconnected" | "Pending";
   type IntegrationRecord = {
     id: string;
     name: string;
@@ -2947,6 +3607,8 @@ function IntegrationsPage() {
     status: IntegrationStatus;
     summary: string;
     updated: string;
+    syncDirection?: "Inbound" | "Outbound" | "Bidirectional";
+    connectionType?: "Standard" | "Custom";
   };
   type AccountDraft = {
     accountName: string;
@@ -2964,7 +3626,9 @@ function IntegrationsPage() {
   };
 
   const [query, setQuery] = useState("");
+  const [connectionPage, setConnectionPage] = useState<"overview" | "standard" | "custom">("standard");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [connectionsExpanded, setConnectionsExpanded] = useState(true);
   const [openIntegrationId, setOpenIntegrationId] = useState<string | null>(null);
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [showAccountFrame, setShowAccountFrame] = useState(false);
@@ -2999,6 +3663,12 @@ function IntegrationsPage() {
     { id: "ga4", name: "Google Analytics", category: "Web analytics", status: "Available", summary: "Session, source, and funnel events are unified.", updated: "Not connected" },
     { id: "segment", name: "Segment", category: "CDP", status: "Available", summary: "Event routing to warehouse and activation tools is healthy.", updated: "Not connected" },
     { id: "snowflake", name: "Snowflake", category: "Warehouse", status: "Connected", summary: "Modeled tables refresh every 30 minutes.", updated: "Synced 15 min ago" },
+    { id: "custom-customer-events-webhook", name: "Braze", category: "Webhook", status: "Connected", summary: "Inbound JSON webhooks deliver customer profile and event changes in near real time.", updated: "Synced 12 min ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-fulfilment-webhook", name: "AP21", category: "Webhook", status: "Available", summary: "Outbound webhook sends order fulfilment updates to a partner endpoint.", updated: "Not connected", syncDirection: "Outbound", connectionType: "Custom" },
+    { id: "custom-product-sftp", name: "Nimbl", category: "SFTP", status: "Connected", summary: "Nightly inbound CSV imports update the product catalogue.", updated: "Synced 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-suppression-sftp", name: "Customer suppression SFTP", category: "SFTP", status: "Disconnected", summary: "Nightly suppression files are paused and need the SFTP credentials refreshed.", updated: "Disconnected 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-history-upload", name: "Historical customer CSV upload", category: "One-time upload", status: "Connected", summary: "One-time CSV import added migrated customer history.", updated: "Uploaded 3 days ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-inventory-upload", name: "Inventory snapshot upload", category: "One-time upload", status: "Available", summary: "One-time CSV upload can seed current inventory levels.", updated: "Not connected", syncDirection: "Inbound", connectionType: "Custom" },
   ];
 
   const buildDefaultAccount = (integration: IntegrationRecord): AccountDraft => {
@@ -3007,7 +3677,7 @@ function IntegrationsPage() {
     };
   };
 
-  const [integrations, setIntegrations] = useState<IntegrationRecord[]>(INITIAL_INTEGRATIONS);
+  const [integrations, setIntegrations] = useState<IntegrationRecord[]>(() => INITIAL_INTEGRATIONS.filter((integration) => integration.status !== "Available"));
   const [accountDrafts, setAccountDrafts] = useState<Record<string, AccountDraft>>({});
   const [connectedAccountsByIntegration, setConnectedAccountsByIntegration] = useState<Record<string, ConnectedAccount[]>>(() => {
     const seeded: Record<string, ConnectedAccount[]> = {};
@@ -3261,15 +3931,23 @@ function IntegrationsPage() {
     const popup = window.open("", "fivetran-mock-login", "popup=yes,width=520,height=640");
     if (!popup) return;
 
-    popup.document.title = "Fivetran Login (Demo)";
+    const integrationName = integrations.find((item) => item.id === integrationId)?.name ?? "Integration";
+    const escapedIntegrationName = integrationName.replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;",
+    })[character] ?? character);
+    popup.document.title = `${integrationName} Login (Demo)`;
     popup.document.body.innerHTML = `
       <div style="font-family: Rubik, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; min-height: 100vh; margin: 0; padding: 24px; display: flex; align-items: center; justify-content: center;">
         <div style="width: 100%; max-width: 420px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12); padding: 20px;">
-          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">Fivetran login (Demo)</h1>
-          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Use the prefilled credentials and click Connect to return to Lexer.</p>
+          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">${escapedIntegrationName} connection (Demo)</h1>
+          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Authorize this demo connection to return to Lexer.</p>
           <label style="display: block; margin-bottom: 12px;">
             <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Email</span>
-            <input value="demo@fivetran.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+            <input value="demo@connection.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
           </label>
           <label style="display: block; margin-bottom: 16px;">
             <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Password</span>
@@ -3290,13 +3968,25 @@ function IntegrationsPage() {
     openFivetranMockLogin(integrationId);
   };
 
+  const openConnectedIntegration = (draft: IntegrationConnectionDraft) => {
+    setIntegrations((current) => current.some((integration) => integration.id === draft.id)
+      ? current
+      : [{ ...draft, status: "Pending", updated: draft.connectionType === "Custom" ? "Awaiting scoping" : "Awaiting authorization" }, ...current]);
+    if (draft.connectionType === "Custom") return;
+    setSelectedCategory("All");
+    setQuery("");
+    setConnectionPage("standard");
+    setOpenIntegrationId(draft.id);
+    setPanelExpanded(false);
+  };
+
   const disconnectIntegration = (integrationId: string) => {
     setConnectedAccountsByIntegration((prev) => ({ ...prev, [integrationId]: [] }));
     setActiveAccountIdByIntegration((prev) => ({ ...prev, [integrationId]: null }));
 
     setIntegrations((prev) => prev.map((item) => (
       item.id === integrationId
-        ? { ...item, status: "Available", updated: "Not connected" }
+        ? { ...item, status: "Disconnected", updated: "Disconnected just now" }
         : item
     )));
   };
@@ -3332,18 +4022,22 @@ function IntegrationsPage() {
 
   const categories = [
     "All",
-    "Available sources",
     "Connected sources",
     "Disconnected sources",
-    ...Array.from(new Set(integrations.map((integration) => integration.category))).sort((a, b) => a.localeCompare(b)),
+    ...Array.from(new Set([...integrations.map((integration) => integration.category), "Custom"]))
+      .sort((a, b) => a.localeCompare(b)),
   ];
 
   const syncDirectionForCategory = (category: string): "Inbound" | "Outbound" | "Bidirectional" => {
     if (category === "Transactions") return "Inbound";
     if (category === "Paid ads") return "Outbound";
-    if (category === "Web analytics") return "Inbound";
+    if (["Web analytics", "Warehouse", "CRM", "Customer support"].includes(category)) return "Inbound";
     return "Bidirectional";
   };
+
+  const syncDirectionForIntegration = (integration: Pick<IntegrationRecord, "category" | "syncDirection">) => (
+    integration.syncDirection ?? syncDirectionForCategory(integration.category)
+  );
 
   const syncDirectionIcon = (direction: "Inbound" | "Outbound" | "Bidirectional") => {
     if (direction === "Inbound") return <RiArrowLeftCircleLine className="size-4" />;
@@ -3353,16 +4047,16 @@ function IntegrationsPage() {
 
   const q = query.trim().toLowerCase();
   const filtered = integrations.filter((integration) => {
-    const availableOnly = selectedCategory === "Available sources";
+    const customOnly = selectedCategory === "Custom";
     const connectedOnly = selectedCategory === "Connected sources";
     const disconnectedOnly = selectedCategory === "Disconnected sources";
-    const categoryMatch = availableOnly || connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
-    const statusMatch = (availableOnly && integration.status === "Available")
-      || (connectedOnly && integration.status === "Connected")
+    const categoryMatch = customOnly || connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
+    const statusMatch = (connectedOnly && integration.status === "Connected")
       || (disconnectedOnly && integration.status === "Disconnected")
-      || (!availableOnly && !connectedOnly && !disconnectedOnly);
+      || (!connectedOnly && !disconnectedOnly);
+    const typeMatch = !customOnly || integration.connectionType === "Custom";
     const nameMatch = q === "" || integration.name.toLowerCase().includes(q);
-    return categoryMatch && statusMatch && nameMatch;
+    return categoryMatch && statusMatch && typeMatch && nameMatch;
   });
 
   const pinnedIntegration = filtered.find((integration) => integration.id === "lexer-api");
@@ -3372,7 +4066,7 @@ function IntegrationsPage() {
     integration: IntegrationRecord,
     key: "name" | "category" | "syncDirection" | "summary" | "updated" | "status",
   ) => {
-    if (key === "syncDirection") return syncDirectionForCategory(integration.category).toLowerCase();
+    if (key === "syncDirection") return syncDirectionForIntegration(integration).toLowerCase();
     return integration[key].toLowerCase();
   };
 
@@ -3442,7 +4136,7 @@ function IntegrationsPage() {
   }, [showAccountFrame]);
 
   const countFor = (category: string) => {
-    if (category === "Available sources") return integrations.filter((integration) => integration.status === "Available").length;
+    if (category === "Custom") return integrations.filter((integration) => integration.connectionType === "Custom").length;
     if (category === "Connected sources") return integrations.filter((integration) => integration.status === "Connected").length;
     if (category === "Disconnected sources") return integrations.filter((integration) => integration.status === "Disconnected").length;
     if (category === "All") return integrations.length;
@@ -3754,18 +4448,21 @@ function IntegrationsPage() {
     >
       <TableCell>
         <div className="inline-flex items-center gap-2">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <RiPlugLine className="size-4" />
-          </span>
+          <IntegrationLogo name={integration.name} />
           <span className="font-medium text-foreground">{integration.name}</span>
           {integration.id === "lexer-api" && <Badge variant="default" size="sm">Pinned</Badge>}
         </div>
       </TableCell>
+      <TableCell>
+        <Badge variant={integration.connectionType === "Custom" ? "secondary" : "outline"} size="sm">
+          {integration.connectionType === "Custom" ? "Custom" : "Native"}
+        </Badge>
+      </TableCell>
       <TableCell><Badge variant="default" size="sm">{integration.category}</Badge></TableCell>
       <TableCell>
         <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-          {syncDirectionIcon(syncDirectionForCategory(integration.category))}
-          <span>{syncDirectionForCategory(integration.category)}</span>
+          {syncDirectionIcon(syncDirectionForIntegration(integration))}
+          <span>{syncDirectionForIntegration(integration)}</span>
         </span>
       </TableCell>
       <TableCell className="border-r border-border text-sm text-foreground-secondary">{integration.summary}</TableCell>
@@ -3794,7 +4491,7 @@ function IntegrationsPage() {
       currentCategory = integration.category;
       groupedRows.push(
         <TableRow key={`category-${currentCategory}`}>
-          <TableCell colSpan={6} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
+          <TableCell colSpan={7} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
             {currentCategory}
           </TableCell>
         </TableRow>,
@@ -3806,36 +4503,113 @@ function IntegrationsPage() {
   return (
     <div className="flex h-full flex-col px-6 py-6">
       <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">Integrations</h1>
-        <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>
+        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        {!newConnectionsOnly ? <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p> : null}
       </div>
 
+      {!newConnectionsOnly ? <IntegrationHealthBanner integrations={integrations} onReview={() => {
+        setSelectedCategory("Disconnected sources");
+        setConnectionPage("overview");
+        setQuery("");
+        setOpenIntegrationId(null);
+        setPanelExpanded(false);
+        setConnectionsExpanded(true);
+      }} /> : null}
+
       <div className="min-h-0 flex flex-1 gap-4 overflow-hidden">
-        <aside className="w-56 shrink-0 overflow-y-auto rounded-xl border border-border bg-card p-2">
-          <p className="px-2 pb-2 pt-1 text-xs font-semibold text-muted-foreground">Categories</p>
-          <ul className="flex list-none flex-col gap-1">
-            {categories.map((category) => {
-              const active = category === selectedCategory;
-              return (
-                <li key={category}>
-                  <button
-                    onClick={() => setSelectedCategory(category)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
-                      active ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <span className="truncate">{category}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
-                  </button>
-                  {category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
-                </li>
-              );
-            })}
-          </ul>
+        <aside className="w-56 shrink-0 space-y-4 overflow-y-auto">
+          <div className="rounded-xl border border-primary bg-card p-2">
+            <p className="px-2 pb-2 pt-1 text-xs font-semibold text-primary">New connection</p>
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setConnectionPage("standard");
+                  setOpenIntegrationId(null);
+                  setPanelExpanded(false);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                  connectionPage === "standard" ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <RiPlugLine className="size-4 shrink-0" />
+                <span>Add Standard Connection</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConnectionPage("custom");
+                  setOpenIntegrationId(null);
+                  setPanelExpanded(false);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                  connectionPage === "custom" ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <RiAddLine className="size-4 shrink-0" />
+                <span>Add Custom Connection</span>
+              </button>
+            </div>
+          </div>
+          {!newConnectionsOnly ? (
+          <div className="rounded-xl border border-border bg-card p-2">
+          <button
+            type="button"
+            aria-expanded={connectionsExpanded}
+            aria-controls="mvp-integration-categories"
+            onClick={() => setConnectionsExpanded((expanded) => !expanded)}
+            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-muted-foreground hover:bg-muted"
+          >
+            <span>Connections</span>
+            <RiArrowDownSLine className={cn("size-4 transition-transform", connectionsExpanded && "rotate-180")} />
+          </button>
+          {connectionsExpanded ? (
+            <ul id="mvp-integration-categories" className="flex list-none flex-col gap-1">
+              {categories.map((category) => {
+                const active = category === selectedCategory;
+                return (
+                  <li key={category}>
+                    <button
+                      onClick={() => {
+                        setSelectedCategory(category);
+                        setConnectionPage("overview");
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                        active ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <span className="truncate">{category === "All" ? "All connections" : category}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
+                    </button>
+                    {category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          </div>
+          ) : null}
         </aside>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
+          {connectionPage === "standard" || (newConnectionsOnly && connectionPage !== "custom") ? (
+            <StandardConnectionPage
+              onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")}
+              onConnect={openConnectedIntegration}
+              directionForCategory={syncDirectionForCategory}
+            />
+          ) : connectionPage === "custom" ? (
+            <CustomConnectionPage
+              onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")}
+              onCreate={openConnectedIntegration}
+              addedBy={MOCK_USER.firstName}
+              requests={integrations.filter((integration) => integration.connectionType === "Custom" && integration.status === "Pending")}
+            />
+          ) : (
+            <>
           <div className="mb-3">
             <div className="relative max-w-md">
               <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -3853,6 +4627,7 @@ function IntegrationsPage() {
               <TableHeader>
                 <TableRow>
                   <SortHeader label="Integration" keyName="name" />
+                  <TableHead className="w-36">Connection type</TableHead>
                   <SortHeader label="Category" keyName="category" className="w-40" />
                   <SortHeader label="Sync direction" keyName="syncDirection" className="w-44" />
                   <SortHeader label="Description" keyName="summary" className="border-r border-border" />
@@ -3864,7 +4639,7 @@ function IntegrationsPage() {
                 {groupedRows}
                 {groupedRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                       No integrations match this search and category.
                     </TableCell>
                   </TableRow>
@@ -3872,9 +4647,11 @@ function IntegrationsPage() {
               </TableBody>
             </Table>
           </div>
+            </>
+          )}
         </div>
 
-        {openIntegration && !panelExpanded && (
+        {openIntegration && !panelExpanded && connectionPage === "overview" && (
           <button
             className="fixed inset-0 z-30 cursor-default bg-transparent"
             aria-label="Close integration panel"
@@ -3930,7 +4707,7 @@ function IntegrationsPage() {
                     <div className="grid grid-cols-1 gap-3">
                       {openIntegration.status === "Disconnected" && (
                         <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          This account has disconnected and needs to be reconnected to avoid disruption.
+                          <DisconnectedConnectionGuidance category={openIntegration.category} />
                         </div>
                       )}
 
@@ -3943,8 +4720,8 @@ function IntegrationsPage() {
                           <div className="rounded-lg border border-border bg-background p-3">
                             <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
-                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                              {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
+                              <span>{syncDirectionForIntegration(openIntegration)}</span>
                             </div>
                           </div>
                         </div>
@@ -4083,7 +4860,7 @@ function IntegrationsPage() {
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                       {openIntegration.status === "Disconnected" && (
                         <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
-                          This account has disconnected and needs to be reconnected to avoid disruption.
+                          <DisconnectedConnectionGuidance category={openIntegration.category} />
                         </div>
                       )}
 
@@ -4096,8 +4873,8 @@ function IntegrationsPage() {
                           <div className="rounded-xl border border-border bg-card p-4">
                             <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
-                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                              {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
+                              <span>{syncDirectionForIntegration(openIntegration)}</span>
                             </div>
                           </div>
                         </div>
@@ -4236,7 +5013,6 @@ function Sidebar({
   pinnedChatIds,
   onTogglePinnedChat,
   onSelectActivationFilter,
-  onOpenGlossary,
   onOpenRules,
   onNavigate,
 }: {
@@ -4247,18 +5023,17 @@ function Sidebar({
   pinnedChatIds: string[];
   onTogglePinnedChat: (id: string) => void;
   onSelectActivationFilter: (status: ActivationNavFilter) => void;
-  onOpenGlossary: () => void;
   onOpenRules: () => void;
   onNavigate: (p: Page) => void;
 }) {
   const { state, dispatch } = useSession();
   const inSegments = page === "segments" || page === "segment-detail";
   const inActivations = page === "activations";
-  const inIntegrations = page === "integrations";
   const inContext = page === "context";
-  const inUsers = page === "users";
   const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources";
+  const inKnowledge = inContext || page === "definitions" || (page === "playbook" && playbookSection === "rules");
   const [activationsOpen, setActivationsOpen] = useState(false);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const activationCount = {
     all: state.activations.filter((a) => a.status !== "awaiting-approval").length,
@@ -4340,6 +5115,26 @@ function Sidebar({
               )}
             </li>
             <li><NavRow icon={RiDashboardLine} label="Dashboards" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
+            <li>
+              <NavRow
+                icon={RiBrainLine}
+                label="Knowledge"
+                collapsed={collapsed}
+                active={inKnowledge || knowledgeOpen}
+                onClick={() => setKnowledgeOpen((open) => !open)}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", knowledgeOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setKnowledgeOpen((open) => !open) : undefined}
+                trailingToggleLabel="Toggle Knowledge sections"
+              />
+              {!collapsed && knowledgeOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Context" active={page === "context"} onClick={() => onNavigate("context")} /></li>
+                  <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
+                  <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
+                  <li><SubNavRow label="Skills" active={page === "skills"} onClick={() => onNavigate("skills")} /></li>
+                </ul>
+              )}
+            </li>
             {!collapsed && (
               <li>
                 <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Pinned Chats</div>
@@ -4456,17 +5251,13 @@ function Sidebar({
                             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
                           )}
                         >
-                          <DropdownMenuItem onSelect={() => onNavigate("definitions")}>Source Definitions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => onNavigate("metrics")}>Calculated Defintions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={onOpenGlossary}>Custom Definitions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={onOpenRules}>Rules</DropdownMenuItem>
                           <DropdownMenuItem onSelect={() => onNavigate("sources")}>Sources</DropdownMenuItem>
                         </DropdownMenuPrimitive.SubContent>
                       </DropdownMenuPrimitive.Portal>
                     </DropdownMenuSub>
                     <DropdownMenuItem onSelect={() => onNavigate("users")}>Users</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onNavigate("context")}>Context</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onNavigate("integrations")}>Integrations</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigate("connect-accounts")}>Connect Accounts</DropdownMenuItem>
                   </DropdownMenuPrimitive.SubContent>
                 </DropdownMenuPrimitive.Portal>
               </DropdownMenuSub>

@@ -40,8 +40,8 @@ const ARTIFACT_META: Record<string, { icon: RemixiconComponentType; label: strin
   "activation-confirmation": { icon: RiBroadcastLine, label: "Activation confirmation" },
   "amy-segment": { icon: RiGroupLine, label: "Amy's segment" },
   "amy-insight": { icon: RiLightbulbLine, label: "Amy's insight" },
-  "izac-segment": { icon: RiGroupLine, label: "Izac's segment" },
-  "izac-insight": { icon: RiLightbulbLine, label: "Izac's insight" },
+  "izac-segment": { icon: RiGroupLine, label: "Amy's segment" },
+  "izac-insight": { icon: RiLightbulbLine, label: "Amy's insight" },
 };
 
 type ArtifactNodeData = {
@@ -990,7 +990,7 @@ function buildGraph(space: Space, audience: "me" | "team"): { nodes: Node[]; edg
       {
         id: "team-ins-1",
         title: "Online sell-through pacing ahead",
-        type: "amy-insight",
+        type: "izac-insight",
         description: "Online BF assortment sell-through is outpacing in-store for hero SKUs.",
         details: ["Online sell-through: 74%", "In-store sell-through: 58%"],
       },
@@ -1004,7 +1004,7 @@ function buildGraph(space: Space, audience: "me" | "team"): { nodes: Node[]; edg
       {
         id: "team-ins-3",
         title: "Channel imbalance risk by week two",
-        type: "izac-insight",
+        type: "amy-insight",
         description: "If online pace continues, online inventory will hit critical threshold before stores.",
         details: ["Online cover: ~6 days", "In-store cover: ~11 days"],
       },
@@ -1019,8 +1019,8 @@ function buildGraph(space: Space, audience: "me" | "team"): { nodes: Node[]; edg
           label: tile.title,
           type: tile.type,
           meta: tile.type.includes("segment")
-            ? (tile.type.startsWith("amy") ? "Amy's segment" : "Izac's segment")
-            : (tile.type.startsWith("amy") ? "Amy's insight" : "Izac's insight"),
+            ? (tile.type.startsWith("amy") ? "Amy's segment" : "Amy's segment")
+            : (tile.type.startsWith("amy") ? "Amy's insight" : "Amy's insight"),
           description: tile.description,
           details: tile.details,
         },

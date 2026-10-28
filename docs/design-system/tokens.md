@@ -45,7 +45,7 @@ Base `--radius: 0.5rem` (8px). `rounded-lg` = controls/inputs (8px); `rounded-xl
 
 ## Type
 
-Typeface **Mona Sans** (GitHub), display + body, via `--font-sans`. Scale is Tailwind defaults (unchanged): `text-xs … text-3xl`. Headings `font-semibold`; display `font-bold tracking-tight`. Labels sentence case.
+Typeface **Rubik**, display + body, via `--font-sans`. Scale is Tailwind defaults (unchanged): `text-xs … text-3xl`. Headings `font-semibold`; display `font-bold tracking-tight`. Labels sentence case.
 
 ## Spacing
 

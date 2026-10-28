@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getAudiencePopulation, type ActivationAudience } from "@/lib/activation-audience";
+import { getAudienceLabel, getAudiencePopulation, getAudienceWarning, type ActivationAudience } from "@/lib/activation-audience";
 import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -47,7 +47,7 @@ import { InsightDrawer } from "./InsightDetail";
 import { BENCHMARKS } from "./benchmarks-data";
 import { MasterKpisDashboard } from "./dashboards/MasterKpisDashboard";
 import { EnhancedRfmDashboard } from "./dashboards/EnhancedRfmDashboard";
-import { GeneralReportingDashboard } from "./dashboards/GeneralReportingDashboard";
+import { GeneralReportingDashboard } from "../Prototype-MVP/dashboards/GeneralReportingDashboard";
 import { useSession } from "./store";
 import { DUMMY_SEGMENTS } from "./segment-dummy-data";
 import { ConditionComposer } from "./components/ConditionComposer";
@@ -635,7 +635,7 @@ export function SegmentsPage({
         channel: builderSelectedSource?.name ?? "Multi-channel",
         category: "MVP activation",
         skill: "Activation build",
-        approval: { kind: "approved", by: "Izac", at: dateLabel },
+        approval: { kind: "approved", by: "Amy", at: dateLabel },
         status: activationStatus,
         whenLabel: builderSendTiming === "schedule-send" ? scheduledWhenLabel : `Approved and sent · ${dateLabel}`,
         scheduledDate: builderSendTiming === "schedule-send" ? (builderScheduledStartDate || undefined) : undefined,
@@ -657,8 +657,11 @@ export function SegmentsPage({
           { at: dateLabel, entry: "Activation connection confirmed." },
           { at: dateLabel, entry: "Approved and sent from segment builder." },
         ],
+        history: [{ date: dateLabel, profilesSent: Number(selectedActivationPopulation.replace(/,/g, "")), delta: 0, note: "Selected activation audience" }],
         mvpDetails: {
           population: selectedActivationPopulation,
+          audience: builderActivationAudience,
+          segmentPopulation: builderActivationPreview.population,
           activationName: builderActivationPreview.activationName,
           activationDefinition: builderActivationPreview.activationDescription,
           segmentName,
@@ -1589,7 +1592,10 @@ export function SegmentsPage({
                                 <div className="mt-2 space-y-2 text-sm">
                                   <p className="text-foreground"><span className="font-medium">Activation name:</span> {builderActivationPreview.activationName}</p>
                                   <p className="text-foreground"><span className="font-medium">Activation definition:</span> {builderActivationPreview.activationDescription}</p>
-                                  <p className="text-foreground"><span className="font-medium">Population:</span> {selectedActivationPopulation}</p>
+                                  <p className="text-foreground"><span className="font-medium">{getAudienceLabel(builderActivationAudience)}:</span> {selectedActivationPopulation}</p>
+                                  {builderActivationAudience === "segment" ? (
+                                    <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-foreground">{getAudienceWarning(builderActivationAudience)}</p>
+                                  ) : null}
                                   <p className="text-foreground"><span className="font-medium">Data source:</span> {builderSelectedSource?.name ?? "Not selected"}</p>
                                 </div>
                               </div>
@@ -2213,7 +2219,7 @@ export function ScorecardPage() {
   );
 }
 
-export function DashboardsPage() {
+function LegacyDashboardsPage() {
   const hiddenDashboards = new Set([
     "Engagement Health Monitor",
     "Hero Product Pulse",
@@ -2435,6 +2441,10 @@ export function DashboardsPage() {
       </div>
     </div>
   );
+}
+
+export function DashboardsPage() {
+  return <GeneralReportingDashboard />;
 }
 
 // ─── Insights page (Knowledge) ───────────────────────────────────────────────

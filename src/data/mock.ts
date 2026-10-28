@@ -1,10 +1,10 @@
 // ─── User ───────────────────────────────────────────────────────────────────
 export const MOCK_USER = {
-  firstName: "Izac",
-  lastName: "Ho",
-  initials: "IH",
-  email: "izac.ho@lexer.io",
-  org: "Fitness Co.",
+  firstName: "Amy",
+  lastName: "Vong",
+  initials: "AV",
+  email: "amy@lexer.ai",
+  org: "Lexer",
 };
 
 // ─── Recent Chats ────────────────────────────────────────────────────────────

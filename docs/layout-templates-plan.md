@@ -4,7 +4,7 @@
 page templates, built the shadcn way — existing components, existing tokens, no new dependencies.
 No UUI template maps 1:1 to Lexer, so we extract the structure and recompose it.
 
-**Decisions (locked with Izac):**
+**Decisions (locked with Amy):**
 - Rule source = UUI free React source, but reconciled to the existing reskin — **reuse what we
   already have, don't reinvent**.
 - Thin layout **primitives + recipes** (not raw-Tailwind-only).

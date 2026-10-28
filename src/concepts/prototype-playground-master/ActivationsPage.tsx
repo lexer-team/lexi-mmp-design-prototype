@@ -10,7 +10,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getAudiencePopulation, type ActivationAudience } from "@/lib/activation-audience";
+import { getAudienceLabel, getAudiencePopulation, getAudienceWarning, type ActivationAudience } from "@/lib/activation-audience";
 import { PopulationVolumeSelector } from "@/components/activation/PopulationVolumeSelector";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -38,6 +38,7 @@ import { ConfirmDialog } from "@/components/ui/Dialog";
 import { buildConditionMenuGroups } from "./condition-menu-groups";
 import { DUMMY_SEGMENT_BY_ID } from "./segment-dummy-data";
 import { BRAIN_GROUPS } from "../lexi-shared-brain/data";
+import { IntegrationLogo } from "./IntegrationConnectionPages";
 
 const ACTIVATION_DEMO_PROMPT = "High value customers that live in au but not usa and buy shirts";
 const RECURRING_LIST_ACTION_HINT: Record<"append" | "maintain" | "update", string> = {
@@ -45,6 +46,31 @@ const RECURRING_LIST_ACTION_HINT: Record<"append" | "maintain" | "update", strin
   maintain: "Keeps your current list structure and refreshes eligible members each run.",
   update: "Rebuilds the full list each run so membership always reflects the latest segment state.",
 };
+
+function activationSourceIntegrations(activation: Activation) {
+  const details = activation.mvpDetails;
+  const sourceText = [
+    details?.dataSource,
+    ...(details?.accounts ?? []),
+    activation.channel,
+    activation.skill,
+    ...activation.invocations.map((invocation) => invocation.skill),
+  ].join(" ").toLowerCase();
+  const sources = [
+    ...(sourceText.includes("klaviyo") ? ["Klaviyo"] : []),
+    ...(sourceText.includes("meta") || sourceText.includes("paid social") ? ["Meta Ads"] : []),
+    ...(sourceText.includes("shopify") ? ["Shopify"] : []),
+    ...(sourceText.includes("braze") ? ["Braze"] : []),
+    ...(sourceText.includes("attentive") ? ["Attentive"] : []),
+    ...(sourceText.includes("twilio") || sourceText.includes("sms") ? ["Twilio"] : []),
+  ];
+
+  if (sources.length > 0) return [...new Set(sources)];
+  if (sourceText.includes("email")) return ["Klaviyo"];
+  if (sourceText.includes("paid social")) return ["Meta Ads"];
+  if (sourceText.includes("sms")) return ["Twilio"];
+  return ["Lexer API"];
+}
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
@@ -135,6 +161,7 @@ export function ActivationsPage({
     builderActivationConfirmation?.population ?? "0",
     builderActivationAudience,
   );
+  const builderAudienceWarning = getAudienceWarning(builderActivationAudience);
   const sessionSegmentRefs = useMemo<DefRef[]>(() => {
     return [...state.artifacts.values()]
       .filter((artifact) => artifact.type === "segment" && artifact.status === "saved" && artifact.body?.kind === "segment")
@@ -792,7 +819,7 @@ export function ActivationsPage({
         channel: builderSelectedSource?.name ?? "Multi-channel",
         category: "MVP activation",
         skill: "Activation build",
-        approval: { kind: "approved", by: "Izac", at: dateLabel },
+        approval: { kind: "approved", by: "Amy", at: dateLabel },
         status: activationStatus,
         whenLabel: builderSendTiming === "schedule-send" ? scheduledWhenLabel : `Approved and sent · ${dateLabel}`,
         scheduledDate: builderSendTiming === "schedule-send"
@@ -816,8 +843,11 @@ export function ActivationsPage({
           { at: dateLabel, entry: "Activation connection confirmed." },
           { at: dateLabel, entry: "Approved and sent from activation popout." },
         ],
+        history: [{ date: dateLabel, profilesSent: Number(selectedActivationPopulation.replace(/,/g, "")), delta: 0, note: "Selected activation audience" }],
         mvpDetails: {
           population: selectedActivationPopulation,
+          audience: builderActivationAudience,
+          segmentPopulation: builderActivationConfirmation.population,
           activationName: builderActivationConfirmation.activationName,
           activationDefinition: builderActivationConfirmation.activationDescription,
           segmentName: segmentNameForContext,
@@ -935,6 +965,7 @@ export function ActivationsPage({
                 <TableHead>Activation</TableHead>
                 <TableHead className="w-40">Segment</TableHead>
                 <TableHead>Context</TableHead>
+                <TableHead className="w-48">Destination Platform</TableHead>
                 <TableHead className="w-36">Channel</TableHead>
                 <TableHead className="w-32">Frequency</TableHead>
                 <TableHead className="w-56">Cadence</TableHead>
@@ -963,6 +994,11 @@ export function ActivationsPage({
                     <TableCell>
                       <span className="font-medium text-foreground">{a.name}</span>
                       <p className="mt-0.5 max-w-xs truncate text-sm text-foreground-secondary">{a.skill}</p>
+                      {a.mvpDetails?.population ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {a.mvpDetails.audience ? getAudienceLabel(a.mvpDetails.audience) : "Population"}: {a.mvpDetails.population}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-[11px] text-muted-foreground">Created by {a.createdBy ?? (a.approval.kind === "approved" ? a.approval.by : a.approval.kind === "pending" ? "Pending approval" : "System")}</p>
                     </TableCell>
                     <TableCell className="max-w-[10rem] truncate text-sm text-foreground-secondary">
@@ -983,6 +1019,16 @@ export function ActivationsPage({
                       )}
                     </TableCell>
                     <TableCell className="max-w-[12rem] truncate text-sm text-muted-foreground">{a.context}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1.5" aria-label={`Source integrations: ${activationSourceIntegrations(a).join(", ")}`}>
+                        {activationSourceIntegrations(a).map((source) => (
+                          <span key={source} title={source} className="inline-flex items-center gap-1.5">
+                            <IntegrationLogo name={source} size="sm" />
+                            <span className="text-xs text-foreground-secondary">{source}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{a.channel}</TableCell>
                     <TableCell className="text-sm text-foreground-secondary">{activationFrequency(a)}</TableCell>
                     <TableCell className="max-w-[18rem] truncate text-sm text-foreground-secondary">{activationCadence(a)}</TableCell>
@@ -992,7 +1038,7 @@ export function ActivationsPage({
                 );
               })}
               {shown.length === 0 && (
-                <TableRow><TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">No activations match these filters.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -1565,7 +1611,10 @@ export function ActivationsPage({
                               <div className="mt-2 space-y-2 text-sm">
                                 <p className="text-foreground"><span className="font-medium">Activation name:</span> {builderActivationConfirmation.activationName}</p>
                                 <p className="text-foreground"><span className="font-medium">Activation definition:</span> {builderActivationConfirmation.activationDescription}</p>
-                                <p className="text-foreground"><span className="font-medium">Population:</span> {selectedActivationPopulation}</p>
+                                <p className="text-foreground"><span className="font-medium">{getAudienceLabel(builderActivationAudience)}:</span> {selectedActivationPopulation}</p>
+                                {builderAudienceWarning ? (
+                                  <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-foreground">{builderAudienceWarning}</p>
+                                ) : null}
                                 <p className="text-foreground"><span className="font-medium">Data source:</span> {builderSelectedSource?.name ?? "Not selected"}</p>
                                 <p className="text-foreground">
                                   <span className="font-medium">Accounts:</span>{" "}
@@ -1826,6 +1875,9 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
   const s = ACTIVATION_STATUS_META[activation.status];
 
   const detailPopulation = activation.mvpDetails?.population ?? "Not specified";
+  const detailAudience = activation.mvpDetails?.audience;
+  const detailPopulationLabel = detailAudience ? getAudienceLabel(detailAudience) : "Population";
+  const detailAudienceWarning = getAudienceWarning(detailAudience);
   const detailActivationName = activation.mvpDetails?.activationName ?? activation.name;
   const detailActivationDefinition = activation.mvpDetails?.activationDefinition ?? activation.result ?? "Not specified";
   const detailCreatedBy = activation.createdBy ?? (activation.approval.kind === "approved" ? activation.approval.by : activation.approval.kind === "pending" ? "Pending approval" : "System");
@@ -1850,14 +1902,14 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
       ];
 
   const isOneOffActivation = !activation.recurringStartDate && !!activation.scheduledDate;
-  const historyRows = isOneOffActivation
+  const historyRows = activation.history ?? (isOneOffActivation
     ? [{
         date: activation.scheduledDate ?? "Scheduled",
         profilesSent: 18240,
         delta: 0,
         note: "Single send",
       }]
-    : (activation.history ?? DEFAULT_ACTIVATION_HISTORY);
+    : DEFAULT_ACTIVATION_HISTORY);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const chartValues = historyRows.map((row) => row.profilesSent);
   const minValue = Math.min(...chartValues) * 0.9;
@@ -1914,8 +1966,14 @@ export function ActivationDetail({ activation, onOpenSegment, categoryOptions, o
 
         <TabsContent value="details" className="space-y-3">
           <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Population</p>
+            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">{detailPopulationLabel}</p>
             <p className="mt-1 text-lg font-semibold text-foreground tabular-nums">{detailPopulation}</p>
+            {detailAudience === "reachable" && activation.mvpDetails?.segmentPopulation ? (
+              <p className="mt-1 text-xs text-foreground-secondary">From a segment of {activation.mvpDetails.segmentPopulation} profiles</p>
+            ) : null}
+            {detailAudienceWarning ? (
+              <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-foreground">{detailAudienceWarning}</p>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4">

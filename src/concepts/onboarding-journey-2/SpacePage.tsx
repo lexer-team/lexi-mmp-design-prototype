@@ -360,7 +360,7 @@ export function SpacePage({
                   <RiPlanetLine className="size-5 shrink-0 text-primary" />
                   <h1 className="truncate text-xl font-semibold text-foreground">{space.name}</h1>
                 </div>
-                <p className="text-sm text-muted-foreground">Created by Izac · Updated {space.updatedLabel}</p>
+                <p className="text-sm text-muted-foreground">Created by Amy · Updated {space.updatedLabel}</p>
               </div>
               {toggleGroup}
             </div>

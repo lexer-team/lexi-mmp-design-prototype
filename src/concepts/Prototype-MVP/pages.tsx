@@ -784,9 +784,9 @@ export function MetricsPage() {
     <div className="flex h-full flex-col">
       <div className="flex flex-col gap-1 px-6 pt-6">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold text-foreground">Metrics</h1>
+          <h1 className="text-xl font-semibold text-foreground">Calculated Definitions</h1>
           <p className="text-sm text-foreground-secondary">
-            Curated custom metrics and computed definitions built on top of source fields.
+            Computed definitions built on top of source fields.
           </p>
         </div>
       </div>
@@ -1106,7 +1106,7 @@ export function ScorecardPage() {
   );
 }
 
-export function DashboardsPage() {
+function LegacyDashboardsPage() {
   const hiddenDashboards = new Set([
     "Engagement Health Monitor",
     "Hero Product Pulse",
@@ -1328,6 +1328,10 @@ export function DashboardsPage() {
       </div>
     </div>
   );
+}
+
+export function DashboardsPage() {
+  return <GeneralReportingDashboard />;
 }
 
 // ─── Insights page (Knowledge) ───────────────────────────────────────────────

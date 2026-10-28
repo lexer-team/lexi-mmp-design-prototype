@@ -40,8 +40,8 @@ const ARTIFACT_META: Record<string, { icon: RemixiconComponentType; label: strin
   "activation-confirmation": { icon: RiBroadcastLine, label: "Activation confirmation" },
   "amy-segment": { icon: RiGroupLine, label: "Amy's segment" },
   "amy-insight": { icon: RiLightbulbLine, label: "Amy's insight" },
-  "izac-segment": { icon: RiGroupLine, label: "Izac's segment" },
-  "izac-insight": { icon: RiLightbulbLine, label: "Izac's insight" },
+  "amy-vong-segment": { icon: RiGroupLine, label: "Amy's segment" },
+  "amy-vong-insight": { icon: RiLightbulbLine, label: "Amy's insight" },
 };
 
 type ArtifactNodeData = {
@@ -313,14 +313,14 @@ const ARTIFACT_STYLE: Record<string, {
     badge: "bg-[#CD4496]/15 text-[#A82071] border border-[#CD4496]/40",
     metaDot: "bg-[#CD4496]",
   },
-  "izac-segment": {
+  "amy-vong-segment": {
     card: "border-[#35B6B4] bg-[#DDF8F7]",
     iconWrap: "bg-[#35B6B4]/20",
     icon: "text-[#127A78]",
     badge: "bg-[#35B6B4]/15 text-[#127A78] border border-[#35B6B4]/40",
     metaDot: "bg-[#35B6B4]",
   },
-  "izac-insight": {
+  "amy-vong-insight": {
     card: "border-[#35B6B4] bg-[#DDF8F7]",
     iconWrap: "bg-[#35B6B4]/20",
     icon: "text-[#127A78]",
@@ -969,7 +969,7 @@ function buildGraph(space: Space, audience: "me" | "team"): { nodes: Node[]; edg
     const teamTiles: Array<{
       id: string;
       title: string;
-      type: "amy-segment" | "amy-insight" | "izac-segment" | "izac-insight";
+      type: "amy-segment" | "amy-insight" | "amy-vong-segment" | "amy-vong-insight";
       description: string;
       details: string[];
     }> = [
@@ -990,21 +990,21 @@ function buildGraph(space: Space, audience: "me" | "team"): { nodes: Node[]; edg
       {
         id: "team-ins-1",
         title: "Online sell-through pacing ahead",
-        type: "amy-insight",
+        type: "amy-vong-insight",
         description: "Online BF assortment sell-through is outpacing in-store for hero SKUs.",
         details: ["Online sell-through: 74%", "In-store sell-through: 58%"],
       },
       {
         id: "team-ins-2",
         title: "In-store inventory pressure on key sizes",
-        type: "izac-insight",
+        type: "amy-vong-insight",
         description: "Store inventory is tightening fastest on top-size variants in high-traffic locations.",
         details: ["Low stock stores: 37", "Most constrained: M/L variants"],
       },
       {
         id: "team-ins-3",
         title: "Channel imbalance risk by week two",
-        type: "izac-insight",
+        type: "amy-insight",
         description: "If online pace continues, online inventory will hit critical threshold before stores.",
         details: ["Online cover: ~6 days", "In-store cover: ~11 days"],
       },
@@ -1019,8 +1019,8 @@ function buildGraph(space: Space, audience: "me" | "team"): { nodes: Node[]; edg
           label: tile.title,
           type: tile.type,
           meta: tile.type.includes("segment")
-            ? (tile.type.startsWith("amy") ? "Amy's segment" : "Izac's segment")
-            : (tile.type.startsWith("amy") ? "Amy's insight" : "Izac's insight"),
+            ? (tile.type.startsWith("amy") ? "Amy's segment" : "Amy's segment")
+            : (tile.type.startsWith("amy") ? "Amy's insight" : "Amy's insight"),
           description: tile.description,
           details: tile.details,
         },

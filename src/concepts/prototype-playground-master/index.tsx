@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { LexerLogo } from "@/components/layout/LexerLogo";
+import { PrototypeOptionsButton } from "@/components/layout/PrototypeOptionsButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -8,7 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
-import { ConfirmDialog } from "@/components/ui/Dialog";
+import { ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +26,8 @@ import {
   RiSidebarFoldLine,
   RiMessage2Line,
   RiAddLine,
+  RiEditLine,
+  RiDeleteBinLine,
   RiBrainLine,
   RiDatabase2Line,
   RiArrowRightSLine,
@@ -60,11 +64,12 @@ import { buildMentionGroups } from "./ChatPanel";
 import { ContextPanel } from "./ContextPanel";
 import { SegmentsPage, DefinitionsPage, MetricsPage, BenchmarksPage, ScorecardPage, DashboardsPage, InsightsPage } from "./pages";
 import { PlaybookPage } from "./PlaybookPage";
+import { SkillsPage } from "../Prototype-MVP/SkillsPage";
 import { SpacePage } from "./SpacePage";
 import { SpacesPage } from "./SpacesPage";
 import { CanvasPage } from "./CanvasPage";
-import { Canvas2Page } from "./Canvas2Page";
 import { ActivationsPage, ActivationDetail } from "./ActivationsPage";
+import { CustomConnectionPage, StandardConnectionPage, IntegrationHealthBanner, DisconnectedConnectionGuidance, IntegrationLogo, type IntegrationConnectionDraft } from "./IntegrationConnectionPages";
 import { ACTIVATION_STATUS_META, getActivation, type ActivationStatus } from "./activations-mock";
 import { INITIAL_SPACES, type Space } from "./spaces-data";
 import { GroupDetail } from "../lexi-shared-brain-v2/GroupDetail";
@@ -73,8 +78,9 @@ import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 import { BetaBadge, BETA_TOOLTIP_CLOSED_EVENT, BETA_TOOLTIP_DISMISSED_KEY, BETA_TOOLTIP_OPEN_EVENT } from "@/components/BetaBadge";
+import { RoleManagerDialog } from "@/components/admin/RoleManagerDialog";
 
-type Page = "canvas" | "canvas2" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
+type Page = "canvas" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "skills" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "connect-accounts" | "activations" | "context" | "users";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
 import { registerDefs } from "@/data/def-registry";
@@ -109,7 +115,7 @@ const EMPTY_SAVED_ITEMS: SavedSpaceItems = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MOCK_USER = { firstName: "Izac", initials: "IH", org: "Lexer" };
+const MOCK_USER = { firstName: "Amy", initials: "AV", org: "Lexer" };
 const ADD_TO_DESTINATIONS: Array<{ id: AddToDestination; label: string }> = [
   { id: "lab", label: "Lab" },
   { id: "dashboards", label: "Dashboards" },
@@ -142,7 +148,7 @@ function SegmentV1Inner() {
   });
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
-  const [page, setPage] = useState<Page>("canvas");
+  const [page, setPage] = useState<Page>("chat");
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   // Activation detail opens in a right inset panel (like the segment side panel),
   // independent of the chat-driven slot.
@@ -539,12 +545,12 @@ function SegmentV1Inner() {
   const activeConv = CONVERSATIONS.find((c) => c.id === state.activeConversationId);
   const activeConversationPinned = state.activeConversationId != null && pinnedChatIds.includes(state.activeConversationId);
   const headerTitle = page === "canvas" ? "Canvas"
-    : page === "canvas2" ? "Canvas 2"
     : page === "space" ? "Spaces"
     : page === "space-detail" ? (selectedSpace?.name ?? "Space")
     : page === "segments" ? "Segments"
     : page === "segment-detail" ? (detailArtifact?.name ?? "Segment detail")
     : page === "definitions" ? "Definitions"
+    : page === "skills" ? "Skills"
     : page === "metrics" ? "Metrics"
     : page === "benchmarks" ? "Benchmarks"
     : page === "scorecard" ? "Scorecard"
@@ -556,12 +562,13 @@ function SegmentV1Inner() {
     : page === "context" ? "Context"
     : page === "sources" ? "Sources"
     : page === "integrations" ? "Integrations"
+    : page === "connect-accounts" ? "Connect Accounts"
     : page === "activations" ? "Activations"
     : (activeConv?.title ?? "New chat");
-  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail";
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
+  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "definitions" || page === "skills" || (page === "playbook" && playbookSection === "rules");
+  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations" || page === "connect-accounts";
   const inSpace = page === "space" || page === "space-detail";
-  const inCanvas = page === "canvas" || page === "canvas2";
+  const inCanvas = page === "canvas";
   const inActivations = page === "activations";
   const HeaderIcon = isChat ? RiMessage2Line : inCanvas ? RiDashboardLine : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
   const mentionGroups = buildMentionGroups(state.activations);
@@ -572,8 +579,6 @@ function SegmentV1Inner() {
     page === "activations" && openActivationId ? `Open activation id: ${openActivationId}` : null,
     page === "space-detail" && selectedSpace ? `Open space: ${selectedSpace.name}` : null,
   ].filter(Boolean).join(" · ");
-  const ActiveCanvasPage = page === "canvas2" ? Canvas2Page : CanvasPage;
-
   return (
     <div className="flex h-screen overflow-hidden bg-sidebar">
       {/* ── Left sidebar ── */}
@@ -670,13 +675,14 @@ function SegmentV1Inner() {
               <RiLayoutRightLine className="size-4" />
             </button>
           )}
+          <PrototypeOptionsButton />
         </header>
 
         {/* Content */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {page === "canvas" || page === "canvas2" ? (
+          {page === "canvas" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
-              <ActiveCanvasPage
+              <CanvasPage
                 userName={MOCK_USER.firstName}
                 activationCounts={{
                   all: state.activations.length,
@@ -759,7 +765,20 @@ function SegmentV1Inner() {
               />
             </div>
           ) : page === "definitions" ? (
-            <div className="min-w-0 flex-1 overflow-hidden"><DefinitionsPage /></div>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <Tabs defaultValue="source" className="flex h-full min-h-0 flex-row">
+                <TabsList variant="underline" className="w-60 shrink-0 flex-col items-stretch gap-1 border-b-0 border-r border-border px-3 py-4">
+                  <TabsTrigger value="source" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Source Definitions</TabsTrigger>
+                  <TabsTrigger value="calculated" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Calculated Definitions</TabsTrigger>
+                  <TabsTrigger value="custom" className="mb-0 w-full justify-start rounded-lg border-b-0 px-3 py-2 text-left data-[state=active]:border-transparent data-[state=active]:bg-accent data-[state=active]:text-foreground">Custom Definitions</TabsTrigger>
+                </TabsList>
+                <TabsContent value="source" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><DefinitionsPage /></TabsContent>
+                <TabsContent value="calculated" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><MetricsPage /></TabsContent>
+                <TabsContent value="custom" className="min-h-0 min-w-0 flex-1 overflow-y-auto"><PlaybookPage initialTab="glossary" /></TabsContent>
+              </Tabs>
+            </div>
+          ) : page === "skills" ? (
+            <div className="min-w-0 flex-1 overflow-hidden"><SkillsPage /></div>
           ) : page === "metrics" ? (
             <div className="min-w-0 flex-1 overflow-hidden"><MetricsPage /></div>
           ) : page === "benchmarks" ? (
@@ -793,6 +812,10 @@ function SegmentV1Inner() {
           ) : page === "context" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <BusinessContextPage />
+            </div>
+          ) : page === "connect-accounts" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <IntegrationsPage title="Connect Accounts" newConnectionsOnly />
             </div>
           ) : page === "integrations" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
@@ -1705,6 +1728,7 @@ function SourceRow({ def }: { def: import("@/data/def-registry").DefRef }) {
 function SourcesPage() {
   const [source, setSource] = useState<"shopify" | "klaviyo">("shopify");
   const [sourceTab, setSourceTab] = useState<"data" | "logs" | "dataset">("data");
+  const [selectedProfileLoadId, setSelectedProfileLoadId] = useState("log-sh-2");
 
   const sourceMeta = {
     shopify: {
@@ -1821,17 +1845,47 @@ function SourcesPage() {
     shopify: [
       { id: "log-sh-1", dataset: "Orders", loadType: "Incremental", startedAt: "2026-07-18 09:16", duration: "3m 04s", rows: "18,340", status: "Success" },
       { id: "log-sh-2", dataset: "Customers", loadType: "Incremental", startedAt: "2026-07-18 09:12", duration: "2m 18s", rows: "2,914", status: "Success" },
+      { id: "log-sh-4", dataset: "Customers", loadType: "Incremental", startedAt: "2026-07-18 08:12", duration: "2m 21s", rows: "2,718", status: "Success" },
+      { id: "log-sh-5", dataset: "Customers", loadType: "Incremental", startedAt: "2026-07-18 07:12", duration: "2m 16s", rows: "2,525", status: "Success" },
       { id: "log-sh-3", dataset: "Products", loadType: "Incremental", startedAt: "2026-07-18 09:09", duration: "1m 12s", rows: "104", status: "Success" },
     ],
     klaviyo: [
       { id: "log-kl-1", dataset: "Events", loadType: "Incremental", startedAt: "2026-07-18 09:14", duration: "4m 51s", rows: "192,441", status: "Success" },
       { id: "log-kl-2", dataset: "Profiles", loadType: "Incremental", startedAt: "2026-07-18 09:10", duration: "2m 26s", rows: "3,102", status: "Success" },
+      { id: "log-kl-4", dataset: "Profiles", loadType: "Incremental", startedAt: "2026-07-18 08:10", duration: "2m 29s", rows: "2,864", status: "Success" },
+      { id: "log-kl-5", dataset: "Profiles", loadType: "Incremental", startedAt: "2026-07-18 07:10", duration: "2m 24s", rows: "2,642", status: "Success" },
       { id: "log-kl-3", dataset: "Campaign performance", loadType: "Snapshot", startedAt: "2026-07-18 08:58", duration: "1m 38s", rows: "322", status: "Success" },
+    ],
+  } as const;
+
+  const buildProfileTrend = (totalProfiles: number, dailyDeltas: readonly number[]) => {
+    const days = ["Jul 14", "Jul 15", "Jul 16", "Jul 17", "Jul 18"];
+    let profileCount = totalProfiles - dailyDeltas.reduce((total, delta) => total + delta, 0);
+    return dailyDeltas.map((delta, index) => {
+      profileCount += delta;
+      return { day: days[index], profiles: profileCount, delta };
+    });
+  };
+
+  const profileLoads = {
+    shopify: [
+      { id: "log-sh-2", label: "09:12 · Latest", totalProfiles: 182430, dailyDeltas: [2610, 2788, 2694, 2816, 2914] },
+      { id: "log-sh-4", label: "08:12 · Previous", totalProfiles: 179516, dailyDeltas: [2488, 2570, 2634, 2701, 2718] },
+      { id: "log-sh-5", label: "07:12 · Earlier", totalProfiles: 176798, dailyDeltas: [2304, 2418, 2462, 2511, 2525] },
+    ],
+    klaviyo: [
+      { id: "log-kl-2", label: "09:10 · Latest", totalProfiles: 209881, dailyDeltas: [2800, 3055, 2988, 3150, 3102] },
+      { id: "log-kl-4", label: "08:10 · Previous", totalProfiles: 206779, dailyDeltas: [2604, 2730, 2818, 2740, 2864] },
+      { id: "log-kl-5", label: "07:10 · Earlier", totalProfiles: 203915, dailyDeltas: [2410, 2528, 2582, 2615, 2642] },
     ],
   } as const;
 
   const current = sourceMeta[source];
   const logs = sourceLogs[source];
+  const currentProfileLoads = profileLoads[source];
+  const activeProfileLoad = currentProfileLoads.find((load) => load.id === selectedProfileLoadId) ?? currentProfileLoads[0];
+  const profileTrendData = buildProfileTrend(activeProfileLoad.totalProfiles, activeProfileLoad.dailyDeltas);
+  const profileDatasetName = source === "shopify" ? "Customers" : "Profiles";
 
   return (
     <div className="relative flex h-full flex-col px-6 py-6">
@@ -1983,7 +2037,7 @@ function SourcesPage() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="logs" className="space-y-3">
+              <TabsContent value="logs" className="space-y-4">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2008,6 +2062,66 @@ function SourcesPage() {
                     ))}
                   </TableBody>
                 </Table>
+
+                <section className="border-t border-border pt-4">
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">Profile ingestion</h2>
+                      <p className="mt-1 text-xs text-foreground-secondary">Profile totals and incremental deltas for each {profileDatasetName} load.</p>
+                    </div>
+                    <Badge variant="outline" size="sm">{current.label}</Badge>
+                  </div>
+
+                  <Tabs
+                    value={activeProfileLoad.id}
+                    onValueChange={setSelectedProfileLoadId}
+                  >
+                    <TabsList variant="underline" className="w-full">
+                      {currentProfileLoads.map((load) => (
+                        <TabsTrigger key={load.id} value={load.id}>{load.label}</TabsTrigger>
+                      ))}
+                    </TabsList>
+
+                    <div className="grid grid-cols-2 divide-x divide-border border-y border-border py-3">
+                      <div className="pr-4">
+                        <p className="text-xs text-muted-foreground">Profiles after load</p>
+                        <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{activeProfileLoad.totalProfiles.toLocaleString()}</p>
+                      </div>
+                      <div className="pl-4">
+                        <p className="text-xs text-muted-foreground">Profiles ingested in load</p>
+                        <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">+{activeProfileLoad.dailyDeltas.at(-1)?.toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 h-72 w-full" role="img" aria-label={`${profileDatasetName} profiles and ingestion deltas over five days`}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={profileTrendData} margin={{ top: 12, right: 8, bottom: 4, left: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                          <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={11} />
+                          <YAxis
+                            yAxisId="profiles"
+                            tickLine={false}
+                            axisLine={false}
+                            fontSize={11}
+                            tickFormatter={(value: number) => `${Math.round(value / 1000)}k`}
+                          />
+                          <YAxis
+                            yAxisId="delta"
+                            orientation="right"
+                            tickLine={false}
+                            axisLine={false}
+                            fontSize={11}
+                            tickFormatter={(value: number) => `${Math.round(value / 1000)}k`}
+                          />
+                          <Tooltip />
+                          <Legend />
+                          <Bar yAxisId="delta" dataKey="delta" name="Ingested delta" fill="#d97706" radius={[3, 3, 0, 0]} />
+                          <Line yAxisId="profiles" type="monotone" dataKey="profiles" name="Total profiles" stroke="var(--primary)" strokeWidth={2.5} dot={{ r: 3 }} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Tabs>
+                </section>
               </TabsContent>
             </Tabs>
           </div>
@@ -2033,6 +2147,7 @@ function UsersPage() {
   };
 
   const [roleOptions, setRoleOptions] = useState(["Admin", "Manager", "Analyst", "Viewer"]);
+  const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
   const [teamOptions, setTeamOptions] = useState(["Operations", "Growth", "Data", "Marketing", "Lifecycle"]);
   const timeZoneOptions = [
     "Australia/Sydney",
@@ -2045,8 +2160,8 @@ function UsersPage() {
   const [users, setUsers] = useState<ManagedUser[]>([
     {
       id: "usr-1",
-      fullName: "Izac Hall",
-      email: "izac@lexer.ai",
+      fullName: "Amy Hall",
+      email: "amy@lexer.ai",
       role: "Admin",
       team: "Operations",
       timeZone: "Australia/Sydney",
@@ -2103,6 +2218,18 @@ function UsersPage() {
 
   const selectedUser = selectedUserId ? users.find((u) => u.id === selectedUserId) ?? null : null;
 
+  const renameRole = (oldName: string, newName: string) => {
+    setRoleOptions((current) => current.map((role) => role === oldName ? newName : role));
+    setUsers((current) => current.map((user) => user.role === oldName ? { ...user, role: newName, lastUpdated: "Just now" } : user));
+    setNewUserRole((current) => current === oldName ? newName : current);
+  };
+
+  const deleteRole = (role: string, fallbackRole: string) => {
+    setRoleOptions((current) => current.filter((item) => item !== role));
+    setUsers((current) => current.map((user) => user.role === role ? { ...user, role: fallbackRole, lastUpdated: "Just now" } : user));
+    setNewUserRole((current) => current === role ? fallbackRole : current);
+  };
+
   const updateSelectedUser = (updater: (user: ManagedUser) => ManagedUser) => {
     if (!selectedUserId) return;
     setUsers((prev) => prev.map((user) => (
@@ -2149,9 +2276,14 @@ function UsersPage() {
 
   return (
     <div className="flex h-full flex-col px-6 py-6">
-      <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">Users</h1>
-        <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold text-foreground">Users</h1>
+          <p className="text-sm text-foreground-secondary">Create new users and manage account details, roles, and access status.</p>
+        </div>
+        <RoleManagerDialog open={rolesDialogOpen} onOpenChange={setRolesDialogOpen} roles={roleOptions}
+          onCreateRole={(role) => setRoleOptions((current) => [...current, role])}
+          onRenameRole={renameRole} onDeleteRole={deleteRole} />
       </div>
 
       <div className={cn(
@@ -2196,7 +2328,7 @@ function UsersPage() {
                         onChange={(e) => {
                           const value = e.target.value;
                           if (value === "__add_role__") {
-                            setShowAddRole(true);
+                            setRolesDialogOpen(true);
                             return;
                           }
                           setNewUserRole(value);
@@ -2475,6 +2607,7 @@ function BusinessContextPage() {
     id: string;
     label: string;
     isCustom: boolean;
+    categoryId?: string | null;
     text: string;
     savedText: string;
     isEditing: boolean;
@@ -2483,6 +2616,16 @@ function BusinessContextPage() {
   };
 
   const [cards, setCards] = useState<ContextCard[]>([
+    {
+      id: "new-entry",
+      label: "New entry",
+      isCustom: true,
+      text: "",
+      savedText: "",
+      isEditing: true,
+      isSaved: false,
+      isConfirmed: false,
+    },
     {
       id: "brand",
       label: "Brand",
@@ -2497,20 +2640,20 @@ function BusinessContextPage() {
       id: "brand-name",
       label: "Brand Name(s)",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "Northstar Outfitters is the primary retail brand. Northstar Home is used for the homewares range.",
+      savedText: "Northstar Outfitters is the primary retail brand. Northstar Home is used for the homewares range.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
       id: "brand-context",
       label: "Brand Context",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "A practical outdoor retailer focused on durable gear, helpful advice, and responsible sourcing.",
+      savedText: "A practical outdoor retailer focused on durable gear, helpful advice, and responsible sourcing.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
@@ -2537,10 +2680,10 @@ function BusinessContextPage() {
       id: "data-sources-systems",
       label: "Data sources and systems",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "Commerce orders come from Shopify; loyalty activity is managed in Annex; email engagement is synced from Iterable.",
+      savedText: "Commerce orders come from Shopify; loyalty activity is managed in Annex; email engagement is synced from Iterable.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
@@ -2607,10 +2750,10 @@ function BusinessContextPage() {
       id: "lifecycle-tiers",
       label: "Lifecycle tiers - New/Active/Lapsing/Lapsed thresholds",
       isCustom: false,
-      text: "",
-      savedText: "",
+      text: "New: first purchase within 30 days. Active: purchase within 180 days. Lapsing: 181-365 days. Lapsed: no purchase in over a year.",
+      savedText: "New: first purchase within 30 days. Active: purchase within 180 days. Lapsing: 181-365 days. Lapsed: no purchase in over a year.",
       isEditing: false,
-      isSaved: false,
+      isSaved: true,
       isConfirmed: false,
     },
     {
@@ -2725,6 +2868,38 @@ function BusinessContextPage() {
     },
   ]);
   const [pendingClearCardId, setPendingClearCardId] = useState<string | null>(null);
+  const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string | null>(null);
+  const [blockedDeleteCategoryLabel, setBlockedDeleteCategoryLabel] = useState<string | null>(null);
+  const [activeSectionId, setActiveSectionId] = useState("uncategorised");
+  const [selectedCardId, setSelectedCardId] = useState("new-entry");
+  const [draftEntryLabel, setDraftEntryLabel] = useState("");
+  const [draftEntryText, setDraftEntryText] = useState("");
+  const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [draftCategoryName, setDraftCategoryName] = useState("");
+  const [categoryNameError, setCategoryNameError] = useState("");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [draftEditedCategoryName, setDraftEditedCategoryName] = useState("");
+  const [editCategoryError, setEditCategoryError] = useState("");
+  const [pendingCategoryCardId, setPendingCategoryCardId] = useState<string | null>(null);
+  const [inlineCategoryCardId, setInlineCategoryCardId] = useState<string | null>(null);
+  const [openCategoryDropdownCardId, setOpenCategoryDropdownCardId] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState(() => new Set(["brand"]));
+  const sectionIds = new Set([
+    "brand",
+    "data",
+    "customer-intelligence",
+    "commercial-calendar",
+    "channels-activation",
+    "product-catalog",
+  ]);
+  const entryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    if (selectedCardId) {
+      entryRefs.current[selectedCardId]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedCardId, activeSectionId]);
 
   const updateCard = (cardId: string, updater: (card: ContextCard) => ContextCard) => {
     setCards((prev) => prev.map((card) => (card.id === cardId ? updater(card) : card)));
@@ -2739,19 +2914,51 @@ function BusinessContextPage() {
   };
 
   const updateCardLabel = (cardId: string, label: string) => {
-    updateCard(cardId, (card) => ({ ...card, label }));
+    updateCard(cardId, (card) => ({ ...card, label, isEditing: true, isSaved: false, isConfirmed: false }));
   };
 
   const saveCard = (cardId: string) => {
-    updateCard(cardId, (card) => ({ ...card, savedText: card.text, isSaved: true, isConfirmed: false, isEditing: false }));
+    updateCard(cardId, (card) => card.isCustom && !card.categoryId
+      ? card
+      : ({ ...card, savedText: card.text, isSaved: true, isConfirmed: false, isEditing: false }));
   };
 
   const confirmCard = (cardId: string) => {
-    updateCard(cardId, (card) => ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
+    updateCard(cardId, (card) => card.isCustom && !card.categoryId
+      ? card
+      : ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
   };
 
   const clearCard = (cardId: string) => {
     updateCard(cardId, (card) => ({ ...card, text: "", savedText: "", isSaved: false, isConfirmed: false, isEditing: true }));
+  };
+
+  const deleteEntry = (cardId: string) => {
+    setCards((current) => current.filter((card) => card.id !== cardId));
+    setPendingDeleteEntryId(null);
+    if (selectedCardId === cardId) setSelectedCardId("");
+  };
+
+  const deleteCategory = (categoryId: string) => {
+    if (sectionIds.has(categoryId)) {
+      setCards((current) => current.filter((card) => card.id !== categoryId));
+    } else {
+      setCustomCategories((current) => current.filter((category) => category.id !== categoryId));
+    }
+    if (activeSectionId === categoryId) {
+      const fallbackEntry = cards.find((card) => card.isCustom && !card.categoryId);
+      setActiveSectionId("uncategorised");
+      setSelectedCardId(fallbackEntry?.id ?? "");
+    }
+    if (editingCategoryId === categoryId) cancelCategoryRename();
+  };
+
+  const requestDeleteCategory = (section: { id: string; label: string; entries: ContextCard[] }) => {
+    if (section.entries.length > 0) {
+      setBlockedDeleteCategoryLabel(section.label);
+      return;
+    }
+    deleteCategory(section.id);
   };
 
   const addMoreCard = () => {
@@ -2760,7 +2967,7 @@ function BusinessContextPage() {
       ...prev,
       {
         id,
-        label: "New context box",
+        label: "New entry",
         isCustom: true,
         text: "",
         savedText: "",
@@ -2769,9 +2976,126 @@ function BusinessContextPage() {
         isConfirmed: false,
       },
     ]);
+    setActiveSectionId("uncategorised");
+    setSelectedCardId(id);
+  };
+
+  const addSectionEntry = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const label = draftEntryLabel.trim();
+    if (!label || activeSectionId === "uncategorised") return;
+
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const text = draftEntryText.trim();
+    setCards((prev) => [
+      ...prev,
+      {
+        id,
+        label,
+        isCustom: true,
+        categoryId: activeSectionId,
+        text,
+        savedText: text,
+        isEditing: false,
+        isSaved: true,
+        isConfirmed: false,
+      },
+    ]);
+    setSelectedCardId(id);
+    setDraftEntryLabel("");
+    setDraftEntryText("");
+  };
+
+  const startCategoryCreation = (cardId: string | null = null) => {
+    setPendingCategoryCardId(cardId);
+    setDraftCategoryName("");
+    setCategoryNameError("");
+    setIsCreatingCategory(true);
+  };
+
+  const startInlineCategoryCreation = (cardId: string) => {
+    setPendingCategoryCardId(cardId);
+    setDraftCategoryName("");
+    setCategoryNameError("");
+    setInlineCategoryCardId(cardId);
+    setOpenCategoryDropdownCardId(cardId);
+  };
+
+  const createCategory = () => {
+    const label = draftCategoryName.trim();
+    if (!label) return false;
+    const existingLabels = [
+      ...cards.filter((card) => sectionIds.has(card.id)).map((card) => card.label),
+      ...customCategories.map((category) => category.label),
+    ];
+    if (existingLabels.some((existing) => existing.toLocaleLowerCase() === label.toLocaleLowerCase())) {
+      setCategoryNameError("That category already exists.");
+      return false;
+    }
+
+    const id = `category-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setCustomCategories((current) => [...current, { id, label }]);
+    if (pendingCategoryCardId) {
+      setCards((current) => current.map((card) => card.id === pendingCategoryCardId
+        ? { ...card, categoryId: id }
+        : card));
+      setSelectedCardId(pendingCategoryCardId);
+    }
+    setActiveSectionId(id);
+    setExpandedSections((current) => new Set(current).add(id));
+    setPendingCategoryCardId(null);
+    setIsCreatingCategory(false);
+    setInlineCategoryCardId(null);
+    setOpenCategoryDropdownCardId(null);
+    setDraftCategoryName("");
+    setCategoryNameError("");
+    return true;
+  };
+
+  const startCategoryRename = (category: { id: string; label: string }) => {
+    setEditingCategoryId(category.id);
+    setDraftEditedCategoryName(category.label);
+    setEditCategoryError("");
+  };
+
+  const cancelCategoryRename = () => {
+    setEditingCategoryId(null);
+    setDraftEditedCategoryName("");
+    setEditCategoryError("");
+  };
+
+  const saveCategoryRename = () => {
+    const label = draftEditedCategoryName.trim();
+    if (!editingCategoryId || !label) return;
+    const existingCategories = [
+      ...cards.filter((card) => sectionIds.has(card.id)).map((card) => ({ id: card.id, label: card.label })),
+      ...customCategories,
+    ];
+    if (existingCategories.some((category) => category.id !== editingCategoryId
+      && category.label.toLocaleLowerCase() === label.toLocaleLowerCase())) {
+      setEditCategoryError("That category already exists.");
+      return;
+    }
+
+    if (sectionIds.has(editingCategoryId)) {
+      updateCard(editingCategoryId, (card) => ({ ...card, label }));
+    } else {
+      setCustomCategories((current) => current.map((category) => category.id === editingCategoryId
+        ? { ...category, label }
+        : category));
+    }
+    cancelCategoryRename();
+  };
+
+  const changeCardCategory = (cardId: string, categoryId: string) => {
+    setCards((current) => current.map((card) => card.id === cardId ? { ...card, categoryId } : card));
+    setActiveSectionId(categoryId);
+    setExpandedSections((current) => new Set(current).add(categoryId));
+    setSelectedCardId(cardId);
   };
 
   const saveEntirePage = () => {
+    if (cards.some((card) => card.isCustom && !card.categoryId)) return;
     setCards((prev) => prev.map((card) => ({
       ...card,
       savedText: card.text,
@@ -2781,14 +3105,43 @@ function BusinessContextPage() {
     })));
   };
 
-  const sectionIds = new Set([
-    "brand",
-    "data",
-    "customer-intelligence",
-    "commercial-calendar",
-    "channels-activation",
-    "product-catalog",
-  ]);
+  let currentCategoryId: string | null = null;
+  const sections = cards.reduce<Array<{ id: string; label: string; entries: ContextCard[] }>>(
+    (groups, card) => {
+      if (sectionIds.has(card.id)) {
+        currentCategoryId = card.id;
+        groups.push({ id: card.id, label: card.label, entries: [] });
+        return groups;
+      }
+      const categoryId = card.categoryId ?? (card.isCustom ? null : currentCategoryId);
+      if (categoryId) groups.find((section) => section.id === categoryId)?.entries.push(card);
+      return groups;
+    },
+    customCategories.map((category) => ({ ...category, entries: [] })),
+  ).sort((first, second) => first.label.localeCompare(second.label));
+  const uncategorisedEntries = cards.filter((card) => card.isCustom && !card.categoryId);
+  const visibleEntries = activeSectionId === "uncategorised"
+    ? uncategorisedEntries
+    : sections.find((section) => section.id === activeSectionId)?.entries ?? [];
+  const activeSectionLabel = activeSectionId === "uncategorised"
+    ? "New Entry"
+    : sections.find((section) => section.id === activeSectionId)?.label ?? "Context";
+
+  const selectSection = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    setExpandedSections((current) => new Set(current).add(sectionId));
+    const firstEntry = sections.find((section) => section.id === sectionId)?.entries[0];
+    setSelectedCardId(firstEntry?.id ?? "");
+  };
+
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections((current) => {
+      const next = new Set(current);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
 
   return (
     <div className="flex h-full flex-col px-6 py-6">
@@ -2797,35 +3150,318 @@ function BusinessContextPage() {
         <p className="text-sm text-foreground-secondary">Capture your business context so Lexer can build your semantic layer.</p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-          <div className="grid grid-cols-1 gap-4">
-            {cards.map((card) => {
-              if (sectionIds.has(card.id)) {
-                return (
-                  <div key={card.id} className="pt-2">
-                    <h2 className="text-base font-semibold text-foreground">{card.label}</h2>
-                    <div className="mt-2 border-b border-border" />
-                  </div>
-                );
-              }
+      <div className="flex min-h-0 flex-1 gap-4">
+        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-border pr-3">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSectionId("uncategorised");
+              if (uncategorisedEntries.length) setSelectedCardId(uncategorisedEntries[0].id);
+              else addMoreCard();
+            }}
+            className={cn(
+              "mb-3 flex min-h-11 items-center rounded-lg border px-3 text-left text-sm font-semibold transition-colors",
+              activeSectionId === "uncategorised"
+                ? "border-primary/40 bg-primary/5 text-foreground"
+                : "border-border bg-card text-foreground hover:bg-accent",
+            )}
+          >
+            <RiAddLine className="mr-2 size-4 shrink-0" />
+            New Entry
+          </button>
 
+          {isCreatingCategory ? (
+            <div className="mb-3 rounded-lg border border-border bg-card p-2">
+              <Input
+                value={draftCategoryName}
+                onChange={(event) => {
+                  setDraftCategoryName(event.target.value);
+                  setCategoryNameError("");
+                }}
+                placeholder="Category name"
+                aria-label="Category name"
+                autoFocus
+              />
+              {categoryNameError && <p className="mt-1 text-xs text-destructive">{categoryNameError}</p>}
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setIsCreatingCategory(false);
+                    setPendingCategoryCardId(null);
+                    setCategoryNameError("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" size="sm" disabled={!draftCategoryName.trim()} onClick={createCategory}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mb-3 w-full justify-start"
+              onClick={() => startCategoryCreation()}
+            >
+              <RiAddLine className="mr-2 size-4" />
+              New Category
+            </Button>
+          )}
+
+          <nav aria-label="Context categories" className="space-y-1">
+            {sections.map((section) => {
+              const expanded = expandedSections.has(section.id);
+              return (
+                <div key={section.id}>
+                  <div className={cn(
+                    "group flex items-center rounded-lg transition-colors",
+                    activeSectionId === section.id ? "bg-accent" : "hover:bg-accent/60",
+                  )}>
+                    {editingCategoryId === section.id ? (
+                      <div className="min-w-0 flex-1 px-2 py-1">
+                        <Input
+                          value={draftEditedCategoryName}
+                          onChange={(event) => {
+                            setDraftEditedCategoryName(event.target.value);
+                            setEditCategoryError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              saveCategoryRename();
+                            } else if (event.key === "Escape") {
+                              cancelCategoryRename();
+                            }
+                          }}
+                          aria-label={`Rename ${section.label}`}
+                          autoFocus
+                          className="h-8 min-w-0 flex-1"
+                        />
+                        {editCategoryError && <p className="mt-1 text-xs text-destructive">{editCategoryError}</p>}
+                        <div className="mt-1 flex justify-end gap-1">
+                          <Button type="button" size="sm" disabled={!draftEditedCategoryName.trim()} onClick={saveCategoryRename}>
+                            Save
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={cancelCategoryRename}>
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => requestDeleteCategory(section)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => selectSection(section.id)}
+                          className="min-w-0 flex-1 px-3 py-2 text-left text-sm font-semibold text-foreground"
+                        >
+                          {section.label}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Edit category ${section.label}`}
+                          title={`Edit ${section.label}`}
+                          onClick={() => startCategoryRename(section)}
+                          className="rounded-md p-1 text-muted-foreground/50 opacity-50 transition-opacity hover:bg-background hover:text-foreground hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
+                        >
+                          <RiEditLine className="size-3" />
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`${expanded ? "Collapse" : "Expand"} ${section.label}`}
+                      aria-expanded={expanded}
+                      onClick={() => toggleSection(section.id)}
+                      className="mr-1 rounded-md p-1.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <RiArrowDownSLine className={cn("size-4 transition-transform", !expanded && "-rotate-90")} />
+                    </button>
+                  </div>
+                  {expanded && (
+                    <div className="ml-3 space-y-0.5 border-l border-border py-1 pl-2">
+                      {section.entries.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveSectionId(section.id);
+                            setSelectedCardId(entry.id);
+                          }}
+                          className={cn(
+                            "w-full rounded-md px-2 py-1.5 text-left text-xs leading-5 transition-colors",
+                            selectedCardId === entry.id
+                              ? "bg-primary/10 font-medium text-foreground"
+                              : "text-foreground-secondary hover:bg-accent hover:text-foreground",
+                          )}
+                        >
+                          {entry.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <section className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card p-4">
+          <h2 className="mb-4 text-base font-semibold text-foreground">{activeSectionLabel}</h2>
+          {activeSectionId !== "uncategorised" && (
+            <form onSubmit={addSectionEntry} className="mb-4 rounded-lg border border-border bg-background p-3">
+              <p className="mb-2 text-sm font-semibold text-foreground">Add an entry to {activeSectionLabel}</p>
+              <Input
+                value={draftEntryLabel}
+                onChange={(event) => setDraftEntryLabel(event.target.value)}
+                placeholder="Entry name"
+                aria-label="Entry name"
+                className="mb-2"
+              />
+              <Textarea
+                rows={3}
+                value={draftEntryText}
+                onChange={(event) => setDraftEntryText(event.target.value)}
+                placeholder="Add context details"
+                aria-label="Entry details"
+              />
+              <div className="mt-2 flex justify-end">
+                <Button type="submit" size="sm" disabled={!draftEntryLabel.trim()}>
+                  <RiAddLine className="mr-1 size-4" />
+                  Add entry
+                </Button>
+              </div>
+            </form>
+          )}
+          <div className="space-y-4">
+            {visibleEntries.map((card) => {
               const editing = card.isEditing;
               const saved = card.isSaved;
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setPendingDeleteEntryId(card.id)}
+                    >
+                      <RiDeleteBinLine className="mr-1 size-4" />
+                      Delete
+                    </Button>
               const confirmed = card.isConfirmed;
               const lockByConfirmation = confirmed && !editing;
+              const entryCategoryId = card.categoryId ?? (activeSectionId === "uncategorised" ? "" : activeSectionId);
+              const entryCategoryLabel = sections.find((section) => section.id === entryCategoryId)?.label;
 
               return (
-                <div key={card.id} className="rounded-xl border border-border bg-background p-3">
-                  {card.isCustom ? (
+                <div
+                  key={card.id}
+                  ref={(element) => { entryRefs.current[card.id] = element; }}
+                  className={cn(
+                    "scroll-m-4 rounded-xl border border-border bg-background p-3",
+                    selectedCardId === card.id && "ring-2 ring-primary/20",
+                  )}
+                >
+                  {selectedCardId === card.id ? (
                     <Input
                       value={card.label}
-                      readOnly={!editing}
                       onChange={(e) => updateCardLabel(card.id, e.target.value)}
-                      className="h-8 text-sm font-semibold read-only:cursor-default read-only:bg-muted/25"
+                      aria-label="Entry name"
+                      className="h-8 text-sm font-semibold"
                     />
                   ) : (
                     <p className="text-sm font-semibold text-foreground">{card.label}</p>
+                  )}
+
+                  <DropdownMenu
+                    open={openCategoryDropdownCardId === card.id}
+                    onOpenChange={(open) => setOpenCategoryDropdownCardId(open ? card.id : null)}
+                  >
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`Category for ${card.label}`}
+                        className="mt-2 flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input-border bg-input px-3 text-left text-sm shadow-xs focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/40"
+                      >
+                        <span className={entryCategoryLabel ? "text-foreground" : "text-muted-foreground"}>
+                          {entryCategoryLabel ?? "Choose a category"}
+                        </span>
+                        <RiArrowDownSLine className="size-4 shrink-0 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-80 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
+                      {sections.map((section) => (
+                        <DropdownMenuItem key={section.id} onSelect={() => changeCardCategory(card.id, section.id)}>
+                          {section.label}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      {inlineCategoryCardId === card.id ? (
+                        <div className="space-y-2 p-2">
+                          <Input
+                            value={draftCategoryName}
+                            onChange={(event) => {
+                              setDraftCategoryName(event.target.value);
+                              setCategoryNameError("");
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                createCategory();
+                              } else if (event.key !== "Escape") {
+                                event.stopPropagation();
+                              }
+                            }}
+                            placeholder="Category name"
+                            aria-label="New category name"
+                            autoFocus
+                          />
+                          {categoryNameError && <p className="text-xs text-destructive">{categoryNameError}</p>}
+                          <div className="space-y-1">
+                            <DropdownMenuItem
+                              disabled={!draftCategoryName.trim()}
+                              onSelect={(event) => {
+                                if (!createCategory()) event.preventDefault();
+                              }}
+                            >
+                              Save
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => {
+                              setInlineCategoryCardId(null);
+                              setPendingCategoryCardId(null);
+                              setDraftCategoryName("");
+                              setCategoryNameError("");
+                            }}>
+                              Cancel
+                            </DropdownMenuItem>
+                          </div>
+                        </div>
+                      ) : (
+                        <DropdownMenuItem onSelect={(event) => {
+                          event.preventDefault();
+                          startInlineCategoryCreation(card.id);
+                        }}>
+                          <RiAddLine />
+                          Add a new category...
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {card.isCustom && !card.categoryId && (
+                    <p className="mt-1 text-xs text-muted-foreground">Choose a category before saving this entry.</p>
                   )}
 
                   <p className="mt-3 text-[11px] font-semibold text-muted-foreground">Description</p>
@@ -2856,14 +3492,14 @@ function BusinessContextPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={!editing || lockByConfirmation}
+                      disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId)}
                       onClick={() => saveCard(card.id)}
                     >
                       {saved && !editing ? "Saved" : "Save"}
                     </Button>
                     <Button
                       size="sm"
-                      disabled={!editing || lockByConfirmation}
+                      disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId)}
                       onClick={() => confirmCard(card.id)}
                     >
                       {confirmed && !editing ? "Confirmed" : "Confirm"}
@@ -2879,12 +3515,12 @@ function BusinessContextPage() {
               );
             })}
           </div>
-        </div>
+        </section>
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-        <Button variant="outline" onClick={addMoreCard}>Add more</Button>
-        <Button onClick={saveEntirePage}>Save</Button>
+        <Button variant="outline" onClick={addMoreCard}>New entry</Button>
+        <Button onClick={saveEntirePage} disabled={uncategorisedEntries.length > 0}>Save</Button>
       </div>
 
       <ConfirmDialog
@@ -2904,12 +3540,42 @@ function BusinessContextPage() {
           setPendingClearCardId(null);
         }}
       />
+      <ConfirmDialog
+        open={pendingDeleteEntryId != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteEntryId(null);
+        }}
+        variant="destructive"
+        icon={RiDeleteBinLine}
+        title="Delete this entry?"
+        description="This entry and its description will be permanently removed."
+        confirmLabel="Delete entry"
+        cancelLabel="Keep entry"
+        onConfirm={() => {
+          if (pendingDeleteEntryId) deleteEntry(pendingDeleteEntryId);
+        }}
+      />
+      <Dialog open={blockedDeleteCategoryLabel != null} onOpenChange={(open) => {
+        if (!open) setBlockedDeleteCategoryLabel(null);
+      }}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Category has entries</DialogTitle>
+            <DialogDescription>
+              Move or delete all entries in “{blockedDeleteCategoryLabel}” before deleting this category.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setBlockedDeleteCategoryLabel(null)}>Got it</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function IntegrationsPage() {
-  type IntegrationStatus = "Connected" | "Available" | "Disconnected";
+function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }: { title?: string; newConnectionsOnly?: boolean }) {
+  type IntegrationStatus = "Connected" | "Available" | "Disconnected" | "Pending";
   type IntegrationRecord = {
     id: string;
     name: string;
@@ -2917,9 +3583,13 @@ function IntegrationsPage() {
     status: IntegrationStatus;
     summary: string;
     updated: string;
+    syncDirection?: "Inbound" | "Outbound" | "Bidirectional";
+    connectionType?: "Standard" | "Custom";
   };
   type AccountDraft = {
     accountName: string;
+    ipAddresses?: Array<{ name: string; value: string }>;
+    sshKeys?: Array<{ name: string; fingerprint: string }>;
   };
   type ConnectedAccount = AccountDraft & { id: string };
   type OfflineEventSetDraft = {
@@ -2934,7 +3604,9 @@ function IntegrationsPage() {
   };
 
   const [query, setQuery] = useState("");
+  const [connectionPage, setConnectionPage] = useState<"overview" | "standard" | "custom">("standard");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [connectionsExpanded, setConnectionsExpanded] = useState(true);
   const [openIntegrationId, setOpenIntegrationId] = useState<string | null>(null);
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [showAccountFrame, setShowAccountFrame] = useState(false);
@@ -2969,15 +3641,31 @@ function IntegrationsPage() {
     { id: "ga4", name: "Google Analytics", category: "Web analytics", status: "Available", summary: "Session, source, and funnel events are unified.", updated: "Not connected" },
     { id: "segment", name: "Segment", category: "CDP", status: "Available", summary: "Event routing to warehouse and activation tools is healthy.", updated: "Not connected" },
     { id: "snowflake", name: "Snowflake", category: "Warehouse", status: "Connected", summary: "Modeled tables refresh every 30 minutes.", updated: "Synced 15 min ago" },
+    { id: "custom-customer-events-webhook", name: "Braze", category: "Webhook", status: "Connected", summary: "Inbound JSON webhooks deliver customer profile and event changes in near real time.", updated: "Synced 12 min ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-fulfilment-webhook", name: "AP21", category: "Webhook", status: "Available", summary: "Outbound webhook sends order fulfilment updates to a partner endpoint.", updated: "Not connected", syncDirection: "Outbound", connectionType: "Custom" },
+    { id: "custom-product-sftp", name: "Nimbl", category: "SFTP", status: "Connected", summary: "Nightly inbound CSV imports update the product catalogue.", updated: "Synced 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-suppression-sftp", name: "Customer suppression SFTP", category: "SFTP", status: "Disconnected", summary: "Nightly suppression files are paused and need the SFTP credentials refreshed.", updated: "Disconnected 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-history-upload", name: "Historical customer CSV upload", category: "One-time upload", status: "Connected", summary: "One-time CSV import added migrated customer history.", updated: "Uploaded 3 days ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-inventory-upload", name: "Inventory snapshot upload", category: "One-time upload", status: "Available", summary: "One-time CSV upload can seed current inventory levels.", updated: "Not connected", syncDirection: "Inbound", connectionType: "Custom" },
   ];
 
   const buildDefaultAccount = (integration: IntegrationRecord): AccountDraft => {
     return {
       accountName: `${integration.name} primary account`,
+      ...(integration.id === "custom-product-sftp" ? {
+        ipAddresses: [
+          { name: "Warehouse office", value: "203.0.113.***" },
+          { name: "Backup office", value: "198.51.100.***" },
+        ],
+        sshKeys: [
+          { name: "Product feed key", fingerprint: "SHA256:Q2h1bmtQcm9kdWN0aW9uMTIz" },
+          { name: "Backup transfer key", fingerprint: "SHA256:U3RhZ2luZ0tleUZpbmdlcnByaW50" },
+        ],
+      } : {}),
     };
   };
 
-  const [integrations, setIntegrations] = useState<IntegrationRecord[]>(INITIAL_INTEGRATIONS);
+  const [integrations, setIntegrations] = useState<IntegrationRecord[]>(() => INITIAL_INTEGRATIONS.filter((integration) => integration.status !== "Available"));
   const [accountDrafts, setAccountDrafts] = useState<Record<string, AccountDraft>>({});
   const [connectedAccountsByIntegration, setConnectedAccountsByIntegration] = useState<Record<string, ConnectedAccount[]>>(() => {
     const seeded: Record<string, ConnectedAccount[]> = {};
@@ -3010,7 +3698,7 @@ function IntegrationsPage() {
     };
   };
 
-  const updateAccountDraft = (integrationId: string, field: keyof AccountDraft, value: string) => {
+  const updateAccountDraft = (integrationId: string, field: "accountName", value: string) => {
     setAccountDrafts((prev) => {
       const integration = integrations.find((item) => item.id === integrationId);
       const current = prev[integrationId] ?? (integration ? defaultAccountForIntegration(integration) : {
@@ -3231,15 +3919,23 @@ function IntegrationsPage() {
     const popup = window.open("", "fivetran-mock-login", "popup=yes,width=520,height=640");
     if (!popup) return;
 
-    popup.document.title = "Fivetran Login (Demo)";
+    const integrationName = integrations.find((item) => item.id === integrationId)?.name ?? "Integration";
+    const escapedIntegrationName = integrationName.replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;",
+    })[character] ?? character);
+    popup.document.title = `${integrationName} Login (Demo)`;
     popup.document.body.innerHTML = `
       <div style="font-family: Rubik, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; min-height: 100vh; margin: 0; padding: 24px; display: flex; align-items: center; justify-content: center;">
         <div style="width: 100%; max-width: 420px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12); padding: 20px;">
-          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">Fivetran login (Demo)</h1>
-          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Use the prefilled credentials and click Connect to return to Lexer.</p>
+          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">${escapedIntegrationName} connection (Demo)</h1>
+          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Authorize this demo connection to return to Lexer.</p>
           <label style="display: block; margin-bottom: 12px;">
             <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Email</span>
-            <input value="demo@fivetran.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+            <input value="demo@connection.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
           </label>
           <label style="display: block; margin-bottom: 16px;">
             <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Password</span>
@@ -3260,13 +3956,25 @@ function IntegrationsPage() {
     openFivetranMockLogin(integrationId);
   };
 
+  const openConnectedIntegration = (draft: IntegrationConnectionDraft) => {
+    setIntegrations((current) => current.some((integration) => integration.id === draft.id)
+      ? current
+      : [{ ...draft, status: "Pending", updated: draft.connectionType === "Custom" ? "Awaiting scoping" : "Awaiting authorization" }, ...current]);
+    if (draft.connectionType === "Custom") return;
+    setSelectedCategory("All");
+    setQuery("");
+    setConnectionPage("standard");
+    setOpenIntegrationId(draft.id);
+    setPanelExpanded(false);
+  };
+
   const disconnectIntegration = (integrationId: string) => {
     setConnectedAccountsByIntegration((prev) => ({ ...prev, [integrationId]: [] }));
     setActiveAccountIdByIntegration((prev) => ({ ...prev, [integrationId]: null }));
 
     setIntegrations((prev) => prev.map((item) => (
       item.id === integrationId
-        ? { ...item, status: "Available", updated: "Not connected" }
+        ? { ...item, status: "Disconnected", updated: "Disconnected just now" }
         : item
     )));
   };
@@ -3296,24 +4004,30 @@ function IntegrationsPage() {
       ...prev,
       [integration.id]: {
         accountName: selected.accountName,
+        ipAddresses: selected.ipAddresses,
+        sshKeys: selected.sshKeys,
       },
     }));
   };
 
   const categories = [
     "All",
-    "Available sources",
     "Connected sources",
     "Disconnected sources",
-    ...Array.from(new Set(integrations.map((integration) => integration.category))).sort((a, b) => a.localeCompare(b)),
+    ...Array.from(new Set([...integrations.map((integration) => integration.category), "Custom"]))
+      .sort((a, b) => a.localeCompare(b)),
   ];
 
   const syncDirectionForCategory = (category: string): "Inbound" | "Outbound" | "Bidirectional" => {
     if (category === "Transactions") return "Inbound";
     if (category === "Paid ads") return "Outbound";
-    if (category === "Web analytics") return "Inbound";
+    if (["Web analytics", "Warehouse", "CRM", "Customer support"].includes(category)) return "Inbound";
     return "Bidirectional";
   };
+
+  const syncDirectionForIntegration = (integration: Pick<IntegrationRecord, "category" | "syncDirection">) => (
+    integration.syncDirection ?? syncDirectionForCategory(integration.category)
+  );
 
   const syncDirectionIcon = (direction: "Inbound" | "Outbound" | "Bidirectional") => {
     if (direction === "Inbound") return <RiArrowLeftCircleLine className="size-4" />;
@@ -3323,16 +4037,16 @@ function IntegrationsPage() {
 
   const q = query.trim().toLowerCase();
   const filtered = integrations.filter((integration) => {
-    const availableOnly = selectedCategory === "Available sources";
+    const customOnly = selectedCategory === "Custom";
     const connectedOnly = selectedCategory === "Connected sources";
     const disconnectedOnly = selectedCategory === "Disconnected sources";
-    const categoryMatch = availableOnly || connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
-    const statusMatch = (availableOnly && integration.status === "Available")
-      || (connectedOnly && integration.status === "Connected")
+    const categoryMatch = customOnly || connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
+    const statusMatch = (connectedOnly && integration.status === "Connected")
       || (disconnectedOnly && integration.status === "Disconnected")
-      || (!availableOnly && !connectedOnly && !disconnectedOnly);
+      || (!connectedOnly && !disconnectedOnly);
+    const typeMatch = !customOnly || integration.connectionType === "Custom";
     const nameMatch = q === "" || integration.name.toLowerCase().includes(q);
-    return categoryMatch && statusMatch && nameMatch;
+    return categoryMatch && statusMatch && typeMatch && nameMatch;
   });
 
   const pinnedIntegration = filtered.find((integration) => integration.id === "lexer-api");
@@ -3342,7 +4056,7 @@ function IntegrationsPage() {
     integration: IntegrationRecord,
     key: "name" | "category" | "syncDirection" | "summary" | "updated" | "status",
   ) => {
-    if (key === "syncDirection") return syncDirectionForCategory(integration.category).toLowerCase();
+    if (key === "syncDirection") return syncDirectionForIntegration(integration).toLowerCase();
     return integration[key].toLowerCase();
   };
 
@@ -3412,7 +4126,7 @@ function IntegrationsPage() {
   }, [showAccountFrame]);
 
   const countFor = (category: string) => {
-    if (category === "Available sources") return integrations.filter((integration) => integration.status === "Available").length;
+    if (category === "Custom") return integrations.filter((integration) => integration.connectionType === "Custom").length;
     if (category === "Connected sources") return integrations.filter((integration) => integration.status === "Connected").length;
     if (category === "Disconnected sources") return integrations.filter((integration) => integration.status === "Disconnected").length;
     if (category === "All") return integrations.length;
@@ -3459,6 +4173,33 @@ function IntegrationsPage() {
               className={cn("mt-0.5 h-8", inputBgClass)}
             />
           </div>
+
+          {integration.id === "custom-product-sftp" && connected && (
+            <div className="space-y-3 border-t border-border pt-2">
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground">Whitelisted IP addresses</p>
+                <div className="mt-1 divide-y divide-border">
+                  {(draft.ipAddresses ?? []).map((ip) => (
+                    <div key={ip.name} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                      <span className="text-foreground">{ip.name}</span>
+                      <span className="font-mono text-foreground-secondary">{ip.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground">Whitelisted SSH public keys</p>
+                <div className="mt-1 divide-y divide-border">
+                  {(draft.sshKeys ?? []).map((key) => (
+                    <div key={key.name} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                      <span className="text-foreground">{key.name}</span>
+                      <span className="max-w-[55%] truncate font-mono text-foreground-secondary">{key.fingerprint}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
             <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>
@@ -3724,18 +4465,21 @@ function IntegrationsPage() {
     >
       <TableCell>
         <div className="inline-flex items-center gap-2">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <RiPlugLine className="size-4" />
-          </span>
+          <IntegrationLogo name={integration.name} />
           <span className="font-medium text-foreground">{integration.name}</span>
           {integration.id === "lexer-api" && <Badge variant="default" size="sm">Pinned</Badge>}
         </div>
       </TableCell>
+      <TableCell>
+        <Badge variant={integration.connectionType === "Custom" ? "secondary" : "outline"} size="sm">
+          {integration.connectionType === "Custom" ? "Custom" : "Native"}
+        </Badge>
+      </TableCell>
       <TableCell><Badge variant="default" size="sm">{integration.category}</Badge></TableCell>
       <TableCell>
         <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-          {syncDirectionIcon(syncDirectionForCategory(integration.category))}
-          <span>{syncDirectionForCategory(integration.category)}</span>
+          {syncDirectionIcon(syncDirectionForIntegration(integration))}
+          <span>{syncDirectionForIntegration(integration)}</span>
         </span>
       </TableCell>
       <TableCell className="border-r border-border text-sm text-foreground-secondary">{integration.summary}</TableCell>
@@ -3764,7 +4508,7 @@ function IntegrationsPage() {
       currentCategory = integration.category;
       groupedRows.push(
         <TableRow key={`category-${currentCategory}`}>
-          <TableCell colSpan={6} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
+          <TableCell colSpan={7} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
             {currentCategory}
           </TableCell>
         </TableRow>,
@@ -3776,36 +4520,111 @@ function IntegrationsPage() {
   return (
     <div className="flex h-full flex-col px-6 py-6">
       <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">Integrations</h1>
-        <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>
+        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        {!newConnectionsOnly && <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>}
       </div>
 
+      {!newConnectionsOnly && <IntegrationHealthBanner integrations={integrations} onReview={() => {
+        setSelectedCategory("Disconnected sources");
+        setConnectionPage("overview");
+        setQuery("");
+        setOpenIntegrationId(null);
+        setPanelExpanded(false);
+        setConnectionsExpanded(true);
+      }} />}
+
       <div className="min-h-0 flex flex-1 gap-4 overflow-hidden">
-        <aside className="w-56 shrink-0 overflow-y-auto rounded-xl border border-border bg-card p-2">
-          <p className="px-2 pb-2 pt-1 text-xs font-semibold text-muted-foreground">Categories</p>
-          <ul className="flex list-none flex-col gap-1">
-            {categories.map((category) => {
-              const active = category === selectedCategory;
-              return (
-                <li key={category}>
-                  <button
-                    onClick={() => setSelectedCategory(category)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
-                      active ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <span className="truncate">{category}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
-                  </button>
-                  {category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
-                </li>
-              );
-            })}
-          </ul>
+        <aside className="w-56 shrink-0 space-y-4 overflow-y-auto">
+          <div className="rounded-xl border border-primary bg-card p-2">
+            <p className="px-2 pb-2 pt-1 text-xs font-semibold text-primary">New connection</p>
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setConnectionPage("standard");
+                  setOpenIntegrationId(null);
+                  setPanelExpanded(false);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                  connectionPage === "standard" ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <RiPlugLine className="size-4 shrink-0" />
+                <span>Add Standard Connection</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConnectionPage("custom");
+                  setOpenIntegrationId(null);
+                  setPanelExpanded(false);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                  connectionPage === "custom" ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <RiAddLine className="size-4 shrink-0" />
+                <span>Add Custom Connection</span>
+              </button>
+            </div>
+          </div>
+          {!newConnectionsOnly && <div className="rounded-xl border border-border bg-card p-2">
+          <button
+            type="button"
+            aria-expanded={connectionsExpanded}
+            aria-controls="master-integration-categories"
+            onClick={() => setConnectionsExpanded((expanded) => !expanded)}
+            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-muted-foreground hover:bg-muted"
+          >
+            <span>Connections</span>
+            <RiArrowDownSLine className={cn("size-4 transition-transform", connectionsExpanded && "rotate-180")} />
+          </button>
+          {connectionsExpanded ? (
+            <ul id="master-integration-categories" className="flex list-none flex-col gap-1">
+              {categories.map((category) => {
+                const active = category === selectedCategory;
+                return (
+                  <li key={category}>
+                    <button
+                      onClick={() => {
+                        setSelectedCategory(category);
+                        setConnectionPage("overview");
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                        active ? "bg-accent text-foreground" : "text-foreground-secondary hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <span className="truncate">{category === "All" ? "All connections" : category}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
+                    </button>
+                    {category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          </div>}
         </aside>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
+          {connectionPage === "standard" ? (
+            <StandardConnectionPage
+              onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")}
+              onConnect={openConnectedIntegration}
+              directionForCategory={syncDirectionForCategory}
+            />
+          ) : connectionPage === "custom" ? (
+            <CustomConnectionPage
+              onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")}
+              onCreate={openConnectedIntegration}
+              addedBy={MOCK_USER.firstName}
+              requests={integrations.filter((integration) => integration.connectionType === "Custom" && integration.status === "Pending")}
+            />
+          ) : (
+            <>
           <div className="mb-3">
             <div className="relative max-w-md">
               <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -3823,6 +4642,7 @@ function IntegrationsPage() {
               <TableHeader>
                 <TableRow>
                   <SortHeader label="Integration" keyName="name" />
+                  <TableHead className="w-36">Connection type</TableHead>
                   <SortHeader label="Category" keyName="category" className="w-40" />
                   <SortHeader label="Sync direction" keyName="syncDirection" className="w-44" />
                   <SortHeader label="Description" keyName="summary" className="border-r border-border" />
@@ -3834,7 +4654,7 @@ function IntegrationsPage() {
                 {groupedRows}
                 {groupedRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                       No integrations match this search and category.
                     </TableCell>
                   </TableRow>
@@ -3842,9 +4662,11 @@ function IntegrationsPage() {
               </TableBody>
             </Table>
           </div>
+            </>
+          )}
         </div>
 
-        {openIntegration && !panelExpanded && (
+        {openIntegration && !panelExpanded && connectionPage === "overview" && (
           <button
             className="fixed inset-0 z-30 cursor-default bg-transparent"
             aria-label="Close integration panel"
@@ -3900,7 +4722,7 @@ function IntegrationsPage() {
                     <div className="grid grid-cols-1 gap-3">
                       {openIntegration.status === "Disconnected" && (
                         <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          This account has disconnected and needs to be reconnected to avoid disruption.
+                          <DisconnectedConnectionGuidance category={openIntegration.category} />
                         </div>
                       )}
 
@@ -3913,8 +4735,8 @@ function IntegrationsPage() {
                           <div className="rounded-lg border border-border bg-background p-3">
                             <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
-                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                              {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
+                              <span>{syncDirectionForIntegration(openIntegration)}</span>
                             </div>
                           </div>
                         </div>
@@ -4053,7 +4875,7 @@ function IntegrationsPage() {
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                       {openIntegration.status === "Disconnected" && (
                         <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
-                          This account has disconnected and needs to be reconnected to avoid disruption.
+                          <DisconnectedConnectionGuidance category={openIntegration.category} />
                         </div>
                       )}
 
@@ -4066,8 +4888,8 @@ function IntegrationsPage() {
                           <div className="rounded-xl border border-border bg-card p-4">
                             <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-                              {syncDirectionIcon(syncDirectionForCategory(openIntegration.category))}
-                              <span>{syncDirectionForCategory(openIntegration.category)}</span>
+                              {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
+                              <span>{syncDirectionForIntegration(openIntegration)}</span>
                             </div>
                           </div>
                         </div>
@@ -4225,13 +5047,14 @@ function Sidebar({
   const inSegments = page === "segments" || page === "segment-detail";
   const inMeasure = page === "benchmarks" || page === "scorecard";
   const inActivations = page === "activations";
-  const inIntegrations = page === "integrations";
+  const inKnowledge = page === "context" || page === "definitions" || page === "skills" || (page === "playbook" && playbookSection === "rules");
   const inContext = page === "context";
   const inUsers = page === "users";
   const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources";
   const [activationsOpen, setActivationsOpen] = useState(false);
   const [measureOpen, setMeasureOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const activationCount = {
     all: state.activations.length,
     live: state.activations.filter((a) => a.status === "live").length,
@@ -4283,52 +5106,8 @@ function Sidebar({
         </div>
         <div className={cn("flex flex-1 flex-col gap-4 overflow-y-auto py-2", collapsed ? "px-0" : "px-2")}>
           <ul className="flex list-none flex-col gap-0.5">
-            <li>
-              <NavRow
-                icon={RiDashboardLine}
-                label="Canvas"
-                collapsed={collapsed}
-                active={page === "canvas"}
-                onClick={() => onNavigate("canvas")}
-              />
-            </li>
-            <li>
-              <NavRow
-                icon={RiDashboardLine}
-                label="Canvas 2"
-                collapsed={collapsed}
-                active={page === "canvas2"}
-                onClick={() => onNavigate("canvas2")}
-              />
-            </li>
             <li><NavRow icon={RiAddLine} label="New Chat" main collapsed={collapsed} active={onNewChat} onClick={newChat} /></li>
-            <li>
-              <NavRow
-                icon={RiPlanetLine}
-                label="Space"
-                collapsed={collapsed}
-                active={page === "space" || page === "space-detail"}
-                onClick={() => onNavigate("space")}
-              />
-            </li>
-            <li>
-              <NavRow
-                icon={RiArrowLeftRightLine}
-                label="Measure"
-                collapsed={collapsed}
-                active={collapsed ? inMeasure : inMeasure && !measureOpen}
-                onClick={() => onNavigate("benchmarks")}
-                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", measureOpen && "rotate-90")} /> : undefined}
-                onTrailingToggle={!collapsed ? () => setMeasureOpen((o) => !o) : undefined}
-                trailingToggleLabel="Toggle measure sections"
-              />
-              {!collapsed && measureOpen && (
-                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
-                  <li><SubNavRow label="Benchmarks" active={page === "benchmarks"} onClick={() => onNavigate("benchmarks")} /></li>
-                  <li><SubNavRow label="Score cards" active={page === "scorecard"} onClick={() => onNavigate("scorecard")} /></li>
-                </ul>
-              )}
-            </li>
+            <li><NavRow icon={RiBrainLine} label="Insights" collapsed={collapsed} active={page === "insights"} onClick={() => onNavigate("insights")} /></li>
             <li>
               <NavRow
                 icon={RiGroupLine}
@@ -4362,7 +5141,53 @@ function Sidebar({
               )}
             </li>
             <li><NavRow icon={RiDashboardLine} label="Dashboards" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
-            <li><NavRow icon={RiBrainLine} label="Insights" collapsed={collapsed} active={page === "insights"} onClick={() => onNavigate("insights")} /></li>
+            <li>
+              <NavRow
+                icon={RiArrowLeftRightLine}
+                label="Measure"
+                collapsed={collapsed}
+                active={collapsed ? inMeasure : inMeasure && !measureOpen}
+                onClick={() => onNavigate("benchmarks")}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", measureOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setMeasureOpen((o) => !o) : undefined}
+                trailingToggleLabel="Toggle measure sections"
+              />
+              {!collapsed && measureOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Benchmarks" active={page === "benchmarks"} onClick={() => onNavigate("benchmarks")} /></li>
+                  <li><SubNavRow label="Score cards" active={page === "scorecard"} onClick={() => onNavigate("scorecard")} /></li>
+                </ul>
+              )}
+            </li>
+            <li>
+              <NavRow
+                icon={RiPlanetLine}
+                label="Space"
+                collapsed={collapsed}
+                active={page === "space" || page === "space-detail"}
+                onClick={() => onNavigate("space")}
+              />
+            </li>
+            <li>
+              <NavRow
+                icon={RiBrainLine}
+                label="Knowledge"
+                collapsed={collapsed}
+                active={inKnowledge || knowledgeOpen}
+                onClick={() => setKnowledgeOpen((open) => !open)}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", knowledgeOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setKnowledgeOpen((open) => !open) : undefined}
+                trailingToggleLabel="Toggle Knowledge sections"
+              />
+              {!collapsed && knowledgeOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Context" active={page === "context"} onClick={() => onNavigate("context")} /></li>
+                  <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
+                  <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
+                  <li><SubNavRow label="Skills" active={page === "skills"} onClick={() => onNavigate("skills")} /></li>
+                </ul>
+              )}
+            </li>
             {!collapsed && (
               <li>
                 <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Pinned Chats</div>
@@ -4414,6 +5239,13 @@ function Sidebar({
           </ul>
         </div>
         <div className="space-y-2 p-2">
+          <NavRow
+            icon={RiDashboardLine}
+            label="Canvas"
+            collapsed={collapsed}
+            active={page === "canvas"}
+            onClick={() => onNavigate("canvas")}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {collapsed ? (
@@ -4479,17 +5311,13 @@ function Sidebar({
                             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
                           )}
                         >
-                          <DropdownMenuItem onSelect={() => onNavigate("definitions")}>Source Definitions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => onNavigate("metrics")}>Calculated Defintions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={onOpenGlossary}>Custom Definitions</DropdownMenuItem>
-                          <DropdownMenuItem onSelect={onOpenRules}>Rules</DropdownMenuItem>
                           <DropdownMenuItem onSelect={() => onNavigate("sources")}>Sources</DropdownMenuItem>
                         </DropdownMenuPrimitive.SubContent>
                       </DropdownMenuPrimitive.Portal>
                     </DropdownMenuSub>
                     <DropdownMenuItem onSelect={() => onNavigate("users")}>Users</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onNavigate("context")}>Context</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onNavigate("integrations")}>Integrations</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onNavigate("connect-accounts")}>Connect Accounts</DropdownMenuItem>
                   </DropdownMenuPrimitive.SubContent>
                 </DropdownMenuPrimitive.Portal>
               </DropdownMenuSub>
