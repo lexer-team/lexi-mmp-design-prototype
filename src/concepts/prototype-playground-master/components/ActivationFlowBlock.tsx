@@ -1375,17 +1375,17 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
                   </div>
                   <div className="flex flex-col gap-2 min-w-[12rem]">
                     <Select value={row.selected} onValueChange={(value) => handleFieldSelect(row.id, value)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Choose field" />
-                      </SelectTrigger>
-                      <SelectContent className="w-full">
-                        {row.candidates.map((candidate) => (
-                          <SelectItem key={candidate} value={candidate}>
-                            {getFieldLabel(candidate)} — {getFieldCoverage(candidate)}%
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={`search-${row.id}`}>Search another field…</SelectItem>
-                      </SelectContent>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Choose field" />
+                        </SelectTrigger>
+                        <SelectContent className="w-full">
+                          {row.candidates.map((candidate) => (
+                            <SelectItem key={candidate} value={candidate}>
+                              {getFieldLabel(candidate)} — {getFieldCoverage(candidate)}%
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={`search-${row.id}`}>Search another field…</SelectItem>
+                        </SelectContent>
                     </Select>
                     <div className="flex flex-wrap gap-2">
                       {row.canPrimary && !row.primary ? (

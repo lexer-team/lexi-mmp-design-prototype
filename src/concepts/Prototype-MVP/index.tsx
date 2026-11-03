@@ -62,14 +62,15 @@ import { SegmentsPage, DefinitionsPage, MetricsPage, BenchmarksPage, ScorecardPa
 import { PlaybookPage } from "./PlaybookPage";
 import { SpacePage } from "./SpacePage";
 import { SpacesPage } from "./SpacesPage";
-import { ActivationsPage, ActivationDetail } from "./ActivationsPage";
-import { ACTIVATION_STATUS_META, getActivation, type ActivationStatus } from "./activations-mock";
+import { ActivationsPage, ActivationDetail, type ActivationEditDraft } from "./ActivationsPage";
+import { ACTIVATION_STATUS_META, DEFAULT_ACTIVATION_HISTORY, getActivation, type Activation, type ActivationHistoryPoint, type ActivationStatus } from "./activations-mock";
 import { INITIAL_SPACES, type Space } from "./spaces-data";
 import { GroupDetail } from "../lexi-shared-brain-v2/GroupDetail";
 import { BRAIN_GROUPS } from "../lexi-shared-brain/data";
 import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
+import { BetaBadge } from "@/components/BetaBadge";
 
 type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
 type ActivationNavFilter = "all" | ActivationStatus;
@@ -1074,6 +1075,19 @@ function GlobalLexiDock({
 
 // ─── Activation detail side panel (inset, narrow, right) ────────────────────────
 
+function createActivationEditDraft(activation: Activation): ActivationEditDraft {
+  return {
+    activationDefinition: activation.mvpDetails?.activationDefinition ?? activation.result ?? "",
+    cadence: activation.activationCadence === "Recurring"
+      || activation.mvpDetails?.cadence === "Recurring"
+      || (!activation.activationCadence && !activation.mvpDetails?.cadence && Boolean(activation.recurringStartDate))
+      ? "Recurring"
+      : "Once Off",
+    recurringDeliveryTime: activation.recurringTime ?? activation.mvpDetails?.recurringTime ?? "",
+    recurringEndDate: activation.recurringEndDate ?? "",
+  };
+}
+
 function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInChat, onClose, onOpenSegment, onStartResize }: {
   activationId: string;
   onOpenActivationPage: (id: string) => void;
@@ -1086,6 +1100,21 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
   const activation = state.activations.find((a) => a.id === activationId) ?? getActivation(activationId);
   const [confirmRerunOpen, setConfirmRerunOpen] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [confirmSyncOpen, setConfirmSyncOpen] = useState(false);
+  const [confirmSyncCountOpen, setConfirmSyncCountOpen] = useState(false);
+  const [syncProfileCount, setSyncProfileCount] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState<ActivationEditDraft>(() => activation ? createActivationEditDraft(activation) : {
+    activationDefinition: "",
+    cadence: "Once Off",
+    recurringDeliveryTime: "",
+    recurringEndDate: "",
+  });
+
+  useEffect(() => {
+    setIsEditing(false);
+    if (activation) setEditDraft(createActivationEditDraft(activation));
+  }, [activationId]);
 
   const ensureActivationInState = (nextStatus?: ActivationStatus) => {
     if (!activation) return;
@@ -1145,6 +1174,61 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
     onOpenActivationPage(rerunActivationId);
   };
 
+  const handleSaveActivationEdits = () => {
+    if (!activation) return;
+    const nextActivation: Activation = {
+      ...activation,
+      result: editDraft.activationDefinition,
+      activationCadence: editDraft.cadence,
+      recurringTime: editDraft.cadence === "Recurring" ? editDraft.recurringDeliveryTime || undefined : undefined,
+      recurringEndDate: editDraft.cadence === "Recurring" ? editDraft.recurringEndDate || undefined : undefined,
+      mvpDetails: activation.mvpDetails
+        ? {
+            ...activation.mvpDetails,
+            activationDefinition: editDraft.activationDefinition,
+            cadence: editDraft.cadence,
+            recurringTime: editDraft.cadence === "Recurring" ? editDraft.recurringDeliveryTime || undefined : undefined,
+          }
+        : undefined,
+    };
+
+    ensureActivationInState();
+    dispatch({ type: "UPDATE_ACTIVATION", id: activation.id, updates: nextActivation });
+    setIsEditing(false);
+  };
+
+  const handleCancelActivationEdits = () => {
+    if (activation) setEditDraft(createActivationEditDraft(activation));
+    setIsEditing(false);
+  };
+
+  const handleConfirmSync = () => {
+    if (!activation || syncProfileCount === null) return;
+
+    const now = new Date();
+    const dateLabel = now.toLocaleDateString("en-AU", { day: "2-digit", month: "short" });
+    const timeLabel = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+    const baseHistory: ActivationHistoryPoint[] = activation.history ?? (
+      !activation.recurringStartDate && activation.scheduledDate
+        ? [{ date: activation.scheduledDate, profilesSent: 18240, delta: 0, note: "Single send" }]
+        : DEFAULT_ACTIVATION_HISTORY
+    );
+    const previousPoint = baseHistory[baseHistory.length - 1];
+    const nextProfilesSent = (previousPoint?.profilesSent ?? 0) + syncProfileCount;
+    const delta = previousPoint?.profilesSent
+      ? Number(((syncProfileCount / previousPoint.profilesSent) * 100).toFixed(1))
+      : 0;
+    const syncPoint: ActivationHistoryPoint = {
+      date: `${dateLabel} ${timeLabel}`,
+      profilesSent: nextProfilesSent,
+      delta,
+      note: `Manual delta sync: ${syncProfileCount.toLocaleString()} profiles synced`,
+    };
+
+    ensureActivationInState();
+    dispatch({ type: "UPDATE_ACTIVATION_HISTORY", id: activation.id, history: [...baseHistory, syncPoint] });
+  };
+
   return (
     <div className="flex h-full w-full">
       <div
@@ -1181,12 +1265,34 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
                 variant="outline"
                 className="h-7"
                 onClick={() => {
+                  if (!activation || isEditing) return;
+                  setEditDraft(createActivationEditDraft(activation));
+                  setIsEditing(true);
+                }}
+                disabled={!activation || isEditing}
+              >
+                Edit
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                className="h-7"
+                onClick={() => {
                   setConfirmRerunOpen(true);
                   onPromptInChat("Do you want to rerun this activation again?");
                 }}
-                disabled={!activation}
+                disabled={!activation || isEditing}
               >
-                Re-Run Activation
+                Re-run
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                className="h-7"
+                onClick={() => setConfirmSyncOpen(true)}
+                disabled={!activation || isEditing}
+              >
+                Sync
               </Button>
               <Button
                 size="xs"
@@ -1196,7 +1302,7 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
                   setConfirmCancelOpen(true);
                   onPromptInChat("Are you sure you want to cancel the activation? Sends to the activation platform may be incomplete and you will need to run the activation again.");
                 }}
-                disabled={!activation}
+                disabled={!activation || isEditing}
               >
                 <RiProhibitedLine className="size-3.5" />
                 Cancel Activation
@@ -1208,6 +1314,9 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
               <ActivationDetail
                 activation={activation}
                 onOpenSegment={onOpenSegment}
+                isEditing={isEditing}
+                editDraft={editDraft}
+                onEditDraftChange={(patch) => setEditDraft((current) => ({ ...current, ...patch }))}
                 categoryOptions={Array.from(new Set(state.activations.map((a) => a.category ?? "Uncategorised"))).sort((a, b) => a.localeCompare(b))}
                 onCategoryChange={(nextCategory) => {
                   dispatch({ type: "UPDATE_ACTIVATION_CATEGORY", id: activation.id, category: nextCategory });
@@ -1219,6 +1328,14 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
               </div>
             )}
           </div>
+          {isEditing ? (
+            <div className="shrink-0 border-t border-border px-4 py-3">
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={handleCancelActivationEdits}>Cancel</Button>
+                <Button onClick={handleSaveActivationEdits}>Save</Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1242,6 +1359,29 @@ function ActivationSidePanel({ activationId, onOpenActivationPage, onPromptInCha
         confirmLabel="Yes, re-run activation"
         cancelLabel="Cancel"
         onConfirm={handleConfirmRerunActivation}
+      />
+
+      <ConfirmDialog
+        open={confirmSyncOpen}
+        onOpenChange={setConfirmSyncOpen}
+        title="Sync activation?"
+        description="Syncing this activation will send any profiles added or updated since the last sync."
+        confirmLabel="OK"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          setSyncProfileCount(Math.floor(Math.random() * 4901) + 100);
+          setConfirmSyncCountOpen(true);
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmSyncCountOpen}
+        onOpenChange={setConfirmSyncCountOpen}
+        title="Confirm profile sync"
+        description={syncProfileCount === null ? undefined : `Confirm that ${syncProfileCount.toLocaleString()} profiles will be synced.`}
+        confirmLabel="Sync"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmSync}
       />
     </div>
   );
@@ -2752,10 +2892,6 @@ function IntegrationsPage() {
   };
   type AccountDraft = {
     accountName: string;
-    username: string;
-    password: string;
-    apiKey: string;
-    secretKey: string;
   };
   type ConnectedAccount = AccountDraft & { id: string };
   type OfflineEventSetDraft = {
@@ -2808,13 +2944,8 @@ function IntegrationsPage() {
   ];
 
   const buildDefaultAccount = (integration: IntegrationRecord): AccountDraft => {
-    const id = integration.id.replace(/-/g, "_");
     return {
       accountName: `${integration.name} primary account`,
-      username: `demo_${id}@lexer.local`,
-      password: "DemoPass_2026!",
-      apiKey: `lxr_pk_${id}_a1b2c3d4`,
-      secretKey: `lxr_sk_${id}_9x8y7z6w`,
     };
   };
 
@@ -2848,10 +2979,6 @@ function IntegrationsPage() {
     const nextOrdinal = (connectedAccountsByIntegration[integration.id]?.length ?? 0) + 1;
     return {
       accountName: `${integration.name} account ${nextOrdinal}`,
-      username: "",
-      password: "",
-      apiKey: "",
-      secretKey: "",
     };
   };
 
@@ -2860,10 +2987,6 @@ function IntegrationsPage() {
       const integration = integrations.find((item) => item.id === integrationId);
       const current = prev[integrationId] ?? (integration ? defaultAccountForIntegration(integration) : {
         accountName: "",
-        username: "",
-        password: "",
-        apiKey: "",
-        secretKey: "",
       });
       return {
         ...prev,
@@ -3054,7 +3177,7 @@ function IntegrationsPage() {
     });
   };
 
-  const connectIntegration = (integrationId: string) => {
+  const finalizeIntegrationConnect = (integrationId: string) => {
     const integration = integrations.find((item) => item.id === integrationId);
     if (!integration) return;
     const draft = getAccountDraft(integration);
@@ -3073,6 +3196,40 @@ function IntegrationsPage() {
         ? { ...item, status: "Connected", updated: "Synced just now" }
         : item
     )));
+  };
+
+  const openFivetranMockLogin = (integrationId: string) => {
+    if (typeof window === "undefined") return;
+    const popup = window.open("", "fivetran-mock-login", "popup=yes,width=520,height=640");
+    if (!popup) return;
+
+    popup.document.title = "Fivetran Login (Demo)";
+    popup.document.body.innerHTML = `
+      <div style="font-family: Rubik, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; min-height: 100vh; margin: 0; padding: 24px; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 100%; max-width: 420px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12); padding: 20px;">
+          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">Fivetran login (Demo)</h1>
+          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Use the prefilled credentials and click Connect to return to Lexer.</p>
+          <label style="display: block; margin-bottom: 12px;">
+            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Email</span>
+            <input value="demo@fivetran.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+          </label>
+          <label style="display: block; margin-bottom: 16px;">
+            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Password</span>
+            <input type="password" value="DemoPass_2026!" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+          </label>
+          <button id="connect-btn" style="width: 100%; height: 38px; border: 0; border-radius: 8px; background: #115E59; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer;">Connect</button>
+        </div>
+      </div>
+    `;
+
+    popup.document.getElementById("connect-btn")?.addEventListener("click", () => {
+      finalizeIntegrationConnect(integrationId);
+      popup.close();
+    });
+  };
+
+  const connectIntegration = (integrationId: string) => {
+    openFivetranMockLogin(integrationId);
   };
 
   const disconnectIntegration = (integrationId: string) => {
@@ -3111,10 +3268,6 @@ function IntegrationsPage() {
       ...prev,
       [integration.id]: {
         accountName: selected.accountName,
-        username: selected.username,
-        password: selected.password,
-        apiKey: selected.apiKey,
-        secretKey: selected.secretKey,
       },
     }));
   };
@@ -3256,7 +3409,6 @@ function IntegrationsPage() {
   const renderAccountEditor = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
     const draft = getAccountDraft(integration);
     const inputBgClass = mode === "docked" ? "bg-card" : "bg-background";
-    const showApiCredentials = integration.id !== "meta-ads";
     const showOfflineEventSets = integration.id === "meta-ads";
     const offlineEventSets = offlineEventSetsByIntegration[integration.id] ?? [];
     const canAddOfflineEventSet = offlineEventSets.some((eventSet) => eventSet.saved);
@@ -3279,43 +3431,6 @@ function IntegrationsPage() {
               className={cn("mt-0.5 h-8", inputBgClass)}
             />
           </div>
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">Username</p>
-            <Input
-              value={draft.username}
-              onChange={(e) => updateAccountDraft(integration.id, "username", e.target.value)}
-              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-            />
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">Password</p>
-            <Input
-              type="password"
-              value={draft.password}
-              onChange={(e) => updateAccountDraft(integration.id, "password", e.target.value)}
-              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-            />
-          </div>
-          {showApiCredentials ? (
-            <>
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground">API key</p>
-                <Input
-                  value={draft.apiKey}
-                  onChange={(e) => updateAccountDraft(integration.id, "apiKey", e.target.value)}
-                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-                />
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground">Secret key</p>
-                <Input
-                  value={draft.secretKey}
-                  onChange={(e) => updateAccountDraft(integration.id, "secretKey", e.target.value)}
-                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-                />
-              </div>
-            </>
-          ) : null}
 
           <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
             <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>
@@ -4088,10 +4203,9 @@ function Sidebar({
   const [activationsOpen, setActivationsOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const activationCount = {
-    all: state.activations.length,
+    all: state.activations.filter((a) => a.status !== "awaiting-approval").length,
     live: state.activations.filter((a) => a.status === "live").length,
     scheduled: state.activations.filter((a) => a.status === "scheduled").length,
-    "awaiting-approval": state.activations.filter((a) => a.status === "awaiting-approval").length,
     sent: state.activations.filter((a) => a.status === "sent").length,
     completed: state.activations.filter((a) => a.status === "completed").length,
   } as const;
@@ -4126,8 +4240,13 @@ function Sidebar({
   return (
     <div className={cn("flex h-full shrink-0 flex-col overflow-hidden bg-sidebar p-2 transition-[width] duration-200", collapsed ? "w-14" : "w-[16rem]")}>
       <div className="flex h-full flex-col overflow-hidden rounded-lg bg-sidebar">
-        <div className={cn("flex items-center p-2", collapsed && "justify-center")}>
-          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype onboarding" />
+        <div className={cn("p-2", collapsed && "flex flex-col items-center")}>
+          <div className={cn("relative z-20 mb-2", collapsed && "flex justify-center")}>
+            <BetaBadge />
+          </div>
+          <div className={cn("flex items-center", collapsed && "justify-center")}>
+            <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype onboarding" />
+          </div>
         </div>
         <div className={cn("flex flex-1 flex-col gap-4 overflow-y-auto py-2", collapsed ? "px-0" : "px-2")}>
           <ul className="flex list-none flex-col gap-0.5">
@@ -4157,7 +4276,6 @@ function Sidebar({
                   <li><SubNavRow label="All activations" active={inActivations && activationFilter === "all"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.all}</span>} onClick={() => onSelectActivationFilter("all")} /></li>
                   {activationCount.live > 0 && <li><SubNavRow label="Live" active={inActivations && activationFilter === "live"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.live}</span>} onClick={() => onSelectActivationFilter("live")} /></li>}
                   {activationCount.scheduled > 0 && <li><SubNavRow label="Scheduled" active={inActivations && activationFilter === "scheduled"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.scheduled}</span>} onClick={() => onSelectActivationFilter("scheduled")} /></li>}
-                  {activationCount["awaiting-approval"] > 0 && <li><SubNavRow label="Awaiting approval" active={inActivations && activationFilter === "awaiting-approval"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount["awaiting-approval"]}</span>} onClick={() => onSelectActivationFilter("awaiting-approval")} /></li>}
                   {activationCount.sent > 0 && <li><SubNavRow label="Sent" active={inActivations && activationFilter === "sent"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.sent}</span>} onClick={() => onSelectActivationFilter("sent")} /></li>}
                   {activationCount.completed > 0 && <li><SubNavRow label="Completed" active={inActivations && activationFilter === "completed"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.completed}</span>} onClick={() => onSelectActivationFilter("completed")} /></li>}
                 </ul>

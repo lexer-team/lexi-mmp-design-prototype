@@ -24,6 +24,7 @@ type ActivationCounts = {
   awaitingApproval: number;
   sent: number;
   completed: number;
+  failed: number;
 };
 
 type WidgetConfig = {

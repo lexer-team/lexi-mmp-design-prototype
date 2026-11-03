@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RiCheckLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonal2Line, RiCollapseDiagonal2Line } from "@remixicon/react";
@@ -1339,6 +1340,7 @@ function StartHero() {
     <div className="flex flex-col items-center gap-4 text-center animate-in fade-in-0 duration-300">
       <LexiMark className="size-11" />
       <h2 className="text-lg font-semibold text-foreground">What are we working on?</h2>
+      <BetaNotice className="mb-0" />
     </div>
   );
 }
@@ -1422,7 +1424,10 @@ interface ChatPanelProps {
 
 export function ChatPanel({ narrow }: ChatPanelProps) {
   const { state, dispatch } = useSession();
-  const mentionGroups = useMemo(() => buildMentionGroups(state.activations), [state.activations]);
+  const mentionGroups = useMemo(
+    () => buildMentionGroups(state.activations).filter((group) => group.label === "Segments"),
+    [state.activations],
+  );
   const plusSegmentItems = useMemo<DefRef[]>(() => {
     const savedSegments = Array.from(state.artifacts.values())
       .filter((artifact) => artifact.type === "segment" && artifact.status === "saved" && artifact.body?.kind === "segment")
@@ -3588,7 +3593,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
             placeholder={empty ? "Message Lexi..." : "Reply to Lexi..."}
             onSubmit={handleSubmit}
             disabled={busy}
-            enableMentions={false}
+            enableMentions
           />
           {empty ? (
             <StartPrompts

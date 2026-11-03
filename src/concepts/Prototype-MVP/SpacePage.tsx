@@ -239,7 +239,7 @@ export function SpacePage({
     const key = statusLabel.trim().toLowerCase();
     if (key === "live") return "live";
     if (key === "scheduled" || key === "draft") return "scheduled";
-    if (key === "awaiting approval" || key === "awaiting-approval") return "awaiting-approval";
+    if (key === "awaiting approval" || key === "awaiting-approval") return "scheduled";
     if (key === "sent") return "sent";
     if (key === "completed") return "completed";
     if (key === "failed") return "failed";
@@ -252,7 +252,7 @@ export function SpacePage({
     context: space.name,
     channel: activation.channel,
     skill: "Activation workflow",
-    approval: normalizeActivationStatus(activation.status) === "awaiting-approval" ? { kind: "pending" } : { kind: "auto" },
+    approval: { kind: "auto" },
     status: normalizeActivationStatus(activation.status),
     whenLabel: activation.status,
     result: undefined,
@@ -1099,6 +1099,11 @@ function Overview({
 // ─── Workflow card (with nested activations) ────────────────────────────────────
 
 function WorkflowCard({ workflow }: { workflow: Workflow }) {
+  const statusVariant =
+    workflow.status === "Awaiting approval" ? "warning" :
+    workflow.status === "Blocked" ? "danger" :
+    "success";
+
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
       <div className="flex items-center gap-2.5 border-b border-border/60 px-3 py-2.5">
@@ -1111,22 +1116,47 @@ function WorkflowCard({ workflow }: { workflow: Workflow }) {
             <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{workflow.description}</p>
           ) : null}
         </div>
-        <Badge variant={workflow.status === "Awaiting approval" ? "warning" : "success"} size="sm">{workflow.status}</Badge>
+        <Badge variant={statusVariant} size="sm">{workflow.status}</Badge>
       </div>
-      <div className="px-3 py-1.5">
-        <p className="px-1 py-1 text-xs font-medium text-muted-foreground">Activations</p>
-        {workflow.activations.map((a) => (
-          <div key={a.id} className="flex items-center gap-2.5 py-1.5">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-              <RiBroadcastLine className="size-3.5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-foreground">{a.name}</p>
-              <p className="truncate text-xs text-muted-foreground">{a.channel}</p>
+
+      <div className="space-y-2.5 p-3">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-[11px] font-medium uppercase tracking-normal text-muted-foreground">Activations</p>
+          <span className="text-[11px] text-foreground-secondary">{workflow.activations.length}</span>
+        </div>
+
+        {workflow.activations.map((a) => {
+          const badgeVariant =
+            a.status === "Live" || a.status === "Approved" || a.status === "Sent" ? "success" :
+            a.status === "Scheduled" || a.status === "Awaiting approval" ? "warning" :
+            a.status === "Failed" || a.status === "Blocked" ? "danger" :
+            "secondary";
+
+          return (
+            <div
+              key={a.id}
+              className="rounded-lg border border-border/70 bg-background/80 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] transition-colors hover:border-primary/30 hover:bg-accent/20"
+            >
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <RiBroadcastLine className="size-3.5" />
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="truncate text-sm font-medium text-foreground">{a.name}</p>
+                    <Badge variant={badgeVariant} size="sm">{a.status}</Badge>
+                  </div>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5">{a.channel}</span>
+                    {a.updated ? <span>{a.updated}</span> : null}
+                  </div>
+                </div>
+              </div>
             </div>
-            <span className="shrink-0 text-xs text-foreground-secondary">{a.updated ? `${a.status} · ${a.updated}` : a.status}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

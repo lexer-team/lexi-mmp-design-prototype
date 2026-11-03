@@ -3388,10 +3388,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   };
   type AccountDraft = {
     accountName: string;
-    username: string;
-    password: string;
-    apiKey: string;
-    secretKey: string;
   };
   type ConnectedAccount = AccountDraft & { id: string };
   type OfflineEventSetDraft = {
@@ -3444,13 +3440,8 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   ];
 
   const buildDefaultAccount = (integration: IntegrationRecord): AccountDraft => {
-    const id = integration.id.replace(/-/g, "_");
     return {
       accountName: `${integration.name} primary account`,
-      username: `demo_${id}@lexer.local`,
-      password: "DemoPass_2026!",
-      apiKey: `lxr_pk_${id}_a1b2c3d4`,
-      secretKey: `lxr_sk_${id}_9x8y7z6w`,
     };
   };
 
@@ -3484,10 +3475,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     const nextOrdinal = (connectedAccountsByIntegration[integration.id]?.length ?? 0) + 1;
     return {
       accountName: `${integration.name} account ${nextOrdinal}`,
-      username: "",
-      password: "",
-      apiKey: "",
-      secretKey: "",
     };
   };
 
@@ -3496,10 +3483,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
       const integration = integrations.find((item) => item.id === integrationId);
       const current = prev[integrationId] ?? (integration ? defaultAccountForIntegration(integration) : {
         accountName: "",
-        username: "",
-        password: "",
-        apiKey: "",
-        secretKey: "",
       });
       return {
         ...prev,
@@ -3690,7 +3673,7 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
     });
   };
 
-  const connectIntegration = (integrationId: string) => {
+  const finalizeIntegrationConnect = (integrationId: string) => {
     const integration = integrations.find((item) => item.id === integrationId);
     if (!integration) return;
     const draft = getAccountDraft(integration);
@@ -3709,6 +3692,40 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
         ? { ...item, status: "Connected", updated: "Synced just now" }
         : item
     )));
+  };
+
+  const openFivetranMockLogin = (integrationId: string) => {
+    if (typeof window === "undefined") return;
+    const popup = window.open("", "fivetran-mock-login", "popup=yes,width=520,height=640");
+    if (!popup) return;
+
+    popup.document.title = "Fivetran Login (Demo)";
+    popup.document.body.innerHTML = `
+      <div style="font-family: Rubik, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; min-height: 100vh; margin: 0; padding: 24px; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 100%; max-width: 420px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12); padding: 20px;">
+          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">Fivetran login (Demo)</h1>
+          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Use the prefilled credentials and click Connect to return to Lexer.</p>
+          <label style="display: block; margin-bottom: 12px;">
+            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Email</span>
+            <input value="demo@fivetran.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+          </label>
+          <label style="display: block; margin-bottom: 16px;">
+            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Password</span>
+            <input type="password" value="DemoPass_2026!" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+          </label>
+          <button id="connect-btn" style="width: 100%; height: 38px; border: 0; border-radius: 8px; background: #115E59; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer;">Connect</button>
+        </div>
+      </div>
+    `;
+
+    popup.document.getElementById("connect-btn")?.addEventListener("click", () => {
+      finalizeIntegrationConnect(integrationId);
+      popup.close();
+    });
+  };
+
+  const connectIntegration = (integrationId: string) => {
+    openFivetranMockLogin(integrationId);
   };
 
   const disconnectIntegration = (integrationId: string) => {
@@ -3747,10 +3764,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
       ...prev,
       [integration.id]: {
         accountName: selected.accountName,
-        username: selected.username,
-        password: selected.password,
-        apiKey: selected.apiKey,
-        secretKey: selected.secretKey,
       },
     }));
   };
@@ -3892,7 +3905,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
   const renderAccountEditor = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
     const draft = getAccountDraft(integration);
     const inputBgClass = mode === "docked" ? "bg-card" : "bg-background";
-    const showApiCredentials = integration.id !== "meta-ads";
     const showOfflineEventSets = integration.id === "meta-ads";
     const offlineEventSets = offlineEventSetsByIntegration[integration.id] ?? [];
     const canAddOfflineEventSet = offlineEventSets.some((eventSet) => eventSet.saved);
@@ -3915,43 +3927,6 @@ function IntegrationsPage({ onboarding }: { onboarding?: OnboardingGuidance }) {
               className={cn("mt-0.5 h-8", inputBgClass)}
             />
           </div>
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">Username</p>
-            <Input
-              value={draft.username}
-              onChange={(e) => updateAccountDraft(integration.id, "username", e.target.value)}
-              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-            />
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">Password</p>
-            <Input
-              type="password"
-              value={draft.password}
-              onChange={(e) => updateAccountDraft(integration.id, "password", e.target.value)}
-              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-            />
-          </div>
-          {showApiCredentials ? (
-            <>
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground">API key</p>
-                <Input
-                  value={draft.apiKey}
-                  onChange={(e) => updateAccountDraft(integration.id, "apiKey", e.target.value)}
-                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-                />
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground">Secret key</p>
-                <Input
-                  value={draft.secretKey}
-                  onChange={(e) => updateAccountDraft(integration.id, "secretKey", e.target.value)}
-                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-                />
-              </div>
-            </>
-          ) : null}
 
           <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
             <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>

@@ -72,6 +72,7 @@ import { BRAIN_GROUPS } from "../lexi-shared-brain/data";
 import { segmentArtifactToGroup, segmentToLogic } from "./segment-logic";
 import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
+import { BetaBadge, BETA_TOOLTIP_CLOSED_EVENT, BETA_TOOLTIP_DISMISSED_KEY, BETA_TOOLTIP_OPEN_EVENT } from "@/components/BetaBadge";
 
 type Page = "canvas" | "canvas2" | "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "calendar" | "insights" | "sources" | "integrations" | "activations" | "context" | "users";
 type ActivationNavFilter = "all" | ActivationStatus;
@@ -134,7 +135,11 @@ export default function SegmentV1() {
 function SegmentV1Inner() {
   // session state is consumed by the panels; the shell owns layout + view nav
   const { state, dispatch } = useSession();
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const dismissed = window.localStorage.getItem(BETA_TOOLTIP_DISMISSED_KEY) === "1";
+    return dismissed;
+  });
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   const [page, setPage] = useState<Page>("canvas");
@@ -173,6 +178,20 @@ function SegmentV1Inner() {
   // The side panel (segment detail OR sources list) opens beside chat and segments pages.
   const sidePanelOpen = segmentPanelOpen || sourcesPanelOpen;
   const previousPageRef = useRef<Page>(page);
+
+  useEffect(() => {
+    const onBetaOpen = () => setCollapsed(false);
+    const onBetaClosed = () => setCollapsed(true);
+
+    window.addEventListener(BETA_TOOLTIP_OPEN_EVENT, onBetaOpen);
+    window.addEventListener(BETA_TOOLTIP_CLOSED_EVENT, onBetaClosed);
+
+    return () => {
+      window.removeEventListener(BETA_TOOLTIP_OPEN_EVENT, onBetaOpen);
+      window.removeEventListener(BETA_TOOLTIP_CLOSED_EVENT, onBetaClosed);
+    };
+  }, []);
+
   useEffect(() => {
     if (state.openSegmentId) setShownPanel({ kind: "segment", id: state.openSegmentId });
     else if (state.openSourcesIds) setShownPanel({ kind: "sources", ids: state.openSourcesIds });
@@ -666,6 +685,7 @@ function SegmentV1Inner() {
                   awaitingApproval: state.activations.filter((item) => item.status === "awaiting-approval").length,
                   sent: state.activations.filter((item) => item.status === "sent").length,
                   completed: state.activations.filter((item) => item.status === "completed").length,
+                  failed: state.activations.filter((item) => item.status === "failed").length,
                 }}
                 segmentCount={segmentArtifactCount}
                 dashboardCount={3}
@@ -1397,6 +1417,19 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
     ? linkedActivations
     : (matchedDummy?.activations ?? []);
 
+  const activationMetaById = new Map(
+    state.activations.map((activation) => [activation.id, {
+      name: activation.name,
+      status: activation.status,
+      channel: activation.channel,
+      whenLabel: activation.whenLabel,
+      context: activation.context,
+      description: activation.result ?? activation.skill,
+      segmentId: activation.segmentId,
+      segmentName: activation.segmentName,
+    }]),
+  );
+
   return (
     <div className="flex h-full w-full">
       {/* Resize handle */}
@@ -1515,16 +1548,31 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
                   <h4 className="text-sm font-semibold text-foreground">In activations</h4>
                   <p className="mt-2 text-sm text-foreground-secondary">Number of activations: {panelActivations.length}</p>
                   <div className="mt-3 space-y-2">
-                    {panelActivations.length > 0 ? panelActivations.map((activation) => (
-                      <button
-                        key={activation.id}
-                        onClick={() => onOpenActivation(activation.id)}
-                        className="flex w-full items-center justify-between rounded-lg border border-border/70 bg-background px-3 py-2 text-left hover:bg-accent"
-                      >
-                        <span className="text-sm font-medium text-foreground">{activation.name}</span>
-                        <span className="text-xs text-muted-foreground">{activation.status}</span>
-                      </button>
-                    )) : (
+                    {panelActivations.length > 0 ? panelActivations.map((activation) => {
+                      const meta = activationMetaById.get(activation.id) ?? activation;
+                      const activationStatus = meta.status ?? activation.status;
+                      const activationLabel = activationStatus ? activationStatus.charAt(0).toUpperCase() + activationStatus.slice(1) : "Status";
+                      return (
+                        <button
+                          key={activation.id}
+                          onClick={() => onOpenActivation(activation.id)}
+                          className="flex w-full flex-col gap-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-left hover:bg-accent"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-foreground">{activation.name}</span>
+                            <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-medium text-foreground-secondary">
+                              {activationLabel}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                            <span>{meta.channel ?? "Channel not specified"}</span>
+                            <span>•</span>
+                            <span>{meta.whenLabel ?? "Timing unavailable"}</span>
+                          </div>
+                          <p className="text-xs text-foreground-secondary">{meta.description ?? meta.context ?? "Activation details pending."}</p>
+                        </button>
+                      );
+                    }) : (
                       <p className="text-sm text-muted-foreground">No activations for this segment yet.</p>
                     )}
                   </div>
@@ -2872,10 +2920,6 @@ function IntegrationsPage() {
   };
   type AccountDraft = {
     accountName: string;
-    username: string;
-    password: string;
-    apiKey: string;
-    secretKey: string;
   };
   type ConnectedAccount = AccountDraft & { id: string };
   type OfflineEventSetDraft = {
@@ -2928,13 +2972,8 @@ function IntegrationsPage() {
   ];
 
   const buildDefaultAccount = (integration: IntegrationRecord): AccountDraft => {
-    const id = integration.id.replace(/-/g, "_");
     return {
       accountName: `${integration.name} primary account`,
-      username: `demo_${id}@lexer.local`,
-      password: "DemoPass_2026!",
-      apiKey: `lxr_pk_${id}_a1b2c3d4`,
-      secretKey: `lxr_sk_${id}_9x8y7z6w`,
     };
   };
 
@@ -2968,10 +3007,6 @@ function IntegrationsPage() {
     const nextOrdinal = (connectedAccountsByIntegration[integration.id]?.length ?? 0) + 1;
     return {
       accountName: `${integration.name} account ${nextOrdinal}`,
-      username: "",
-      password: "",
-      apiKey: "",
-      secretKey: "",
     };
   };
 
@@ -2980,10 +3015,6 @@ function IntegrationsPage() {
       const integration = integrations.find((item) => item.id === integrationId);
       const current = prev[integrationId] ?? (integration ? defaultAccountForIntegration(integration) : {
         accountName: "",
-        username: "",
-        password: "",
-        apiKey: "",
-        secretKey: "",
       });
       return {
         ...prev,
@@ -3174,7 +3205,7 @@ function IntegrationsPage() {
     });
   };
 
-  const connectIntegration = (integrationId: string) => {
+  const finalizeIntegrationConnect = (integrationId: string) => {
     const integration = integrations.find((item) => item.id === integrationId);
     if (!integration) return;
     const draft = getAccountDraft(integration);
@@ -3193,6 +3224,40 @@ function IntegrationsPage() {
         ? { ...item, status: "Connected", updated: "Synced just now" }
         : item
     )));
+  };
+
+  const openFivetranMockLogin = (integrationId: string) => {
+    if (typeof window === "undefined") return;
+    const popup = window.open("", "fivetran-mock-login", "popup=yes,width=520,height=640");
+    if (!popup) return;
+
+    popup.document.title = "Fivetran Login (Demo)";
+    popup.document.body.innerHTML = `
+      <div style="font-family: Rubik, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; min-height: 100vh; margin: 0; padding: 24px; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 100%; max-width: 420px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12); padding: 20px;">
+          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">Fivetran login (Demo)</h1>
+          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Use the prefilled credentials and click Connect to return to Lexer.</p>
+          <label style="display: block; margin-bottom: 12px;">
+            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Email</span>
+            <input value="demo@fivetran.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+          </label>
+          <label style="display: block; margin-bottom: 16px;">
+            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Password</span>
+            <input type="password" value="DemoPass_2026!" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
+          </label>
+          <button id="connect-btn" style="width: 100%; height: 38px; border: 0; border-radius: 8px; background: #115E59; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer;">Connect</button>
+        </div>
+      </div>
+    `;
+
+    popup.document.getElementById("connect-btn")?.addEventListener("click", () => {
+      finalizeIntegrationConnect(integrationId);
+      popup.close();
+    });
+  };
+
+  const connectIntegration = (integrationId: string) => {
+    openFivetranMockLogin(integrationId);
   };
 
   const disconnectIntegration = (integrationId: string) => {
@@ -3231,10 +3296,6 @@ function IntegrationsPage() {
       ...prev,
       [integration.id]: {
         accountName: selected.accountName,
-        username: selected.username,
-        password: selected.password,
-        apiKey: selected.apiKey,
-        secretKey: selected.secretKey,
       },
     }));
   };
@@ -3376,7 +3437,6 @@ function IntegrationsPage() {
   const renderAccountEditor = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
     const draft = getAccountDraft(integration);
     const inputBgClass = mode === "docked" ? "bg-card" : "bg-background";
-    const showApiCredentials = integration.id !== "meta-ads";
     const showOfflineEventSets = integration.id === "meta-ads";
     const offlineEventSets = offlineEventSetsByIntegration[integration.id] ?? [];
     const canAddOfflineEventSet = offlineEventSets.some((eventSet) => eventSet.saved);
@@ -3399,43 +3459,6 @@ function IntegrationsPage() {
               className={cn("mt-0.5 h-8", inputBgClass)}
             />
           </div>
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">Username</p>
-            <Input
-              value={draft.username}
-              onChange={(e) => updateAccountDraft(integration.id, "username", e.target.value)}
-              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-            />
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">Password</p>
-            <Input
-              type="password"
-              value={draft.password}
-              onChange={(e) => updateAccountDraft(integration.id, "password", e.target.value)}
-              className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-            />
-          </div>
-          {showApiCredentials ? (
-            <>
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground">API key</p>
-                <Input
-                  value={draft.apiKey}
-                  onChange={(e) => updateAccountDraft(integration.id, "apiKey", e.target.value)}
-                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-                />
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground">Secret key</p>
-                <Input
-                  value={draft.secretKey}
-                  onChange={(e) => updateAccountDraft(integration.id, "secretKey", e.target.value)}
-                  className={cn("mt-0.5 h-8 font-mono text-xs", inputBgClass)}
-                />
-              </div>
-            </>
-          ) : null}
 
           <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
             <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>
@@ -4216,6 +4239,8 @@ function Sidebar({
     "awaiting-approval": state.activations.filter((a) => a.status === "awaiting-approval").length,
     sent: state.activations.filter((a) => a.status === "sent").length,
     completed: state.activations.filter((a) => a.status === "completed").length,
+    failed: state.activations.filter((a) => a.status === "failed").length,
+    failed: state.activations.filter((a) => a.status === "failed").length,
   } as const;
 
   const newChat = () => {
@@ -4246,10 +4271,15 @@ function Sidebar({
   const onNewChat = page === "chat" && state.activeConversationId == null;
 
   return (
-    <div className={cn("flex h-full shrink-0 flex-col overflow-hidden bg-sidebar p-2 transition-[width] duration-200", collapsed ? "w-14" : "w-[16rem]")}>
-      <div className="flex h-full flex-col overflow-hidden rounded-lg bg-sidebar">
-        <div className={cn("flex items-center p-2", collapsed && "justify-center")}>
-          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype-playground-master" />
+    <div className={cn("flex h-full shrink-0 flex-col overflow-visible bg-sidebar p-2 transition-[width] duration-200", collapsed ? "w-14" : "w-[16rem]")}>
+      <div className="flex h-full flex-col overflow-visible rounded-lg bg-sidebar">
+        <div className={cn("p-2", collapsed && "flex flex-col items-center")}>
+          <div className={cn("relative z-20 mb-2", collapsed && "flex justify-center")}>
+            <BetaBadge />
+          </div>
+          <div className={cn("flex items-center", collapsed && "justify-center")}>
+            <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype-playground-master" />
+          </div>
         </div>
         <div className={cn("flex flex-1 flex-col gap-4 overflow-y-auto py-2", collapsed ? "px-0" : "px-2")}>
           <ul className="flex list-none flex-col gap-0.5">
@@ -4327,6 +4357,7 @@ function Sidebar({
                   {activationCount["awaiting-approval"] > 0 && <li><SubNavRow label="Awaiting approval" active={inActivations && activationFilter === "awaiting-approval"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount["awaiting-approval"]}</span>} onClick={() => onSelectActivationFilter("awaiting-approval")} /></li>}
                   {activationCount.sent > 0 && <li><SubNavRow label="Sent" active={inActivations && activationFilter === "sent"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.sent}</span>} onClick={() => onSelectActivationFilter("sent")} /></li>}
                   {activationCount.completed > 0 && <li><SubNavRow label="Completed" active={inActivations && activationFilter === "completed"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.completed}</span>} onClick={() => onSelectActivationFilter("completed")} /></li>}
+                  {activationCount.failed > 0 && <li><SubNavRow label="Failed" active={inActivations && activationFilter === "failed"} trailing={<span className="text-xs tabular-nums text-muted-foreground">{activationCount.failed}</span>} onClick={() => onSelectActivationFilter("failed")} /></li>}
                 </ul>
               )}
             </li>

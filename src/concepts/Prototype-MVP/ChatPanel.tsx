@@ -1,8 +1,10 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { BetaNotice } from "@/components/BetaNotice";
 import { LexiMark } from "@/components/chat/LexiMark";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { RiCheckLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonal2Line, RiCollapseDiagonal2Line } from "@remixicon/react";
+import { RiCheckLine, RiCloseLine, RiResetLeftLine, RiCornerDownLeftLine, RiBookOpenLine, RiThumbUpLine, RiThumbDownLine, RiPushpin2Line, RiExpandDiagonal2Line, RiCollapseDiagonal2Line } from "@remixicon/react";
 import { useSession } from "./store";
 import { RichText, MentionText, stripMentions } from "./components/RichText";
 import { ProposedBlock } from "./components/ProposedBlock";
@@ -369,7 +371,7 @@ function ActivationBuildCard({
   const [editingName, setEditingName] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [showActivationConnection, setShowActivationConnection] = useState(false);
-  const [selectedSourceId, setSelectedSourceId] = useState("src-meta");
+  const [selectedSourceId, setSelectedSourceId] = useState("src-klaviyo");
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [connectionConfirmed, setConnectionConfirmed] = useState(false);
   const [approvalSent, setApprovalSent] = useState(false);
@@ -427,14 +429,16 @@ function ActivationBuildCard({
       selectedMatch: "mobile_92",
     },
   ]);
+  const [primaryFieldRowId, setPrimaryFieldRowId] = useState("map-email");
+
+  const getFirstAvailableMatch = (fieldType: string, rows: typeof fieldRows, excludedRowId?: string) => (
+    (fieldMatchOptions[fieldType] ?? []).find((option) =>
+      !rows.some((row) => row.id !== excludedRowId && row.selectedMatch === option.value),
+    )?.value ?? ""
+  );
 
   const sourceList = [
-    { id: "src-meta", name: "Meta Ads" },
     { id: "src-klaviyo", name: "Klaviyo" },
-    { id: "src-braze", name: "Braze" },
-    { id: "src-google-ads", name: "Google Ads" },
-    { id: "src-sfmc", name: "Salesforce Marketing Cloud" },
-    { id: "src-amplitude", name: "Amplitude" },
   ];
 
   const accountsBySource: Record<string, Array<{ id: string; name: string; region: "AU" | "NZ" | "USA" }>> = {
@@ -478,7 +482,10 @@ function ActivationBuildCard({
 
   const hasSelectedSource = Boolean(selectedSourceId);
   const hasSelectedAccounts = selectedAccounts.length > 0;
-  const hasValidFieldMappings = fieldRows.every((row) => Boolean(row.fieldType) && Boolean(row.selectedMatch));
+  const hasValidFieldMappings = fieldRows.every((row) => Boolean(row.fieldType) && Boolean(row.selectedMatch))
+    && new Set(fieldRows.map((row) => row.fieldType)).size === fieldRows.length
+    && new Set(fieldRows.map((row) => row.selectedMatch)).size === fieldRows.length;
+  const hasAvailableFieldType = fieldTypeOptions.some((option) => !fieldRows.some((row) => row.fieldType === option.value));
   const requiresStartDate = sendTiming === "schedule-send";
   const hasStartDate = !requiresStartDate || Boolean(scheduledStartDate);
   const requiresStartTime = sendTiming === "schedule-send";
@@ -501,16 +508,25 @@ function ActivationBuildCard({
   };
 
   const addMoreFields = () => {
-    setFieldRows((prev) => {
-      return [
-        ...prev,
-        {
-          id: `map-extra-${prev.length + 1}`,
-          fieldType: "email",
-          selectedMatch: "email_98",
-        },
-      ];
-    });
+    const nextFieldType = fieldTypeOptions.find((option) => !fieldRows.some((row) => row.fieldType === option.value));
+    if (!nextFieldType) return;
+
+    let nextRowNumber = fieldRows.length + 1;
+    while (fieldRows.some((row) => row.id === `map-extra-${nextRowNumber}`)) nextRowNumber += 1;
+
+    const newRow = {
+      id: `map-extra-${nextRowNumber}`,
+      fieldType: nextFieldType.value,
+      selectedMatch: getFirstAvailableMatch(nextFieldType.value, fieldRows),
+    };
+    setFieldRows((prev) => [...prev, newRow]);
+    if (fieldRows.length === 0) setPrimaryFieldRowId(newRow.id);
+  };
+
+  const removeFieldMapping = (rowId: string) => {
+    const remainingRows = fieldRows.filter((row) => row.id !== rowId);
+    setFieldRows(remainingRows);
+    if (primaryFieldRowId === rowId) setPrimaryFieldRowId(remainingRows[0]?.id ?? "");
   };
 
   return (
@@ -644,23 +660,41 @@ function ActivationBuildCard({
           <div className="mt-3 rounded-xl border border-border bg-background p-3">
             <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Field mapping</p>
             <div className="mt-2 space-y-2">
+              <div className="grid grid-cols-[minmax(7rem,auto)_minmax(0,1fr)_auto] gap-2 md:grid-cols-[minmax(7rem,auto)_170px_minmax(0,1fr)_auto]">
+                <p className="text-center text-xs font-medium text-muted-foreground">Primary key</p>
+                <p className="text-xs font-medium text-muted-foreground">Destination field</p>
+                <p className="col-start-2 row-start-2 text-xs font-medium text-muted-foreground md:col-auto md:row-auto">Customer field</p>
+                <span className="col-start-3 row-start-1 md:col-auto md:row-auto" aria-hidden="true" />
+              </div>
               {fieldRows.map((row) => (
-                <div key={row.id} className="grid gap-2 md:grid-cols-[170px_1fr] md:items-center">
+                <div key={row.id} className="grid grid-cols-[minmax(7rem,auto)_minmax(0,1fr)_auto] gap-2 md:grid-cols-[minmax(7rem,auto)_170px_minmax(0,1fr)_auto] md:items-center">
+                  <div className="flex h-9 items-center justify-center">
+                    <Checkbox
+                      aria-label={`Use ${fieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType} as the primary key`}
+                      checked={primaryFieldRowId === row.id}
+                      onCheckedChange={() => setPrimaryFieldRowId(row.id)}
+                    />
+                  </div>
                   <select
                     value={row.fieldType}
                     onChange={(e) => {
                       const nextFieldType = e.target.value;
-                      const defaultMatch = fieldMatchOptions[nextFieldType]?.[0]?.value ?? "";
                       setFieldRows((prev) => prev.map((item) => (
                         item.id === row.id
-                          ? { ...item, fieldType: nextFieldType, selectedMatch: defaultMatch }
+                          ? { ...item, fieldType: nextFieldType, selectedMatch: getFirstAvailableMatch(nextFieldType, prev, row.id) }
                           : item
                       )));
                     }}
                     className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
                   >
                     {fieldTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option
+                        key={option.value}
+                        value={option.value}
+                        disabled={fieldRows.some((otherRow) => otherRow.id !== row.id && otherRow.fieldType === option.value)}
+                      >
+                        {option.label}
+                      </option>
                     ))}
                   </select>
                   <select
@@ -669,12 +703,27 @@ function ActivationBuildCard({
                       const next = e.target.value;
                       setFieldRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, selectedMatch: next } : item)));
                     }}
-                    className="h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
+                    className="col-start-2 row-start-2 h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40 md:col-auto md:row-auto"
                   >
                     {(fieldMatchOptions[row.fieldType] ?? []).map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option
+                        key={option.value}
+                        value={option.value}
+                        disabled={fieldRows.some((otherRow) => otherRow.id !== row.id && otherRow.selectedMatch === option.value)}
+                      >
+                        {option.label}
+                      </option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    title="Remove field mapping"
+                    aria-label={`Remove ${fieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType} mapping`}
+                    onClick={() => removeFieldMapping(row.id)}
+                    className="col-start-3 row-start-1 flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:col-auto md:row-auto"
+                  >
+                    <RiCloseLine className="size-4" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -683,7 +732,8 @@ function ActivationBuildCard({
               <button
                 type="button"
                 onClick={addMoreFields}
-                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
+                disabled={!hasAvailableFieldType}
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Add More Fields
               </button>
@@ -738,7 +788,7 @@ function ActivationBuildCard({
                     : "border-border bg-card text-foreground hover:bg-accent",
                 )}
               >
-                Re-Occuring
+                Recurring
               </button>
             </div>
 
@@ -921,7 +971,7 @@ function ActivationBuildCard({
                           const matchLabel = (fieldMatchOptions[row.fieldType] ?? []).find((option) => option.value === row.selectedMatch)?.label ?? row.selectedMatch;
                           return (
                             <li key={`summary-${row.id}`}>
-                              {fieldLabel} {"->"} {matchLabel}
+                              {fieldLabel} {"->"} {matchLabel}{primaryFieldRowId === row.id ? " (Primary key)" : ""}
                             </li>
                           );
                         })}
@@ -934,7 +984,7 @@ function ActivationBuildCard({
                     </p>
                     <p className="text-foreground">
                       <span className="font-medium">Cadence:</span>{" "}
-                      {sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off"}
+                      {sendCadence === "re-occurring" ? "Recurring" : "Once Off"}
                     </p>
                     <p className="text-foreground">
                       <span className="font-medium">Date range:</span>{" "}
@@ -1062,10 +1112,10 @@ function ActivationBuildCard({
                               fieldMapping: fieldRows.map((row) => {
                                 const fieldLabel = fieldTypeOptions.find((option) => option.value === row.fieldType)?.label ?? row.fieldType;
                                 const matchLabel = (fieldMatchOptions[row.fieldType] ?? []).find((option) => option.value === row.selectedMatch)?.label ?? row.selectedMatch;
-                                return `${fieldLabel} -> ${matchLabel}`;
+                                return `${fieldLabel} -> ${matchLabel}${primaryFieldRowId === row.id ? " (Primary key)" : ""}`;
                               }),
                               timing: sendTiming === "schedule-send" ? "Schedule Send" : "Send Now",
-                              cadence: sendCadence === "re-occurring" ? "Re-Occuring" : "Once Off",
+                              cadence: sendCadence === "re-occurring" ? "Recurring" : "Once Off",
                               recurringTime: sendCadence === "re-occurring" ? recurringSendTime : undefined,
                               customers: [
                                 { id: `${activationId}-cust-1`, name: `${block.segmentName} - Ava Thompson`, meta: "AOV $142 · Last purchase 34 days ago" },
@@ -1391,6 +1441,7 @@ function StartHero() {
     <div className="flex flex-col items-center gap-4 text-center animate-in fade-in-0 duration-300">
       <LexiMark className="size-11" />
       <h2 className="text-lg font-semibold text-foreground">What are we working on?</h2>
+      <BetaNotice className="mb-0" />
     </div>
   );
 }
@@ -1474,7 +1525,10 @@ interface ChatPanelProps {
 
 export function ChatPanel({ narrow }: ChatPanelProps) {
   const { state, dispatch } = useSession();
-  const mentionGroups = useMemo(() => buildMentionGroups(state.activations), [state.activations]);
+  const mentionGroups = useMemo(
+    () => buildMentionGroups(state.activations).filter((group) => group.label === "Segments"),
+    [state.activations],
+  );
   const plusSegmentItems = useMemo<DefRef[]>(() => {
     const savedSegments = Array.from(state.artifacts.values())
       .filter((artifact) => artifact.type === "segment" && artifact.status === "saved" && artifact.body?.kind === "segment")
@@ -3640,7 +3694,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
             placeholder={empty ? "Message Lexi..." : "Reply to Lexi..."}
             onSubmit={handleSubmit}
             disabled={busy}
-            enableMentions={false}
+            enableMentions
           />
           {empty ? (
             <StartPrompts

@@ -1,0 +1,30 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ECF7FF"/>
+      <stop offset="1" stop-color="#F8FCFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="720" rx="40" fill="url(#bg)"/>
+  <rect x="60" y="60" width="1080" height="600" rx="28" fill="#FFFFFF" stroke="#B9DFFC" stroke-width="3"/>
+
+  <rect x="100" y="104" width="220" height="44" rx="12" fill="#E6F4FF"/>
+  <text x="210" y="132" text-anchor="middle" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="20" font-weight="700" fill="#0D5C97">Segment confirmation</text>
+
+  <circle cx="1060" cy="126" r="22" fill="#D1FADF"/>
+  <path d="M1049 126L1058 135L1072 119" stroke="#067647" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="100" y="206" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="42" font-weight="700" fill="#0F172A">BF reactivation core (90-180d)</text>
+  <text x="100" y="246" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="24" fill="#334155">Segment saved and ready for targeting</text>
+
+  <rect x="100" y="288" width="1000" height="132" rx="18" fill="#F8FBFF" stroke="#DDEFFE"/>
+  <text x="130" y="332" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="22" font-weight="600" fill="#0F172A">Audience</text>
+  <text x="130" y="368" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="22" fill="#334155">52,000 customers</text>
+  <text x="130" y="402" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="20" fill="#64748B">Updated Jul 2, 2026</text>
+
+  <rect x="100" y="454" width="318" height="62" rx="14" fill="#EAF4FF"/>
+  <text x="259" y="492" text-anchor="middle" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="21" font-weight="600" fill="#0D5C97">Post-send step: confirmed</text>
+
+  <rect x="940" y="554" width="160" height="52" rx="12" fill="#EEF2F6"/>
+  <text x="1020" y="587" text-anchor="middle" font-family="ui-sans-serif, -apple-system, Segoe UI" font-size="20" font-weight="600" fill="#334155">Jul 6, 2026</text>
+</svg>
