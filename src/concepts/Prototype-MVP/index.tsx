@@ -67,6 +67,7 @@ import { ContextPanel } from "./ContextPanel";
 import { SegmentsPage, DefinitionsPage, MetricsPage, BenchmarksPage, ScorecardPage, DashboardsPage, InsightsPage } from "./pages";
 import { PlaybookPage } from "./PlaybookPage";
 import { SkillsPage } from "./SkillsPage";
+import { ContextV1Page } from "./ContextV1Page";
 import { SpacePage } from "./SpacePage";
 import { SpacesPage } from "./SpacesPage";
 import { ActivationsPage, ActivationDetail, type ActivationEditDraft } from "./ActivationsPage";
@@ -80,7 +81,7 @@ import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 import { BetaBadge } from "@/components/BetaBadge";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "skills" | "calendar" | "insights" | "sources" | "integrations" | "connect-accounts" | "activations" | "context" | "users";
+type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "skills" | "calendar" | "insights" | "sources" | "integrations" | "connect-accounts" | "activations" | "context" | "context-v1" | "users";
 type DefinitionsTab = "source" | "calculated" | "custom";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
@@ -566,12 +567,13 @@ function SegmentV1Inner() {
     : page === "insights" ? "Insights"
     : page === "users" ? "Users"
     : page === "context" ? "Context"
+    : page === "context-v1" ? "Context v1"
     : page === "sources" ? "Sources"
     : page === "integrations" ? "Integrations"
     : page === "connect-accounts" ? "Connect Accounts"
     : page === "activations" ? "Activations"
     : (activeConv?.title ?? "New chat");
-  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "definitions" || page === "skills" || (page === "playbook" && playbookSection === "rules");
+  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "context-v1" || page === "definitions" || page === "skills" || (page === "playbook" && playbookSection === "rules");
   const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations" || page === "connect-accounts";
   const inSpace = page === "space" || page === "space-detail";
   const inActivations = page === "activations";
@@ -773,6 +775,10 @@ function SegmentV1Inner() {
           ) : page === "users" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <UsersPage />
+            </div>
+          ) : page === "context-v1" ? (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <ContextV1Page />
             </div>
           ) : page === "context" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
@@ -2845,16 +2851,6 @@ export function BusinessContextPage({ onboarding }: {
       isConfirmed: false,
     },
     {
-      id: "customer-terminology",
-      label: "Customer terminology - customers/members/guests",
-      isCustom: false,
-      text: "",
-      savedText: "",
-      isEditing: false,
-      isSaved: false,
-      isConfirmed: false,
-    },
-    {
       id: "data",
       label: "Data",
       isCustom: false,
@@ -2931,6 +2927,16 @@ export function BusinessContextPage({ onboarding }: {
       text: "",
       savedText: "",
       isEditing: false,
+      isSaved: false,
+      isConfirmed: false,
+    },
+    {
+      id: "customer-terminology",
+      label: "Customer terminology",
+      isCustom: false,
+      text: "We call customers clients and guests. Clients are in-store customers with multiple purchases; guests are one-time customers.",
+      savedText: "",
+      isEditing: true,
       isSaved: false,
       isConfirmed: false,
     },
@@ -3058,8 +3064,9 @@ export function BusinessContextPage({ onboarding }: {
   const [pendingClearCardId, setPendingClearCardId] = useState<string | null>(null);
   const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string | null>(null);
   const [blockedDeleteCategoryLabel, setBlockedDeleteCategoryLabel] = useState<string | null>(null);
-  const [activeSectionId, setActiveSectionId] = useState("uncategorised");
-  const [selectedCardId, setSelectedCardId] = useState("new-entry");
+  const [activeSectionId, setActiveSectionId] = useState("customer-intelligence");
+  const [selectedCardId, setSelectedCardId] = useState("customer-terminology");
+  const [showCustomerInterpretation, setShowCustomerInterpretation] = useState(false);
   const [draftEntryLabel, setDraftEntryLabel] = useState("");
   const [draftEntryText, setDraftEntryText] = useState("");
   const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
@@ -3072,7 +3079,7 @@ export function BusinessContextPage({ onboarding }: {
   const [pendingCategoryCardId, setPendingCategoryCardId] = useState<string | null>(null);
   const [inlineCategoryCardId, setInlineCategoryCardId] = useState<string | null>(null);
   const [openCategoryDropdownCardId, setOpenCategoryDropdownCardId] = useState<string | null>(null);
-  const [expandedSections, setExpandedSections] = useState(() => new Set(["brand"]));
+  const [expandedSections, setExpandedSections] = useState(() => new Set(["brand", "customer-intelligence"]));
   const sectionIds = new Set([
     "brand",
     "data",
@@ -3082,6 +3089,21 @@ export function BusinessContextPage({ onboarding }: {
     "product-catalog",
   ]);
   const entryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("prototype-mvp:customer-terminology");
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as { text?: unknown };
+      if (typeof parsed.text !== "string") return;
+      setCards((current) => current.map((card) => card.id === "customer-terminology"
+        ? { ...card, text: parsed.text as string, savedText: parsed.text as string, isEditing: false, isSaved: true, isConfirmed: true }
+        : card));
+      setShowCustomerInterpretation(true);
+    } catch {
+      // Ignore unavailable or malformed browser storage and use the seeded defaults.
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedCardId) {
@@ -3094,10 +3116,12 @@ export function BusinessContextPage({ onboarding }: {
   };
 
   const startEditing = (cardId: string) => {
+    if (cardId === "customer-terminology") setShowCustomerInterpretation(false);
     updateCard(cardId, (card) => ({ ...card, isEditing: true, isSaved: false, isConfirmed: false }));
   };
 
   const updateCardText = (cardId: string, text: string) => {
+    if (cardId === "customer-terminology") setShowCustomerInterpretation(false);
     updateCard(cardId, (card) => ({ ...card, text }));
   };
 
@@ -3112,6 +3136,14 @@ export function BusinessContextPage({ onboarding }: {
   };
 
   const confirmCard = (cardId: string) => {
+    const card = cards.find((item) => item.id === cardId);
+    if (cardId === "customer-terminology" && card) {
+      try {
+        window.localStorage.setItem("prototype-mvp:customer-terminology", JSON.stringify({ text: card.text }));
+      } catch {
+        // Keep the in-page confirmation available if browser storage is unavailable.
+      }
+    }
     updateCard(cardId, (card) => card.isCustom && !card.categoryId
       ? card
       : ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
@@ -3522,11 +3554,33 @@ export function BusinessContextPage({ onboarding }: {
                   {card.isCustom && !card.categoryId && <p className="mt-1 text-xs text-muted-foreground">Choose a category before saving this entry.</p>}
                   <p className="mt-3 text-[11px] font-semibold text-muted-foreground">Description</p>
                   <Textarea rows={4} value={card.text} readOnly={!editing} onChange={(event) => updateCardText(card.id, event.target.value)} className="mt-1 min-h-20 read-only:cursor-default read-only:bg-muted/25" />
+                  {card.id === "customer-terminology" && showCustomerInterpretation && (
+                    <div aria-live="polite" className="mt-4 space-y-3 rounded-lg border border-border bg-muted/40 p-3">
+                      <p className="text-sm font-semibold text-foreground">Lexi interpretation</p>
+                      <ul className="space-y-2 text-sm leading-relaxed text-foreground-secondary">
+                        <li><strong className="text-foreground">Client:</strong> a customer who purchases in-store and has made multiple purchases (repeat, identified customer).</li>
+                        <li><strong className="text-foreground">Guest:</strong> a customer who has made a single, one-time purchase.</li>
+                      </ul>
+                      {confirmed ? (
+                        <p className="text-xs font-medium text-foreground">Confirmed and saved to context.</p>
+                      ) : (
+                        <Button type="button" size="sm" disabled={!editing || !card.text.trim()} onClick={() => confirmCard(card.id)}>
+                          Confirm and save
+                        </Button>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     <Button variant="outline" size="sm" disabled={!editing || lockByConfirmation} onClick={() => setPendingClearCardId(card.id)}>Clear</Button>
                     <Button variant="outline" size="sm" onClick={() => startEditing(card.id)}>Edit</Button>
                     <Button variant="outline" size="sm" disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId)} onClick={() => saveCard(card.id)}>{saved && !editing ? "Saved" : "Save"}</Button>
-                    <Button size="sm" disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId)} onClick={() => confirmCard(card.id)}>{confirmed && !editing ? "Confirmed" : "Confirm"}</Button>
+                    <Button
+                      size="sm"
+                      disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId) || (card.id === "customer-terminology" && (!card.text.trim() || showCustomerInterpretation))}
+                      onClick={() => card.id === "customer-terminology" ? setShowCustomerInterpretation(true) : confirmCard(card.id)}
+                    >
+                      {confirmed && !editing ? "Confirmed" : "Confirm"}
+                    </Button>
                     <Button variant="ghost" size="sm" className="ml-auto text-destructive hover:text-destructive" onClick={() => setPendingDeleteEntryId(card.id)}><RiDeleteBinLine className="mr-1 size-4" />Delete</Button>
                   </div>
                   {saved && !confirmed && !editing && <p className="mt-2 text-xs text-foreground-secondary">Changes have been saved but not approved or applied to your context layer.</p>}
@@ -5031,7 +5085,7 @@ function Sidebar({
   const inActivations = page === "activations";
   const inContext = page === "context";
   const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources";
-  const inKnowledge = inContext || page === "definitions" || (page === "playbook" && playbookSection === "rules");
+  const inKnowledge = inContext || page === "context-v1" || page === "definitions" || (page === "playbook" && playbookSection === "rules");
   const [activationsOpen, setActivationsOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
@@ -5129,6 +5183,7 @@ function Sidebar({
               {!collapsed && knowledgeOpen && (
                 <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
                   <li><SubNavRow label="Context" active={page === "context"} onClick={() => onNavigate("context")} /></li>
+                  <li><SubNavRow label="Context v1" active={page === "context-v1"} onClick={() => onNavigate("context-v1")} /></li>
                   <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
                   <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
                   <li><SubNavRow label="Skills" active={page === "skills"} onClick={() => onNavigate("skills")} /></li>

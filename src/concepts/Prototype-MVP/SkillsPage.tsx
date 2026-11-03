@@ -8,7 +8,6 @@ import { Switch } from "@/components/ui/Switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
-import { Markdown } from "./Markdown";
 import { SkillEditor } from "./SkillEditor";
 
 type SkillRevision = {
@@ -237,6 +236,7 @@ export function SkillsPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
+  const [viewingCustomerMix, setViewingCustomerMix] = useState(false);
   const [newSkillOpen, setNewSkillOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -341,7 +341,7 @@ export function SkillsPage() {
       skillCounts={skillCounts}
       uncategorisedCount={uncategorisedCount}
       totalCount={skills.length}
-      onSelect={(id) => { setSelectedCategoryId(id); setEditingSkillId(null); }}
+      onSelect={(id) => { setSelectedCategoryId(id); setEditingSkillId(null); setViewingCustomerMix(false); }}
       onCreate={openNewCategoryDialog}
       onEdit={openEditCategoryDialog}
       onDelete={setCategoryToDelete}
@@ -394,6 +394,61 @@ export function SkillsPage() {
       />
     </div>
   );
+
+  if (viewingCustomerMix) {
+    const customerMix = skills.find((skill) => skill.id === "customer-mix");
+    if (!customerMix) return null;
+
+    return (
+      <div className="flex h-full min-w-0 overflow-hidden bg-background">
+        {categoryRail}
+        <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className="mb-4">{searchBar}</div>
+          <div className="mx-auto w-full max-w-3xl space-y-4 pb-8">
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold text-foreground">Customer Mix</h1>
+                  <Badge variant="outline" size="sm" className="border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                    <RiGlobalLine className="size-3" />
+                    Global
+                  </Badge>
+                  <Badge variant="outline" size="sm">Read only</Badge>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setViewingCustomerMix(false)}>Back to skills</Button>
+            </header>
+
+            <section className="rounded-xl border border-border bg-card p-4">
+              <div>
+                <h2 className="text-xs font-semibold text-foreground-secondary">Title</h2>
+                <p className="mt-1 text-sm font-medium text-foreground">{customerMix.name}</p>
+              </div>
+              <div className="mt-4 border-t border-border pt-3">
+                <h2 className="text-xs font-semibold text-foreground-secondary">Description</h2>
+                <p className="mt-1 text-sm leading-relaxed text-foreground-secondary">{customerMix.description}</p>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-border bg-card p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-foreground">Body</h2>
+                <span className="text-xs text-muted-foreground">Illustrative dummy data</span>
+              </div>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
+                During Black Friday weekend, 28 November to 1 December 2025, 15,830 buyers placed 24,860 orders and generated $4.48 million AUD in revenue. Average order value was $180.
+                {"\n\n"}
+                Returning buyers were the largest cohort, with 8,420 buyers, 15,780 orders, and $2.76 million in revenue. New buyers contributed 5,240 buyers, 6,180 orders, and $1.18 million. Reactivated buyers contributed 2,170 buyers, 2,900 orders, and $544,000.
+                {"\n\n"}
+                New and returning buyers contributed most of the event revenue. Reactivated buyers were a smaller share of the audience. Compare these illustrative figures with the same event period in 2024 before changing the win-back strategy.
+              </p>
+            </section>
+          </div>
+        </div>
+        {categoryDialogs}
+      </div>
+    );
+  }
 
   if (editingSkill) {
     return (
@@ -451,8 +506,12 @@ export function SkillsPage() {
               <TableRow key={skill.id}>
                 <TableCell className="min-w-[34rem] py-2.5">
                   <div className="flex items-center gap-2">
-                    {skill.id === "bfcm-sale-strategy" ? (
-                      <button type="button" onClick={() => setEditingSkillId(skill.id)} className="text-left text-sm font-semibold text-foreground hover:text-primary hover:underline">
+                    {skill.id === "bfcm-sale-strategy" || skill.id === "customer-mix" ? (
+                      <button
+                        type="button"
+                        onClick={() => skill.id === "bfcm-sale-strategy" ? setEditingSkillId(skill.id) : setViewingCustomerMix(true)}
+                        className="text-left text-sm font-semibold text-foreground hover:text-primary hover:underline"
+                      >
                         {skill.name}
                       </button>
                     ) : <p className="text-sm font-semibold text-foreground" aria-disabled="true">{skill.name}</p>}

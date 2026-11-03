@@ -29,6 +29,7 @@ import type { Artifact, ContentBlock, Conversation, ReasoningAssumption, StepSpe
 
 // ─── Mention picker content — kept in sync with the Data pages ───────────────
 // The @-mention panel offers the same objects the user sees under Data:
+      window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "segment-from-chat" } }));
 // segments come from the Segments page (BRAIN_GROUPS); metrics & attributes come
 // from the Definitions page (MOCK_DEFINITIONS, gaps excluded).
 
@@ -1193,6 +1194,7 @@ function SourcesBar({ ids }: { ids: string[] }) {
 
   return (
     <button
+      onClickCapture={() => window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "check-answer" } }))}
       onClick={() => dispatch({ type: "OPEN_SOURCES", ids })}
       title="View sources"
       className="mt-0.5 flex w-fit max-w-full items-center gap-1.5 overflow-hidden rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-left transition-colors hover:border-primary/40 hover:bg-accent"
@@ -1344,63 +1346,6 @@ function StartHero() {
     <div className="flex flex-col items-center gap-4 text-center animate-in fade-in-0 duration-300">
       <LexiMark className="size-11" />
       <h2 className="text-lg font-semibold text-foreground">What are we working on?</h2>
-    </div>
-  );
-}
-
-// Suggested seed prompts shown under the editor on the empty screen.
-function StartPrompts({
-  prompts,
-  onPick,
-  onQuickBuildSegment,
-  onQuickBuildActivation,
-  onQuickSegmentActivationSingleChat,
-}: {
-  prompts: { id: string; text: string }[];
-  onPick: (p: { id: string; text: string }) => void;
-  onQuickBuildSegment: () => void;
-  onQuickBuildActivation: () => void;
-  onQuickSegmentActivationSingleChat: () => void;
-}) {
-  const quickStartAnchorPrompt = "Black Friday is in a few weeks and I would like to know about my customers from last year.";
-
-  return (
-    <div className="mt-3 flex flex-col gap-2 animate-in fade-in-0 duration-300">
-      {prompts.map((p) => (
-        <div key={p.id} className="flex flex-col gap-1.5">
-          <button
-            onClick={() => onPick(p)}
-            className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
-          >
-            “{p.text}”
-          </button>
-          {p.text.trim() === quickStartAnchorPrompt ? (
-            <>
-              <button
-                type="button"
-                onClick={onQuickBuildSegment}
-                className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
-              >
-                "Build a new segment"
-              </button>
-              <button
-                type="button"
-                onClick={onQuickBuildActivation}
-                className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
-              >
-                "Build A New Activation"
-              </button>
-              <button
-                type="button"
-                onClick={onQuickSegmentActivationSingleChat}
-                className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground-secondary transition-colors hover:bg-accent"
-              >
-                "Segment and Activation - single chat"
-              </button>
-            </>
-          ) : null}
-        </div>
-      ))}
     </div>
   );
 }
@@ -1767,6 +1712,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   // From the empty start screen, mentioning e.g. "Holiday win-back" selects and
   // auto-plays its scripted conversation. Otherwise we fall through to normal play.
   function handleSubmit(text: string, mentionIds: string[]) {
+    window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "chat-submit", text, mentionIds } }));
     const activationPrompt = "Select the segment you would you like to activate from the chat";
     const confirmationPrompt = "Is this the right segment to activate?";
 
@@ -1783,6 +1729,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
         || normalizedCancelDecision.includes(" no ");
 
       if (confirmsCancel) {
+        window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "activation-cancelled" } }));
         const activation = state.activations.find((item) => item.id === pendingActivationCancelId)
           ?? getActivation(pendingActivationCancelId);
         dispatch({ type: "UPDATE_ACTIVATION_STATUS", id: pendingActivationCancelId, status: "cancelled" });
@@ -2267,6 +2214,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
       const keepsGoing = normalizedTextForActivation === "no" || normalizedTextForActivation.includes(" no ") || normalizedTextForActivation.startsWith("no");
 
       if (confirmsCancel) {
+        window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "activation-cancelled" } }));
         setActivationBuildState(IDLE_ACTIVATION_BUILD_STATE);
         markLatestActivationConfirmationCanceled();
         setMessages((ms) => [
@@ -2599,6 +2547,45 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   }
   submitRef.current = handleSubmit;
 
+  const quickStartNewSegmentChat = useCallback(() => {
+    dispatch({ type: "NEW_CHAT" });
+    window.setTimeout(() => {
+      submitRef.current("Build a new segment", []);
+      window.setTimeout(() => {
+        submitRef.current("High value customers who shopped Black Friday last year", []);
+      }, 60);
+    }, 40);
+  }, [dispatch]);
+
+  const quickStartNewActivationChat = useCallback(() => {
+    dispatch({ type: "NEW_CHAT" });
+    window.setTimeout(() => {
+      submitRef.current("Build a new activation", []);
+    }, 40);
+  }, [dispatch]);
+
+  const quickStartSegmentActivationSingleChat = useCallback(() => {
+    dispatch({ type: "NEW_CHAT" });
+    window.setTimeout(() => {
+      submitRef.current("Build a new segment", []);
+      window.setTimeout(() => {
+        submitRef.current("VIP Loyalists", []);
+      }, 60);
+    }, 40);
+  }, [dispatch]);
+
+  useEffect(() => {
+    const onQuickStart = (event: Event) => {
+      const { workflowId } = (event as CustomEvent<{ workflowId?: string }>).detail ?? {};
+      if (workflowId === "segment") quickStartNewSegmentChat();
+      else if (workflowId === "activation") quickStartNewActivationChat();
+      else if (workflowId === "segment-activation") quickStartSegmentActivationSingleChat();
+    };
+
+    window.addEventListener("welcome-journey-test:quick-start", onQuickStart as EventListener);
+    return () => window.removeEventListener("welcome-journey-test:quick-start", onQuickStart as EventListener);
+  }, [quickStartNewActivationChat, quickStartNewSegmentChat, quickStartSegmentActivationSingleChat]);
+
   useEffect(() => {
     const onKickoff = (event: Event) => {
       const detail = (event as CustomEvent<{ text?: string; mentionIds?: string[] }>).detail;
@@ -2826,47 +2813,6 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   // Suggestion chip is shown once the thread has started and a turn remains.
   const showSuggestion = !empty && !busy && !!nextTurn && !suppressSuggestionChip;
 
-  const startPrompts = conversation
-    ? [{ id: conversation.id, text: conversation.seedPrompt }]
-    : CONVERSATIONS.map((c) => ({ id: c.id, text: c.seedPrompt }));
-
-  function pickStart(p: { id: string; text: string }) {
-    if (conversation) {
-      // Already on this conversation, waiting — begin turn 0 locally.
-      advance(p.text);
-    } else {
-      // Blank New Chat — select + auto-start the chosen conversation.
-      dispatch({ type: "SELECT_CONVERSATION", id: p.id, autoStart: true });
-    }
-  }
-
-  const quickStartNewSegmentChat = useCallback(() => {
-    dispatch({ type: "NEW_CHAT" });
-    window.setTimeout(() => {
-      submitRef.current("Build a new segment", []);
-      window.setTimeout(() => {
-        submitRef.current("High value customers who shopped Black Friday last year", []);
-      }, 60);
-    }, 40);
-  }, [dispatch]);
-
-  const quickStartNewActivationChat = useCallback(() => {
-    dispatch({ type: "NEW_CHAT" });
-    window.setTimeout(() => {
-      submitRef.current("Build a new activation", []);
-    }, 40);
-  }, [dispatch]);
-
-  const quickStartSegmentActivationSingleChat = useCallback(() => {
-    dispatch({ type: "NEW_CHAT" });
-    window.setTimeout(() => {
-      submitRef.current("Build a new segment", []);
-      window.setTimeout(() => {
-        submitRef.current("VIP Loyalists", []);
-      }, 60);
-    }, 40);
-  }, [dispatch]);
-
   const promptForSegmentClarification = useCallback(() => {
     const clarificationText = "What would you like to do next?";
     setMessages((ms) => [
@@ -3019,6 +2965,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
   }, [dispatch]);
 
   const handleSegmentApproved = useCallback((payload: SegmentConfirmedPayload) => {
+    window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "segment-saved" } }));
     const isVipLoyalistsSegment = payload.name.toLowerCase().includes("vip loyalists");
     const recommendationItems = [
       "Early access / exclusive product preview - rewards loyalty without discounting; roughly 1,630-2,760 converting customers (6.8-8.9% of 24K-31K reach), likely highest-margin since there's no discount cost",
@@ -3375,6 +3322,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
     }
 
     if (actionId === "bf-build-segment-from-cohort" && state.activeConversationId === "conv-black-friday-planning") {
+      window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "segment-from-chat" } }));
       advanceRef.current("Yes, let's build a segment for early access customers for Black Friday");
       return;
     }
@@ -3542,6 +3490,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
                     onConfirmReasoning={
                       i === lastIdx && pendingVerify && nextTurn
                         ? () => {
+                            window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "segment-assumptions-confirmed" } }));
                             setAwaitingReasoningEditTarget(null);
                             advance(nextTurn.user.text);
                           }
@@ -3598,15 +3547,7 @@ export function ChatPanel({ narrow }: ChatPanelProps) {
             disabled={busy}
             enableMentions
           />
-          {empty ? (
-            <StartPrompts
-              prompts={startPrompts}
-              onPick={pickStart}
-              onQuickBuildSegment={quickStartNewSegmentChat}
-              onQuickBuildActivation={quickStartNewActivationChat}
-              onQuickSegmentActivationSingleChat={quickStartSegmentActivationSingleChat}
-            />
-          ) : (
+          {!empty && (
             <button
               onClick={() => !busy && dispatch({ type: "SELECT_CONVERSATION", id: state.activeConversationId ?? DEFAULT_CONVERSATION_ID, autoStart: false })}
               className="mt-2 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"

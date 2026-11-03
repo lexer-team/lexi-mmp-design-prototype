@@ -132,6 +132,7 @@ export function ReasoningBlock({
   }, [currentAssumptions, isEarlyAccessFlow]);
 
   const approveValidation = () => {
+    window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "segment-assumptions-confirmed" } }));
     setValidateApproved(true);
   };
 

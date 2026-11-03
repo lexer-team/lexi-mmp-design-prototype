@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { CustomConnectionPage, StandardConnectionPage, IntegrationHealthBanner, DisconnectedConnectionGuidance, IntegrationLogo, type IntegrationConnectionDraft } from "../prototype-playground-master/IntegrationConnectionPages";
 import { LexerLogo } from "@/components/layout/LexerLogo";
-import { PrototypeOptionsButton } from "@/components/layout/PrototypeOptionsButton";
 import { LexiIcon } from "@/components/chat/LexiIcon";
 import { FloatingLexiChat } from "@/components/chat/FloatingLexiChat";
 import { Avatar } from "@/components/ui/Avatar";
@@ -26,6 +25,11 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { TooltipProvider } from "@/components/ui/Tooltip";
 import { RoleManagerDialog } from "@/components/admin/RoleManagerDialog";
 import { BusinessContextPage as UpdatedBusinessContextPage } from "../Prototype-MVP";
+import { WelcomeJourneyTour } from "./tour/WelcomeJourneyTour";
+import { NewChatTrainingExperience } from "./tour/NewChatTrainingExperience";
+import { SegmentsTrainingExperience } from "./tour/SegmentsTrainingExperience";
+import { TakeTourMenuItem } from "./tour/TakeTourMenuItem";
+import { TOUR_PROGRESS_EVENT, TOUR_SIDEBAR_EVENT, TOUR_START_EVENT, type ExploreFeature } from "./tour/tourData";
 import {
   RiSidebarFoldLine,
   RiMessage2Line,
@@ -155,8 +159,19 @@ function SegmentV1Inner() {
   const [showChatSyncPopup, setShowChatSyncPopup] = useState(false);
   const [showChatSyncDisclaimer, setShowChatSyncDisclaimer] = useState(false);
   const [chatSyncNoticeConsumed, setChatSyncNoticeConsumed] = useState(false);
+  const [tourTrainingActive, setTourTrainingActive] = useState(false);
+  const [tourTrainingFeature, setTourTrainingFeature] = useState<ExploreFeature | null>(null);
+  const [quickChatMinimizeSignal, setQuickChatMinimizeSignal] = useState(0);
   const [setupIncomplete, setSetupIncomplete] = useState(false);
   const [setupResumeStep, setSetupResumeStep] = useState<OnboardingStep>("users");
+  useEffect(() => {
+    const handleTourSidebar = (event: Event) => {
+      const { expanded } = (event as CustomEvent<{ expanded: boolean }>).detail;
+      setSidebarHovered(expanded);
+    };
+    window.addEventListener(TOUR_SIDEBAR_EVENT, handleTourSidebar);
+    return () => window.removeEventListener(TOUR_SIDEBAR_EVENT, handleTourSidebar);
+  }, []);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   // Activation detail opens in a right inset panel (like the segment side panel),
   // independent of the chat-driven slot.
@@ -196,6 +211,34 @@ function SegmentV1Inner() {
     setSetupIncomplete(false);
     setOnboardingStep(setupResumeStep);
     setPage(setupResumeStep === "users" ? "users" : setupResumeStep === "integrations" ? "integrations" : "context");
+  };
+  const openTourExperience = () => {
+    setOnboardingStep("completed");
+    setPage("chat");
+    setSetupIncomplete(false);
+    setShowChatSyncPopup(false);
+    setShowChatSyncDisclaimer(false);
+    dispatch({ type: "NEW_CHAT" });
+    window.setTimeout(() => window.dispatchEvent(new Event(TOUR_START_EVENT)), 80);
+  };
+  const openWelcomeSetup = () => {
+    setUsersStepAcknowledged(false);
+    setIntegrationsStepAcknowledged(false);
+    setContextStepAcknowledged(false);
+    setSetupResumeStep("users");
+    setOnboardingStep("welcome");
+    setPage("welcome");
+    setSetupIncomplete(false);
+    setShowChatSyncPopup(false);
+    setShowChatSyncDisclaimer(false);
+  };
+  const openNewChatHome = () => {
+    setOnboardingStep("completed");
+    setPage("chat");
+    setSetupIncomplete(false);
+    setShowChatSyncPopup(false);
+    setShowChatSyncDisclaimer(false);
+    dispatch({ type: "NEW_CHAT" });
   };
   const usersOnboarding = onboardingStep === "users"
     ? {
@@ -349,10 +392,23 @@ function SegmentV1Inner() {
   }
 
   function openSegmentPanelPage(id: string) {
+    if (tourTrainingFeature === "segments") {
+      window.dispatchEvent(new CustomEvent(TOUR_PROGRESS_EVENT, { detail: { action: "segment-page-opened" } }));
+    }
     setPage("segments");
     setSegmentPanelFullScreen(false);
     setShownPanel({ kind: "segment", id });
     dispatch({ type: "OPEN_SEGMENT", id });
+  }
+
+  function openTrainingSegmentPage(id: string) {
+    window.dispatchEvent(new CustomEvent(TOUR_PROGRESS_EVENT, { detail: { action: "segment-page-opened" } }));
+    setPage("segments");
+    setSegmentPanelFullScreen(false);
+    window.setTimeout(() => {
+      setShownPanel({ kind: "segment", id });
+      dispatch({ type: "OPEN_SEGMENT", id });
+    }, 60);
   }
 
   // Open an insight's source — the chat that produced it, or the segment it's about.
@@ -375,6 +431,9 @@ function SegmentV1Inner() {
   }
 
   function openActivationPage(id: string) {
+    if (tourTrainingFeature === "segments") {
+      window.dispatchEvent(new CustomEvent(TOUR_PROGRESS_EVENT, { detail: { action: "segment-page-opened" } }));
+    }
     setOpenActivationId(id);
     setPage("activations");
   }
@@ -410,6 +469,9 @@ function SegmentV1Inner() {
   }, [page, state.openSourcesIds, state.openSegmentId, dispatch]);
 
   function kickoffActivationFromSegment(segmentId: string) {
+    if (tourTrainingFeature === "segments") {
+      window.dispatchEvent(new CustomEvent(TOUR_PROGRESS_EVENT, { detail: { action: "segment-page-opened" } }));
+    }
     const artifact = state.artifacts.get(segmentId);
     const dummy = DUMMY_SEGMENT_BY_ID[segmentId];
     const group = BRAIN_GROUPS.find((item) => item.id === segmentId);
@@ -650,7 +712,7 @@ function SegmentV1Inner() {
   const sidebarCollapsed = collapsed && !sidebarHovered;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-sidebar">
+    <div className={cn("flex h-screen overflow-hidden bg-sidebar", tourTrainingActive && "lg:pr-[21rem]")}>
       {/* ── Left sidebar ── */}
       {showSidebar && (
         <div
@@ -674,6 +736,9 @@ function SegmentV1Inner() {
             }}
             onSelectActivationFilter={(filter) => {
               setActivationNavFilter(filter);
+              if (tourTrainingFeature === "segments") {
+                window.dispatchEvent(new CustomEvent(TOUR_PROGRESS_EVENT, { detail: { action: "segment-page-opened" } }));
+              }
               setPage("activations");
             }}
             onOpenGlossary={() => {
@@ -754,7 +819,11 @@ function SegmentV1Inner() {
               <RiLayoutRightLine className="size-4" />
             </button>
           )}
-          <PrototypeOptionsButton />
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <Button type="button" size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={openTourExperience}>Take tour</Button>
+            <Button type="button" size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={openWelcomeSetup}>Welcome setup</Button>
+            <Button type="button" size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={openNewChatHome}>New chat home</Button>
+          </div>
         </header>
 
         {/* Content */}
@@ -936,7 +1005,11 @@ function SegmentV1Inner() {
                     <Button size="sm" variant="outline" className="border-rose-300 text-rose-900 hover:bg-rose-100 dark:border-rose-800 dark:text-rose-200 dark:hover:bg-rose-900/40" onClick={resumeSetup}>Continue setup</Button>
                   </div>
                 )}
-                <ChatPanel />
+                {tourTrainingFeature === "new-chat"
+                  ? <NewChatTrainingExperience />
+                  : tourTrainingFeature === "segments"
+                    ? <SegmentsTrainingExperience onOpenSegmentPage={openTrainingSegmentPage} />
+                    : <ChatPanel />}
               </div>
               <ContextPanel open={contextPanelOpen && !sidePanelOpen && state.chatStarted} />
             </>
@@ -1015,32 +1088,54 @@ function SegmentV1Inner() {
         )}
       </div>
 
-      {isChat && showChatSyncPopup && (
-        <OnboardingLexiModal
-          title="You're in - but Lexi's still getting to know your data"
-          description="Your sources are still syncing, which can take a little time depending on the platform. While that's happening, feel free to explore Lexi, ask questions, and get a feel for how it works - just know that some answers may be based on partial data for now. We'll notify you as soon as everything's fully synced and ready to go."
-          actionLabel="Got it, let's explore."
-          onAction={() => {
-            setShowChatSyncPopup(false);
-            setChatSyncNoticeConsumed(true);
-          }}
-        />
-      )}
-      {!isChat && (
-        <FloatingLexiChat
-          Composer={PromptComposer}
-          mentionGroups={buildMentionGroups(state.activations)}
-          pageContext={`Current page: ${headerTitle}`}
-          onOpenFullChat={(prompt, usePageContext) => {
+      <WelcomeJourneyTour
+        syncPromptOpen={isChat && showChatSyncPopup}
+        onDismissSyncPrompt={() => {
+          setShowChatSyncPopup(false);
+          setChatSyncNoticeConsumed(true);
+        }}
+        onExploreOnMyOwn={() => {
+          setShowChatSyncPopup(false);
+          setChatSyncNoticeConsumed(true);
+        }}
+        onTrainingStateChange={(active) => {
+          setTourTrainingActive(active);
+          if (!active) setTourTrainingFeature(null);
+        }}
+        onMinimizeQuickChat={() => setQuickChatMinimizeSignal((signal) => signal + 1)}
+        onStartExplore={(feature: ExploreFeature) => {
+          setTourTrainingFeature(feature);
+          if (feature === "new-chat") {
             dispatch({ type: "NEW_CHAT" });
             setPage("chat");
-            if (prompt.trim()) {
-              const text = usePageContext ? `[Page context: ${headerTitle}] ${prompt}` : prompt;
-              window.setTimeout(() => window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text } })), 40);
-            }
-          }}
-        />
-      )}
+          } else if (feature === "segments") {
+            dispatch({ type: "NEW_CHAT" });
+            dispatch({ type: "CLOSE_SEGMENT" });
+            dispatch({ type: "CLOSE_SOURCES" });
+            setShownPanel(null);
+            setPage("chat");
+          } else {
+            setActivationNavFilter("all");
+            setPage("activations");
+          }
+        }}
+      />
+      <FloatingLexiChat
+        title="Ask Lexi"
+        minimizeSignal={quickChatMinimizeSignal}
+        Composer={PromptComposer}
+        mentionGroups={buildMentionGroups(state.activations)}
+        pageContext={`Current page: ${headerTitle}`}
+        avoidTrainingPanel={tourTrainingActive}
+        onOpenFullChat={(prompt, usePageContext) => {
+          dispatch({ type: "NEW_CHAT" });
+          setPage("chat");
+          if (prompt.trim()) {
+            const text = usePageContext ? `[Page context: ${headerTitle}] ${prompt}` : prompt;
+            window.setTimeout(() => window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text } })), 40);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -1329,7 +1424,7 @@ function SegmentSidePanel({ artifactId, onOpenSegmentPage, onClose, onActivate, 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {group || matchedDummy ? (
             <Tabs defaultValue="details" className="flex h-full flex-col gap-3">
-              <TabsList variant="underline" className="w-full">
+              <TabsList data-training-anchor="segment-panel-tabs" variant="underline" className="w-full">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="customers">Customers</TabsTrigger>
                 <TabsTrigger value="activations">In activations</TabsTrigger>
@@ -1830,7 +1925,7 @@ function WelcomeOnboardingPage({ onEnter }: { onEnter: () => void }) {
           <div className="rounded-lg border border-border bg-background p-2 text-foreground">
             <LexiIcon className="size-4" />
           </div>
-          <LexerLogo collapsed={false} tone="primary" size="lg" label="onboarding journey" />
+          <LexerLogo collapsed={false} tone="primary" size="lg" label="Welcome Journey Test" />
         </div>
         <h1 className="text-3xl font-semibold text-foreground">Welcome to Lexer</h1>
         <p className="mt-3 max-w-xl text-sm text-foreground-secondary">
@@ -4929,26 +5024,37 @@ function Sidebar({
     dispatch({ type: "NEW_CHAT" });
     onNavigate("chat");
   };
-  const kickoffWorkflowChat = (prompt: string) => {
-    dispatch({ type: "SELECT_CONVERSATION", id: DEFAULT_CONVERSATION_ID, autoStart: false });
+  const kickoffWorkflowChat = (workflowId: "segment" | "activation" | "segment-activation") => {
+    dispatch({ type: "NEW_CHAT" });
     onNavigate("chat");
-    // Let the chat panel mount/reset first, then inject the guided kickoff prompt.
     window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("prototype-master:start-next-turn", { detail: { text: prompt } }));
-    }, 50);
+      window.dispatchEvent(new CustomEvent("welcome-journey-test:quick-start", { detail: { workflowId } }));
+    }, 200);
   };
-  const startNewSegmentWorkflow = () => kickoffWorkflowChat("Build a new segment");
-  const startNewActivationWorkflow = () => kickoffWorkflowChat("Build a new activation");
-  const pinnedWorkflowChats: Array<{ id: string; title: string; onClick: () => void }> = [
-    { id: "workflow-build-activation", title: "Build a new activation", onClick: startNewActivationWorkflow },
-    { id: "workflow-build-segment", title: "Build a new segment", onClick: startNewSegmentWorkflow },
+  const startNewSegmentWorkflow = () => kickoffWorkflowChat("segment");
+  const startNewActivationWorkflow = () => kickoffWorkflowChat("activation");
+  const startSegmentActivationSingleChat = () => kickoffWorkflowChat("segment-activation");
+  const seededConversationIds = new Set(CONVERSATIONS.map((conversation) => conversation.id));
+  const pinnedWorkflowChats: Array<{ id: string; title: string; meta: string; onClick: () => void }> = [
+    ...CONVERSATIONS.map((conversation) => ({
+      id: `seed-${conversation.id}`,
+      title: conversation.title,
+      meta: "Starter chat",
+      onClick: () => {
+        dispatch({ type: "SELECT_CONVERSATION", id: conversation.id, autoStart: true });
+        onNavigate("chat");
+      },
+    })),
+    { id: "workflow-build-segment", title: "Build a new segment", meta: "Workflow", onClick: startNewSegmentWorkflow },
+    { id: "workflow-build-activation", title: "Build a new activation", meta: "Workflow", onClick: startNewActivationWorkflow },
+    { id: "workflow-segment-activation", title: "Segment and Activation - single chat", meta: "Workflow", onClick: startSegmentActivationSingleChat },
   ];
   const openConversation = (id: string) => {
     dispatch({ type: "SELECT_CONVERSATION", id });
     onNavigate("chat");
   };
-  const pinnedChats = CONVERSATIONS.filter((conversation) => pinnedChatIds.includes(conversation.id));
-  const recentChats = CONVERSATIONS.filter((conversation) => !pinnedChatIds.includes(conversation.id));
+  const pinnedChats = CONVERSATIONS.filter((conversation) => pinnedChatIds.includes(conversation.id) && !seededConversationIds.has(conversation.id));
+  const recentChats = CONVERSATIONS.filter((conversation) => !pinnedChatIds.includes(conversation.id) && !seededConversationIds.has(conversation.id));
   // "New Chat" is the active row only on a fresh, unselected chat.
   const onNewChat = page === "chat" && state.activeConversationId == null;
 
@@ -4956,7 +5062,7 @@ function Sidebar({
     <div className={cn("flex h-full shrink-0 flex-col overflow-hidden bg-sidebar p-2 transition-[width] duration-200", collapsed ? "w-14" : "w-[16rem]")}>
       <div className="flex h-full flex-col overflow-hidden rounded-lg bg-sidebar">
         <div className={cn("flex items-center p-2", collapsed && "justify-center")}>
-          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="prototype onboarding" />
+          <LexerLogo collapsed={collapsed} tone="primary" size="lg" label="Welcome Journey Test" />
         </div>
         <div className={cn("flex flex-1 flex-col gap-4 overflow-y-auto py-2", collapsed ? "px-0" : "px-2")}>
           <ul className="flex list-none flex-col gap-0.5">
@@ -5041,7 +5147,7 @@ function Sidebar({
                     <li key={chat.id}>
                       <RecentRow
                         title={chat.title}
-                        meta="Workflow"
+                        meta={chat.meta}
                         pinned
                         active={false}
                         onClick={chat.onClick}
@@ -5064,21 +5170,25 @@ function Sidebar({
                     <li className="px-3 py-2 text-xs text-sidebar-foreground/50">No pinned chats yet.</li>
                   ) : null}
                 </ul>
-                <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Recent Chats</div>
-                <ul className="max-h-[11.25rem] overflow-y-auto pr-1">
-                  {recentChats.map((c) => (
-                    <li key={c.id}>
-                      <RecentRow
-                        title={c.title}
-                        meta={c.updatedLabel}
-                        pinned={false}
-                        active={page === "chat" && state.activeConversationId === c.id}
-                        onClick={() => openConversation(c.id)}
-                        onTogglePin={() => onTogglePinnedChat(c.id)}
-                      />
-                    </li>
-                  ))}
-                </ul>
+                {recentChats.length > 0 && (
+                  <>
+                    <div className="px-3 pb-1 pt-2 text-[11px] font-semibold text-sidebar-foreground/60">Recent Chats</div>
+                    <ul className="max-h-[11.25rem] overflow-y-auto pr-1">
+                      {recentChats.map((c) => (
+                        <li key={c.id}>
+                          <RecentRow
+                            title={c.title}
+                            meta={c.updatedLabel}
+                            pinned={false}
+                            active={page === "chat" && state.activeConversationId === c.id}
+                            onClick={() => openConversation(c.id)}
+                            onTogglePin={() => onTogglePinnedChat(c.id)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </li>
             )}
           </ul>
@@ -5110,6 +5220,7 @@ function Sidebar({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <TakeTourMenuItem />
               <DropdownMenuSeparator />
               <DropdownMenuSub>
                 <DropdownMenuPrimitive.SubTrigger

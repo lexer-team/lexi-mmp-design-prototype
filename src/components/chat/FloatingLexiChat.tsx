@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { RiCloseLine, RiExpandDiagonalLine, RiSubtractLine } from "@remixicon/react";
 import { LexerLogo } from "@/components/layout/LexerLogo";
 import { cn } from "@/lib/utils";
@@ -17,11 +17,17 @@ export function FloatingLexiChat({
   mentionGroups,
   pageContext,
   onOpenFullChat,
+  avoidTrainingPanel = false,
+  title = "Lexi quick chat",
+  minimizeSignal,
 }: {
   Composer: ComponentType<ComposerProps>;
   mentionGroups: MentionGroup[];
   pageContext: string;
   onOpenFullChat: (prompt: string, usePageContext: boolean) => void;
+  avoidTrainingPanel?: boolean;
+  title?: string;
+  minimizeSignal?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"page" | "general" | null>(null);
@@ -30,6 +36,23 @@ export function FloatingLexiChat({
   const [messages, setMessages] = useState<DockMessage[]>([
     { id: "quick-chat-welcome", role: "lexi", text: welcomeText },
   ]);
+
+  useEffect(() => {
+    const resetForTour = () => {
+      setOpen(false);
+      setMode(null);
+      setLastPrompt("");
+      setMessages([{ id: "quick-chat-welcome", role: "lexi", text: welcomeText }]);
+    };
+    window.addEventListener("welcome-journey-test:reset-quick-chat", resetForTour);
+    return () => {
+      window.removeEventListener("welcome-journey-test:reset-quick-chat", resetForTour);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (minimizeSignal !== undefined) setOpen(false);
+  }, [minimizeSignal]);
 
   const send = (text: string) => {
     const prompt = text.replace(/\[\[([^\]]+)\]\]/g, "@$1").trim();
@@ -51,22 +74,22 @@ export function FloatingLexiChat({
   };
 
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+    <div className={cn("pointer-events-none fixed bottom-5 z-40 flex flex-col items-end gap-2", avoidTrainingPanel ? "right-5 lg:right-[22rem]" : "right-5")}>
       {open && (
-        <section aria-label="Lexi quick chat" className="pointer-events-auto flex h-[420px] w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-lg">
+        <section aria-label={title} className="pointer-events-auto flex h-[420px] w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-lg">
           <header className="flex items-center justify-between border-b border-border px-3 py-2">
             <div>
-              <p className="text-sm font-semibold text-foreground">Lexi quick chat</p>
+              <p className="text-sm font-semibold text-foreground">{title}</p>
               <p className="text-xs text-foreground-secondary">Ask anywhere, continue in full chat</p>
             </div>
             <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setOpen(false)} aria-label="Minimize Lexi quick chat" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" onClick={() => setOpen(false)} aria-label={`Minimize ${title}`} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <RiSubtractLine className="size-4" />
               </button>
               <button type="button" onClick={() => onOpenFullChat(lastPrompt, mode !== "general")} aria-label="Open full Lexi chat" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <RiExpandDiagonalLine className="size-4" />
               </button>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Close Lexi quick chat" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" onClick={() => setOpen(false)} aria-label={`Close ${title}`} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <RiCloseLine className="size-4" />
               </button>
             </div>
@@ -102,7 +125,7 @@ export function FloatingLexiChat({
         </section>
       )}
 
-      <button type="button" onClick={() => setOpen((current) => !current)} className="pointer-events-auto flex size-12 items-center justify-center rounded-full border border-border/70 bg-background shadow-lg transition-transform hover:scale-[1.03]" aria-label={open ? "Close Lexi quick chat" : "Open Lexi quick chat"} title={open ? "Close Lexi quick chat" : "Open Lexi quick chat"}>
+      <button type="button" onClick={() => setOpen((current) => !current)} className="pointer-events-auto flex size-12 items-center justify-center rounded-full border border-border/70 bg-background shadow-lg transition-transform hover:scale-[1.03]" aria-label={open ? `Close ${title}` : `Open ${title}`} title={open ? `Close ${title}` : `Open ${title}`}>
         <LexerLogo collapsed tone="primary" />
       </button>
     </div>

@@ -418,6 +418,7 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
   };
 
   const handleResolveConfirm = () => {
+    window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "activation-rules-confirmed" } }));
     updateBlock({ confirmed: true, confirmedText: "Looks right — I’ll show the next step below." });
     if (block.step === "resolve") {
       if (!isSegmentBackedResolve && includeLapsed && block.windowDays !== 180) {
@@ -656,6 +657,7 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
   };
 
   const handleConfirmMapping = () => {
+    window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "activation-field-mapping-confirmed" } }));
     updateBlock({ confirmed: true, confirmedText: "Fields confirmed — what destination should I send this to?" });
     appendStep({
       type: "flow",
@@ -677,6 +679,7 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
 
   const handleConfirmDestination = () => {
     if (!block.destination) return;
+    window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "activation-destination-confirmed" } }));
     updateBlock({ confirmed: true, confirmedText: `Destination confirmed — ${block.destination}.` });
     appendStep({
       type: "flow",
@@ -707,6 +710,7 @@ export default function ActivationFlowBlock({ block, messageId, blockId, onUpdat
   }, [schedule]);
 
   const handleConfirmSchedule = () => {
+    window.dispatchEvent(new CustomEvent("welcome-journey-test:progress", { detail: { action: "activation-schedule-confirmed" } }));
     updateBlock({ confirmed: true, confirmedText: `Schedule confirmed — ${schedulePreview} (AEST)` });
     appendStep({
       type: "flow",
