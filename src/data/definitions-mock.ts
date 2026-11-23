@@ -397,6 +397,12 @@ export const MOCK_DEFINITIONS: Definition[] = [
     status: "confirmed", scope: "org", source: "Blue Illusion common filter",
     logic: "employee_flag = true", count: 320, updatedAt: "2026-06-22",
   },
+  {
+    id: "def-consignment-customer", name: "Consignment Customer", type: "attribute", entity: "customer",
+    description: "A customer who has an active order in Shopify with a pending payment status",
+    status: "confirmed", scope: "org", source: "Shopify",
+    logic: "order_status = 'Pending' AND payment_status = 'Pending'", count: 1240, updatedAt: "2026-11-09",
+  },
 ];
 
 export const MOCK_GROUPS: Group[] = [

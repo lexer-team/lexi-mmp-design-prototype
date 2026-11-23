@@ -13,11 +13,12 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FilterBar } from "@/components/ui/FilterBar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import {
   RiSearchLine, RiCloseLine, RiBookOpenLine, RiScales3Line, RiCalendarEventLine,
   RiFileTextLine, RiArrowLeftSLine, RiArrowRightSLine, RiUploadCloud2Line,
   RiFilePdf2Line, RiFileWord2Line, RiFileExcel2Line, RiFilePpt2Line, RiTimeLine,
-  RiUserLine,
+  RiUserLine, RiPencilLine, RiDeleteBinLine,
 } from "@remixicon/react";
 import type { RemixiconComponentType } from "@remixicon/react";
 import {
@@ -307,6 +308,11 @@ function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
   const [definitionSaved, setDefinitionSaved] = useState(false);
   const [activeTermId, setActiveTermId] = useState<string | null>(null);
   const [isNewDefinitionCollapsed, setIsNewDefinitionCollapsed] = useState(false);
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+
+  const allCategories = ["Lifecycle", "Value", "Engagement", "Trade", ...customCategories];
 
   const q = query.trim().toLowerCase();
   const shown = terms.filter((t) =>
@@ -336,6 +342,16 @@ function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
     const input = definitionPrompt.trim();
     if (!input) return;
     setDefinitionSaved(false);
+
+    // Check if this looks like the consignment customer example
+    if (input.toLowerCase().includes("consignment") || input.toLowerCase().includes("shopify")) {
+      setLexiInterpretation({
+        term: "Consignment Customer",
+        category: "Lifecycle",
+        definition: "A customer who has an active order in Shopify with a pending payment status",
+      });
+      return;
+    }
 
     const term = inferTermName(input);
     const category = inferCategory(input);
@@ -409,7 +425,7 @@ function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
                   generateInterpretation();
                 }
               }}
-              placeholder="Example: Define VIP customer for lifecycle campaigns using spend and purchase recency."
+              placeholder="Example: a consignment customer is someone who has a purchase in Shopify but their payment is pending."
               className="min-h-28"
             />
           </div>
@@ -448,20 +464,27 @@ function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
 
                 <div>
                   <p className="text-[11px] font-semibold text-muted-foreground">Category</p>
-                  <select
-                    value={lexiInterpretation.category}
-                    onChange={(e) => {
-                      const category = e.target.value as GlossaryTerm["category"];
-                      setLexiInterpretation((prev) => (prev ? { ...prev, category } : prev));
-                      setDefinitionSaved(false);
-                    }}
-                    className="mt-1 h-8 w-full rounded-lg border border-input-border bg-input px-2 text-sm text-foreground"
-                  >
-                    <option value="Lifecycle">Lifecycle</option>
-                    <option value="Value">Value</option>
-                    <option value="Engagement">Engagement</option>
-                    <option value="Trade">Trade</option>
-                  </select>
+                  <div className="mt-1 flex gap-1">
+                    <select
+                      value={lexiInterpretation.category}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === "__add_new__") {
+                          setShowNewCategoryInput(true);
+                        } else {
+                          const category = value as GlossaryTerm["category"];
+                          setLexiInterpretation((prev) => (prev ? { ...prev, category } : prev));
+                          setDefinitionSaved(false);
+                        }
+                      }}
+                      className="mt-0 h-8 flex-1 rounded-lg border border-input-border bg-input px-2 text-sm text-foreground"
+                    >
+                      {allCategories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="__add_new__">+ Add Category</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -485,28 +508,59 @@ function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
 
         <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border">
           {shown.map((t) => (
-            <button
+            <div
               key={t.id}
-              onClick={() => {
-                if (t.generatedFromLexi) {
-                  setActiveTermId(t.id);
-                  return;
-                }
-                onOpen(t.id);
-              }}
-              className="flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50"
+              className="group flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/50"
             >
-              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <RiBookOpenLine className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{t.term}</span>
-                  <Badge variant="secondary" size="sm">{t.category}</Badge>
+              <button
+                onClick={() => {
+                  if (t.generatedFromLexi) {
+                    setActiveTermId(t.id);
+                    return;
+                  }
+                  onOpen(t.id);
+                }}
+                className="flex min-w-0 flex-1 cursor-pointer items-start gap-3"
+              >
+                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <RiBookOpenLine className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{t.term}</span>
+                    <Badge variant="secondary" size="sm">{t.category}</Badge>
+                  </div>
+                  <p className="mt-0.5 line-clamp-2 text-sm text-foreground-secondary">{t.definition}</p>
                 </div>
-                <p className="mt-0.5 line-clamp-2 text-sm text-foreground-secondary">{t.definition}</p>
+              </button>
+              <div className="shrink-0 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 h-7 w-7"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveTermId(t.id);
+                  }}
+                  title="Edit"
+                >
+                  <RiPencilLine className="size-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTerms((prev) => prev.filter((term) => term.id !== t.id));
+                    if (activeTermId === t.id) setActiveTermId(null);
+                  }}
+                  title="Delete"
+                >
+                  <RiDeleteBinLine className="size-4" />
+                </Button>
               </div>
-            </button>
+            </div>
           ))}
           {shown.length === 0 && (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">No terms match your search.</p>
@@ -553,6 +607,61 @@ function GlossaryView({ onOpen }: { onOpen: (id: string) => void }) {
           </div>
         ) : null}
       </div>
+
+      {/* New Category Modal */}
+      <Dialog open={showNewCategoryInput} onOpenChange={setShowNewCategoryInput}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Category</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <Input
+              placeholder="Enter category name (e.g., Retention, Growth)"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newCategoryName.trim()) {
+                  const trimmed = newCategoryName.trim();
+                  if (!allCategories.includes(trimmed)) {
+                    setCustomCategories((prev) => [...prev, trimmed]);
+                    setLexiInterpretation((prev) => (prev ? { ...prev, category: trimmed as GlossaryTerm["category"] } : prev));
+                    setNewCategoryName("");
+                    setShowNewCategoryInput(false);
+                    setDefinitionSaved(false);
+                  }
+                }
+              }}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setNewCategoryName("");
+                  setShowNewCategoryInput(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const trimmed = newCategoryName.trim();
+                  if (trimmed && !allCategories.includes(trimmed)) {
+                    setCustomCategories((prev) => [...prev, trimmed]);
+                    setLexiInterpretation((prev) => (prev ? { ...prev, category: trimmed as GlossaryTerm["category"] } : prev));
+                    setNewCategoryName("");
+                    setShowNewCategoryInput(false);
+                    setDefinitionSaved(false);
+                  }
+                }}
+                disabled={!newCategoryName.trim() || allCategories.includes(newCategoryName.trim())}
+              >
+                Add Category
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -601,6 +710,21 @@ function RulesView({ onOpen }: { onOpen: (id: string) => void }) {
     const input = rulePrompt.trim();
     if (!input) return;
     setRuleSaved(false);
+
+    // Check if this looks like the US shopper exclusion example
+    if (input.toLowerCase().includes("exclude") && (input.toLowerCase().includes("us") || input.toLowerCase().includes("store"))) {
+      setLexiInterpretation({
+        name: "US shopper exclusion",
+        description: "Exclude any transactions from the US Stores",
+        logicPreview: "Store Country != 'US'",
+        fieldsUsed: [
+          "Source field: Store Country",
+          "Core dataset: Transaction data",
+        ],
+        whyThisRule: "",
+      });
+      return;
+    }
 
     const amountMatch = input.match(/\$\s*([0-9][0-9,\.]*)|([0-9][0-9,\.]*)\s*dollars?/i);
     const threshold = amountMatch
@@ -687,7 +811,7 @@ function RulesView({ onOpen }: { onOpen: (id: string) => void }) {
                   generateInterpretation();
                 }
               }}
-              placeholder="Example: Exclude customers with unresolved chargebacks from paid activation audiences for 30 days."
+              placeholder="Example: exclude sales from people who has shopped in a store in the US"
               className="min-h-28"
             />
           </div>

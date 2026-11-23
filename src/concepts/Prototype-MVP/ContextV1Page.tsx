@@ -1,11 +1,19 @@
 import { useState } from "react";
-import { RiBookOpenLine, RiDatabase2Line, RiSearchLine } from "@remixicon/react";
+import { RiBookOpenLine, RiDatabase2Line, RiSearchLine, RiAddLine, RiArrowLeftLine, RiCheckLine, RiCloseLine } from "@remixicon/react";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
 import { cn } from "@/lib/utils";
 import { Markdown } from "./Markdown";
-
 type ContextEntry = {
   id: string;
   category: string;
@@ -26,6 +34,8 @@ const CONTEXT_CATEGORIES = [
   "Channels and consent",
   "Products and catalog",
 ];
+
+const SEEDED_CONTEXT_DESCRIPTION = "Defines the four loyalty tiers A, B, C and D, which together make up the top 20% of customers. Each tier is 5% of customers, with A the highest and D the lowest. Use this for questions about tier membership, tier sizes, or who is or isn’t in the loyalty programme.";
 
 const CONTEXT_ENTRIES: ContextEntry[] = [
   {
@@ -202,18 +212,182 @@ export function ContextV1Page() {
   const [selectedCategory, setSelectedCategory] = useState("All context");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState("");
+  const [entries, setEntries] = useState<ContextEntry[]>(CONTEXT_ENTRIES);
+  const [isAddingContext, setIsAddingContext] = useState(false);
+  const [newContextName, setNewContextName] = useState("");
+  const [newContextCategory, setNewContextCategory] = useState("");
+  const [newContextDescription, setNewContextDescription] = useState("");
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  
+  // Lexi interpretation states
+  type LexiInterpretation = {
+    header: {
+      title: string;
+      category: string;
+      description: string;
+      tags: string[];
+    };
+  };
+  const [showInterpretation, setShowInterpretation] = useState(false);
+  const [lexiInterpretation, setLexiInterpretation] = useState<LexiInterpretation | null>(null);
+  const [interpretationViewMode, setInterpretationViewMode] = useState<"lexi" | "markdown">("lexi");
+  const [markdownContent, setMarkdownContent] = useState("");
+  const [markdownContentBackup, setMarkdownContentBackup] = useState("");
+  const allCategories = [...CONTEXT_CATEGORIES, ...customCategories];
+  
+  const handleAddContext = () => {
+    if (newContextName.trim() && newContextCategory.trim() && newContextDescription.trim()) {
+      // In a real app, this would save to state/backend
+      console.log("Adding context:", { name: newContextName, category: newContextCategory, description: newContextDescription });
+      setNewContextName("");
+      setNewContextCategory("");
+      setNewContextDescription("");
+      setIsAddingContext(false);
+    }
+  };
+
+  const handleAddCategory = () => {
+    if (newCategoryName.trim() && !allCategories.includes(newCategoryName)) {
+      setCustomCategories([...customCategories, newCategoryName]);
+      setNewContextCategory(newCategoryName);
+      setNewCategoryName("");
+      setIsAddingCategory(false);
+    }
+  };
+
+  const generateLexiInterpretation = () => {
+    if (!newContextName.trim() || !newContextCategory.trim() || !newContextDescription.trim()) {
+      return;
+    }
+
+    // Generate Lexi interpretation based on description
+    const interpretation: LexiInterpretation = {
+      header: {
+        title: newContextName.trim(),
+        category: newContextCategory,
+        description: newContextDescription.trim().substring(0, 150) + (newContextDescription.length > 150 ? "..." : ""),
+        tags: extractTags(newContextDescription),
+      },
+    };
+
+    // Format as markdown
+    const markdownText = formatInterpretationAsMarkdown(interpretation);
+    
+    setLexiInterpretation(interpretation);
+    setMarkdownContent(markdownText);
+    setMarkdownContentBackup(markdownText);
+    setInterpretationViewMode("lexi");
+    setShowInterpretation(true);
+  };
+
+  const extractTags = (text: string): string[] => {
+    const keywords = [
+      "customer", "loyalty", "lifecycle", "recency", "segment",
+      "channel", "product", "category", "order", "purchase",
+      "retention", "engagement", "behavior", "transaction"
+    ];
+    const tags: string[] = [];
+    keywords.forEach((keyword) => {
+      if (text.toLowerCase().includes(keyword) && tags.length < 4) {
+        tags.push(keyword);
+      }
+    });
+    return tags.length > 0 ? tags : ["general", "business"];
+  };
+
+  const formatInterpretationAsMarkdown = (interp: LexiInterpretation): string => {
+    return `# ${interp.header.title}
+
+**Category:** ${interp.header.category}
+
+**Description:** ${interp.header.description}
+
+**Tags:** ${interp.header.tags.join(", ")}`;
+  };
+
+  const handleReview = () => {
+    generateLexiInterpretation();
+  };
+
+  const handleEditInterpretation = () => {
+    setShowInterpretation(false);
+    setInterpretationViewMode("lexi");
+  };
+
+  const handleApprove = () => {
+    if (!newContextCategory.trim()) return;
+    
+    // Create new entry
+    const newEntry: ContextEntry = {
+      id: newContextName.toLowerCase().replace(/\s+/g, "-"),
+      category: newContextCategory,
+      title: newContextName,
+      summary: newContextDescription,
+      knowledge: markdownContent || newContextDescription,
+      signals: lexiInterpretation?.header.tags || [],
+      sources: "Lexi KB",
+      updated: new Date().toLocaleDateString("en-AU", { year: "numeric", month: "short", day: "numeric" }),
+    };
+    
+    // Add to entries
+    setEntries([...entries, newEntry]);
+    
+    // Reset form and navigate to the new entry
+    setNewContextName("");
+    setNewContextCategory("");
+    setNewContextDescription("");
+    setShowInterpretation(false);
+    setIsAddingContext(false);
+    
+    // Navigate to the category and select the new entry
+    setSelectedCategory(newContextCategory);
+    setSelectedEntryId(newEntry.id);
+  };
+
+  const handleCancelInterpretation = () => {
+    setShowInterpretation(false);
+    setInterpretationViewMode("lexi");
+    setMarkdownContent(markdownContentBackup);
+  };
+
+  const handleMarkdownSave = () => {
+    setMarkdownContentBackup(markdownContent);
+    // Could regenerate interpretation from markdown here if needed
+  };
+
+  const handleMarkdownCancel = () => {
+    setMarkdownContent(markdownContentBackup);
+    setInterpretationViewMode("lexi");
+  };
+
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
-  const entries = CONTEXT_ENTRIES.filter((entry) => {
+  const filteredEntries = entries.filter((entry) => {
     const matchesCategory = normalizedSearch.length > 0 || selectedCategory === "All context" || entry.category === selectedCategory;
     const matchesSearch = !normalizedSearch || [entry.title, entry.summary, entry.knowledge, entry.sources, entry.category, ...entry.signals]
       .some((value) => value.toLocaleLowerCase().includes(normalizedSearch));
     return matchesCategory && matchesSearch;
   });
-  const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) ?? null;
+  const selectedEntry = filteredEntries.find((entry) => entry.id === selectedEntryId) ?? null;
 
   return (
     <div className="flex h-full min-w-0 overflow-hidden bg-background">
       <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-background px-3 py-4">
+        <div className="mb-4">
+          <Button 
+            onClick={() => {
+              setNewContextDescription(SEEDED_CONTEXT_DESCRIPTION);
+              setIsAddingContext(true);
+            }} 
+            className="w-full gap-2"
+            size="sm"
+          >
+            <RiAddLine className="size-4" />
+            Add New Context
+          </Button>
+        </div>
+        
         <div className="mb-3 flex items-center justify-between gap-2 px-2">
           <h2 className="text-sm font-semibold text-foreground">Categories</h2>
           <RiDatabase2Line className="size-4 text-muted-foreground" />
@@ -250,14 +424,230 @@ export function ContextV1Page() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto px-6 py-6">
-        <header className="mb-4">
-          <div className="flex items-center gap-2">
-            <RiBookOpenLine className="size-5 text-foreground-secondary" />
-            <h1 className="text-xl font-semibold text-foreground">Context v1</h1>
-            <Badge variant="outline" size="sm">Read only</Badge>
-          </div>
-          <p className="mt-1 text-sm text-foreground-secondary">Business context and knowledge available to Lexi.</p>
-        </header>
+        {isAddingContext ? (
+          <>
+            <header className="mb-6">
+              <div className="flex items-center gap-3 mb-4">
+                <button 
+                  onClick={() => {
+                    setIsAddingContext(false);
+                    setNewContextName("");
+                    setNewContextCategory("");
+                    setNewContextDescription("");
+                    setIsAddingCategory(false);
+                    setNewCategoryName("");
+                  }}
+                  className="flex items-center gap-2 text-sm text-foreground-secondary hover:text-foreground transition-colors"
+                >
+                  <RiArrowLeftLine className="size-4" />
+                  Back to Context
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <RiAddLine className="size-5 text-foreground-secondary" />
+                <h1 className="text-xl font-semibold text-foreground">Add New Context</h1>
+              </div>
+              <p className="mt-1 text-sm text-foreground-secondary">Create a new context entry for your knowledge base.</p>
+            </header>
+
+            <div className="max-w-2xl space-y-6">
+              <div>
+                <label className="text-sm font-semibold text-foreground">Name</label>
+                <Input 
+                  value={newContextName}
+                  onChange={(e) => setNewContextName(e.target.value)}
+                  placeholder="Enter context name"
+                  className="mt-2"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-foreground">Category</label>
+                <Select value={newContextCategory} onValueChange={setNewContextCategory}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allCategories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {isAddingCategory ? (
+                  <div className="mt-3 flex gap-2">
+                    <Input 
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="New category name"
+                      className="flex-1"
+                      autoFocus
+                    />
+                    <Button 
+                      size="sm" 
+                      onClick={handleAddCategory}
+                    >
+                      Add
+                    </Button>
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsAddingCategory(false);
+                        setNewCategoryName("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsAddingCategory(true)}
+                    className="mt-2 text-sm text-primary hover:underline"
+                  >
+                    + Add new category
+                  </button>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-foreground">Description</label>
+                <Textarea 
+                  value={newContextDescription}
+                  onChange={(e) => setNewContextDescription(e.target.value)}
+                  placeholder="Enter context description"
+                  className="mt-2"
+                  rows={8}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  onClick={handleReview}
+                  disabled={!newContextName.trim() || !newContextCategory.trim() || !newContextDescription.trim()}
+                  size="lg"
+                >
+                  Review
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setIsAddingContext(false);
+                    setNewContextName("");
+                    setNewContextCategory("");
+                    setNewContextDescription("");
+                    setIsAddingCategory(false);
+                    setNewCategoryName("");
+                    setShowInterpretation(false);
+                  }}
+                  size="lg"
+                >
+                  Cancel
+                </Button>
+              </div>
+
+              {showInterpretation && lexiInterpretation && (
+                <div className="mt-8 space-y-4 rounded-lg border border-border bg-card p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-foreground">Lexi Interpretation</h3>
+                    <button
+                      onClick={() => setInterpretationViewMode(interpretationViewMode === "lexi" ? "markdown" : "lexi")}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      {interpretationViewMode === "lexi" ? "View Markdown" : "View Interpretation"}
+                    </button>
+                  </div>
+
+                  {interpretationViewMode === "lexi" ? (
+                    <div className="space-y-4 rounded-lg border border-border/50 bg-muted/30 p-4">
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground">TITLE</p>
+                        <p className="mt-1 text-base font-semibold text-foreground">{lexiInterpretation.header.title}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground">CATEGORY</p>
+                          <p className="mt-1 text-sm text-foreground">{lexiInterpretation.header.category}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground">TAGS</p>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            {lexiInterpretation.header.tags.map((tag) => (
+                              <span key={tag} className="inline-block rounded-full bg-primary/10 px-2 py-1 text-xs text-foreground">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground">DESCRIPTION</p>
+                        <p className="mt-1 text-sm leading-relaxed text-foreground-secondary">{lexiInterpretation.header.description}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <Textarea
+                        value={markdownContent}
+                        onChange={(e) => setMarkdownContent(e.target.value)}
+                        className="font-mono text-sm"
+                        rows={12}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleMarkdownSave}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleMarkdownCancel}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 border-t border-border pt-4">
+                    <Button
+                      variant="outline"
+                      onClick={handleEditInterpretation}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      onClick={handleApprove}
+                      disabled={!newContextCategory.trim()}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={handleCancelInterpretation}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <header className="mb-4">
+              <div className="flex items-center gap-2">
+                <RiBookOpenLine className="size-5 text-foreground-secondary" />
+                <h1 className="text-xl font-semibold text-foreground">Context</h1>
+                <Badge variant="outline" size="sm">Read only</Badge>
+              </div>
+              <p className="mt-1 text-sm text-foreground-secondary">Business context and knowledge available to Lexi.</p>
+            </header>
 
         <div className="relative mb-4 w-full">
           <RiSearchLine className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -282,11 +672,11 @@ export function ContextV1Page() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.length === 0 ? (
+                {filteredEntries.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">No context entries match your search.</TableCell>
                   </TableRow>
-                ) : entries.map((entry) => (
+                ) : filteredEntries.map((entry) => (
                   <TableRow key={entry.id} className={cn(selectedEntry?.id === entry.id && "bg-accent/40")}>
                     <TableCell className="min-w-[20rem] py-3">
                       <button type="button" onClick={() => setSelectedEntryId(entry.id)} className="w-full text-left">
@@ -336,6 +726,8 @@ export function ContextV1Page() {
             )}
           </aside>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -926,7 +926,7 @@ function DashboardReportView({
   );
 }
 
-export function GeneralReportingDashboard() {
+export function GeneralReportingDashboard({ title = "Dashboards" }: { title?: string } = {}) {
   const [view, setView] = useState<"sales" | "segments">("sales");
   const [viewStart, setViewStart] = useState("2026-09-28");
   const [viewEnd, setViewEnd] = useState("2026-10-25");
@@ -942,7 +942,7 @@ export function GeneralReportingDashboard() {
       <div className="mx-auto w-full max-w-[1056px] px-4 py-6 md:px-6">
         <header className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Dashboards</h1>
+            <h1 className="text-xl font-bold text-foreground">{title}</h1>
             <p className="mt-1 text-xs text-foreground-secondary">Sydney time · Amounts in AUD</p>
           </div>
 

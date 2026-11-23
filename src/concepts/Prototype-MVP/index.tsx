@@ -34,6 +34,7 @@ import {
   RiArrowRightSLine,
   RiArrowUpDownLine,
   RiLayoutRightLine,
+  RiFlaskLine,
   RiCloseLine,
   RiCheckLine,
   RiGroupLine,
@@ -81,7 +82,7 @@ import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 import { BetaBadge } from "@/components/BetaBadge";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "playbook" | "skills" | "calendar" | "insights" | "sources" | "integrations" | "connect-accounts" | "activations" | "context" | "context-v1" | "users";
+type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "dashboards-2" | "playbook" | "skills" | "calendar" | "insights" | "sources" | "integrations" | "connections-thin-slice-1" | "activations" | "context" | "users";
 type DefinitionsTab = "source" | "calculated" | "custom";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
@@ -561,23 +562,22 @@ function SegmentV1Inner() {
     : page === "benchmarks" ? "Benchmarks"
     : page === "scorecard" ? "Scorecard"
     : page === "dashboards" ? "Dashboards"
+    : page === "dashboards-2" ? "Dashboards 2"
     : page === "playbook" ? (playbookSection === "rules" ? "Rules" : "Playbook")
     : page === "skills" ? "Skills"
     : page === "calendar" ? "Calendar"
     : page === "insights" ? "Insights"
     : page === "users" ? "Users"
     : page === "context" ? "Context"
-    : page === "context-v1" ? "Context v1"
     : page === "sources" ? "Sources"
-    : page === "integrations" ? "Integrations"
-    : page === "connect-accounts" ? "Connect Accounts"
+    : page === "integrations" || page === "connections-thin-slice-1" ? "Connections"
     : page === "activations" ? "Activations"
     : (activeConv?.title ?? "New chat");
-  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "context-v1" || page === "definitions" || page === "skills" || (page === "playbook" && playbookSection === "rules");
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations" || page === "connect-accounts";
+  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "definitions" || page === "skills" || page === "connections-thin-slice-1" || (page === "playbook" && playbookSection === "rules");
+  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
   const inSpace = page === "space" || page === "space-detail";
   const inActivations = page === "activations";
-  const HeaderIcon = isChat ? RiMessage2Line : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
+  const HeaderIcon = isChat ? RiMessage2Line : page === "dashboards" || page === "dashboards-2" ? RiDashboardLine : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
   const mentionGroups = buildMentionGroups(state.activations);
   const sidebarCollapsed = collapsed && !sidebarHovered;
   const lexiPageContext = [
@@ -751,7 +751,9 @@ function SegmentV1Inner() {
           ) : page === "scorecard" ? (
             <div className="min-w-0 flex-1 overflow-hidden"><ScorecardPage /></div>
           ) : page === "dashboards" ? (
-            <div className="min-w-0 flex-1 overflow-hidden"><DashboardsPage /></div>
+            <div className="min-w-0 flex-1 overflow-hidden"><DashboardsPage key="dashboards" /></div>
+          ) : page === "dashboards-2" ? (
+            <div className="min-w-0 flex-1 overflow-hidden"><DashboardsPage key="dashboards-2" title="Dashboards 2" /></div>
           ) : page === "calendar" ? (
             <div className="min-w-0 flex-1 overflow-hidden"><PlaybookPage initialTab="calendar" /></div>
           ) : page === "playbook" ? (
@@ -772,25 +774,21 @@ function SegmentV1Inner() {
             <div className="min-w-0 flex-1 overflow-y-auto">
               <SourcesPage />
             </div>
+          ) : page === "integrations" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <IntegrationsPage key="settings-connections" />
+            </div>
+          ) : page === "connections-thin-slice-1" ? (
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <ConnectionsThinSlice1Page />
+            </div>
           ) : page === "users" ? (
             <div className="min-w-0 flex-1 overflow-y-auto">
               <UsersPage />
             </div>
-          ) : page === "context-v1" ? (
+          ) : page === "context" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
               <ContextV1Page />
-            </div>
-          ) : page === "context" ? (
-            <div className="min-w-0 flex-1 overflow-y-auto">
-              <BusinessContextPage />
-            </div>
-          ) : page === "integrations" ? (
-            <div className="min-w-0 flex-1 overflow-y-auto">
-              <IntegrationsPage />
-            </div>
-          ) : page === "connect-accounts" ? (
-            <div className="min-w-0 flex-1 overflow-y-auto">
-              <ConnectAccountsPage />
             </div>
           ) : page === "space" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
@@ -1904,7 +1902,7 @@ function SourcesPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex min-h-0 gap-4">
           <aside className="w-56 shrink-0 rounded-xl border border-border bg-card p-3">
-            <p className="text-xs font-semibold text-muted-foreground">Integrations</p>
+            <p className="text-xs font-semibold text-muted-foreground">Connections</p>
             <div className="mt-2 flex flex-col gap-2">
               <Button
                 size="sm"
@@ -2098,9 +2096,7 @@ function UsersPage() {
     { id: "dashboards", label: "View dashboards" },
     { id: "segments", label: "Create and manage segments" },
     { id: "activations", label: "Manage activations" },
-    { id: "integrations", label: "Manage integrations" },
     { id: "definitions", label: "Manage definitions and rules" },
-    { id: "context", label: "Manage business context" },
     { id: "users", label: "Manage users and roles" },
   ];
   type PermissionAccess = "manage" | "view" | "none";
@@ -2108,7 +2104,7 @@ function UsersPage() {
   const [roleOptions, setRoleOptions] = useState(["Admin", "Manager", "Analyst", "Viewer"]);
   const [rolePermissions, setRolePermissions] = useState<Record<string, string[]>>({
     Admin: rolePermissionOptions.map((permission) => permission.id),
-    Manager: ["chat", "segments", "activations", "integrations"],
+    Manager: ["chat", "segments", "activations"],
     Analyst: ["chat", "segments"],
     Viewer: ["chat"],
   });
@@ -2789,7 +2785,7 @@ function UsersPage() {
   );
 }
 
-export function BusinessContextPage({ onboarding }: {
+function BusinessContextPage({ onboarding }: {
   onboarding?: {
     disclaimerVisible: boolean;
     disclaimerText: string;
@@ -2807,6 +2803,7 @@ export function BusinessContextPage({ onboarding }: {
     isEditing: boolean;
     isSaved: boolean;
     isConfirmed: boolean;
+    viewMode?: "saved" | "markdown";
   };
 
   const [cards, setCards] = useState<ContextCard[]>([
@@ -2819,6 +2816,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: true,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "brand",
@@ -2829,6 +2827,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "brand-name",
@@ -2839,6 +2838,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: true,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "brand-context",
@@ -2849,6 +2849,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: true,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "data",
@@ -2859,6 +2860,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "data-sources-systems",
@@ -2869,6 +2871,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: true,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "identity-resolution-rules",
@@ -2879,6 +2882,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "household-income-tiers",
@@ -2889,6 +2893,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "field-definitions",
@@ -2899,6 +2904,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "data-quality-flags",
@@ -2909,6 +2915,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "source-hierarchy",
@@ -2919,6 +2926,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "customer-intelligence",
@@ -2929,6 +2937,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "customer-terminology",
@@ -2939,6 +2948,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: true,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "lifecycle-tiers",
@@ -2949,6 +2959,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: true,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "value-tiers",
@@ -2959,6 +2970,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "exclusion-groups",
@@ -2969,6 +2981,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "commercial-calendar",
@@ -2979,6 +2992,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "financial-year",
@@ -2989,6 +3003,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "peak-periods",
@@ -2999,6 +3014,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "campaign-vs-bau",
@@ -3009,6 +3025,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "channels-activation",
@@ -3019,6 +3036,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "channel-defaults",
@@ -3029,6 +3047,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "suppression-rules",
@@ -3039,6 +3058,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "product-catalog",
@@ -3049,6 +3069,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
     },
     {
       id: "category-taxonomy",
@@ -3059,14 +3080,27 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: false,
       isConfirmed: false,
+    viewMode: "saved",
+    },
+    {
+      id: "loyalty-rockstars",
+      label: "Rockstars loyalty tiers",
+      isCustom: true,
+      text: "Loyalty customers are called rockstars. There are 3 levels: 1 being most loyal, 2 is average customer, 3 being low value loyalty.",
+      savedText: "Loyalty customers are called rockstars. There are 3 levels: 1 being most loyal, 2 is average customer, 3 being low value loyalty.",
+      isEditing: false,
+      isSaved: true,
+      isConfirmed: false,
+    viewMode: "saved",
     },
   ]);
   const [pendingClearCardId, setPendingClearCardId] = useState<string | null>(null);
   const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string | null>(null);
   const [blockedDeleteCategoryLabel, setBlockedDeleteCategoryLabel] = useState<string | null>(null);
-  const [activeSectionId, setActiveSectionId] = useState("customer-intelligence");
-  const [selectedCardId, setSelectedCardId] = useState("customer-terminology");
+  const [activeSectionId, setActiveSectionId] = useState("uncategorised");
+  const [selectedCardId, setSelectedCardId] = useState("loyalty-rockstars");
   const [showCustomerInterpretation, setShowCustomerInterpretation] = useState(false);
+  const [contextLexiInterpretations, setContextLexiInterpretations] = useState<Record<string, { header: { title: string; description: string; tags: string[] }; levels: Array<{ level: number; label: string; description: string }> } | null>>({});
   const [draftEntryLabel, setDraftEntryLabel] = useState("");
   const [draftEntryText, setDraftEntryText] = useState("");
   const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
@@ -3079,7 +3113,7 @@ export function BusinessContextPage({ onboarding }: {
   const [pendingCategoryCardId, setPendingCategoryCardId] = useState<string | null>(null);
   const [inlineCategoryCardId, setInlineCategoryCardId] = useState<string | null>(null);
   const [openCategoryDropdownCardId, setOpenCategoryDropdownCardId] = useState<string | null>(null);
-  const [expandedSections, setExpandedSections] = useState(() => new Set(["brand", "customer-intelligence"]));
+  const [expandedSections, setExpandedSections] = useState(() => new Set<string>());
   const sectionIds = new Set([
     "brand",
     "data",
@@ -3122,7 +3156,41 @@ export function BusinessContextPage({ onboarding }: {
 
   const updateCardText = (cardId: string, text: string) => {
     if (cardId === "customer-terminology") setShowCustomerInterpretation(false);
+    // Clear interpretation when user edits
+    setContextLexiInterpretations((prev) => ({ ...prev, [cardId]: null }));
     updateCard(cardId, (card) => ({ ...card, text }));
+  };
+
+  const generateContextInterpretation = (cardId: string, text: string) => {
+    const lowerText = text.toLowerCase();
+    
+    // Detect rockstars loyalty pattern
+    if ((lowerText.includes("rockstars") || lowerText.includes("loyalty")) && (lowerText.includes("level") || lowerText.includes("tier"))) {
+      const interpretation = {
+        header: {
+          title: "Loyalty Tier Definitions",
+          description: "Defines three loyalty customer segments based on engagement and purchase frequency. Used for targeted messaging and personalization strategies.",
+          tags: ["loyalty", "segmentation", "customer-value"],
+        },
+        levels: [
+          { level: 1, label: "Tier 1 - Rockstars", description: "Most loyal customers with highest engagement and purchase frequency" },
+          { level: 2, label: "Tier 2 - Active", description: "Average customers with moderate engagement and regular purchases" },
+          { level: 3, label: "Tier 3 - Lapsed", description: "Low value loyalty customers with minimal engagement and infrequent purchases" },
+        ],
+      };
+      setContextLexiInterpretations((prev) => ({ ...prev, [cardId]: interpretation }));
+      // Exit editing mode to show the interpretation panel
+      updateCard(cardId, (card) => ({ ...card, isEditing: false }));
+      return;
+    }
+    
+    setContextLexiInterpretations((prev) => ({ ...prev, [cardId]: null }));
+  };
+
+  const confirmContextEntry = (cardId: string) => {
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) return;
+    generateContextInterpretation(cardId, card.text);
   };
 
   const updateCardLabel = (cardId: string, label: string) => {
@@ -3144,9 +3212,22 @@ export function BusinessContextPage({ onboarding }: {
         // Keep the in-page confirmation available if browser storage is unavailable.
       }
     }
-    updateCard(cardId, (card) => card.isCustom && !card.categoryId
-      ? card
-      : ({ ...card, savedText: card.text, isSaved: true, isConfirmed: true, isEditing: false }));
+    
+    // Get the interpretation for this card if it exists
+    const interpretation = contextLexiInterpretations[cardId];
+    let confirmedText = card?.text || "";
+    
+    // If there's an interpretation, format it as the confirmed text
+    if (interpretation) {
+      const headerText = `**${interpretation.header.title}**\n${interpretation.header.description}\n\nTags: ${interpretation.header.tags.join(", ")}`;
+      const tiersText = interpretation.levels.map((tier) => `- **${tier.label}**: ${tier.description}`).join("\n");
+      confirmedText = `${headerText}\n\n${tiersText}`;
+    }
+    
+    updateCard(cardId, (card) => ({ ...card, text: confirmedText, savedText: confirmedText, isSaved: true, isConfirmed: true, isEditing: false }));
+    
+    // Clear the interpretation from state since it's been accepted and saved
+    setContextLexiInterpretations((prev) => ({ ...prev, [cardId]: null }));
   };
 
   const clearCard = (cardId: string) => {
@@ -3223,6 +3304,7 @@ export function BusinessContextPage({ onboarding }: {
       isEditing: false,
       isSaved: true,
       isConfirmed: false,
+    viewMode: "saved",
     }]);
     setSelectedCardId(id);
     setDraftEntryLabel("");
@@ -3258,16 +3340,19 @@ export function BusinessContextPage({ onboarding }: {
 
     const id = `category-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setCustomCategories((current) => [...current, { id, label }]);
-    if (pendingCategoryCardId) {
-      setCards((current) => current.map((card) => card.id === pendingCategoryCardId ? { ...card, categoryId: id } : card));
-      setSelectedCardId(pendingCategoryCardId);
+    
+    // Don't assign card to category yet - just create the category
+    // When user is creating from inline dropdown, keep the category creation UI open
+    // so they can see the newly created category in the list (dropdown will re-render)
+    if (!pendingCategoryCardId) {
+      // Only jump to new category if not creating from a New Entry dropdown
+      setActiveSectionId(id);
+      setExpandedSections((current) => new Set(current).add(id));
     }
-    setActiveSectionId(id);
-    setExpandedSections((current) => new Set(current).add(id));
+    // Close the inline input, but keep dropdown open to show the new category
     setPendingCategoryCardId(null);
     setIsCreatingCategory(false);
     setInlineCategoryCardId(null);
-    setOpenCategoryDropdownCardId(null);
     setDraftCategoryName("");
     setCategoryNameError("");
     return true;
@@ -3322,6 +3407,10 @@ export function BusinessContextPage({ onboarding }: {
     if (sectionIds.has(card.id)) {
       currentCategoryId = card.id;
       groups.push({ id: card.id, label: card.label, entries: [] });
+      return groups;
+    }
+    // Skip empty cards (exclude those with no text and not the "new-entry" card)
+    if (!card.isCustom && !card.text.trim() && !card.savedText.trim()) {
       return groups;
     }
     const categoryId = card.categoryId ?? (card.isCustom ? null : currentCategoryId);
@@ -3508,7 +3597,11 @@ export function BusinessContextPage({ onboarding }: {
                   ) : (
                     <p className="text-sm font-semibold text-foreground">{card.label}</p>
                   )}
-                  <DropdownMenu open={openCategoryDropdownCardId === card.id} onOpenChange={(open) => setOpenCategoryDropdownCardId(open ? card.id : null)}>
+                  <DropdownMenu open={openCategoryDropdownCardId === card.id} onOpenChange={(open) => {
+                    // Only close if we're not in category creation mode
+                    if (!open && inlineCategoryCardId === card.id) return;
+                    setOpenCategoryDropdownCardId(open ? card.id : null);
+                  }}>
                     <DropdownMenuTrigger asChild>
                       <button type="button" aria-label={`Category for ${card.label}`} className="mt-2 flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input-border bg-input px-3 text-left text-sm shadow-xs focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/40">
                         <span className={entryCategoryLabel ? "text-foreground" : "text-muted-foreground"}>{entryCategoryLabel ?? "Choose a category"}</span>
@@ -3570,14 +3663,58 @@ export function BusinessContextPage({ onboarding }: {
                       )}
                     </div>
                   )}
+                  {contextLexiInterpretations[card.id] && !editing && (
+                    <div aria-live="polite" className="mt-4 space-y-3 rounded-lg border border-border bg-muted/40 p-3">
+                      <p className="text-sm font-semibold text-foreground">Lexi interpretation</p>
+                      <div className="space-y-2 rounded-lg border border-border bg-background p-2">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{contextLexiInterpretations[card.id]?.header.title}</p>
+                          <p className="mt-1 text-xs text-foreground-secondary">{contextLexiInterpretations[card.id]?.header.description}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {contextLexiInterpretations[card.id]?.header.tags.map((tag) => (
+                            <span key={tag} className="inline-block rounded bg-primary/10 px-2 py-1 text-xs text-foreground">{tag}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground">Tiers</p>
+                        <ul className="space-y-2 text-sm leading-relaxed text-foreground-secondary">
+                          {contextLexiInterpretations[card.id]?.levels.map((tier) => (
+                            <li key={tier.level}>
+                              <strong className="text-foreground">{tier.label}:</strong> {tier.description}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      {confirmed ? (
+                        <p className="text-xs font-medium text-foreground">Confirmed and saved to context.</p>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button type="button" size="sm" onClick={() => startEditing(card.id)}>
+                            Edit
+                          </Button>
+                          <Button type="button" size="sm" onClick={() => confirmCard(card.id)}>
+                            Confirm and save
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     <Button variant="outline" size="sm" disabled={!editing || lockByConfirmation} onClick={() => setPendingClearCardId(card.id)}>Clear</Button>
                     <Button variant="outline" size="sm" onClick={() => startEditing(card.id)}>Edit</Button>
                     <Button variant="outline" size="sm" disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId)} onClick={() => saveCard(card.id)}>{saved && !editing ? "Saved" : "Save"}</Button>
                     <Button
                       size="sm"
-                      disabled={!editing || lockByConfirmation || (card.isCustom && !card.categoryId) || (card.id === "customer-terminology" && (!card.text.trim() || showCustomerInterpretation))}
-                      onClick={() => card.id === "customer-terminology" ? setShowCustomerInterpretation(true) : confirmCard(card.id)}
+                      disabled={!editing || lockByConfirmation || (card.id === "customer-terminology" && (!card.text.trim() || showCustomerInterpretation))}
+                      onClick={() => {
+                        if (card.id === "customer-terminology") {
+                          setShowCustomerInterpretation(true);
+                        } else {
+                          confirmContextEntry(card.id);
+                        }
+                      }}
                     >
                       {confirmed && !editing ? "Confirmed" : "Confirm"}
                     </Button>
@@ -3648,12 +3785,12 @@ export function BusinessContextPage({ onboarding }: {
   );
 }
 
-function ConnectAccountsPage() {
-  return <IntegrationsPage title="Connect Accounts" newConnectionsOnly />;
+function ConnectionsThinSlice1Page() {
+  return <IntegrationsPage key="connections-thin-slice-1" showConnectionCategories={false} />;
 }
 
-function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }: { title?: string; newConnectionsOnly?: boolean }) {
-  type IntegrationStatus = "Connected" | "Available" | "Disconnected" | "Pending";
+function IntegrationsPage({ showConnectionCategories = true }: { showConnectionCategories?: boolean }) {
+  type IntegrationStatus = "Connected" | "Available" | "Disconnected" | "Pending" | "Syncing";
   type IntegrationRecord = {
     id: string;
     name: string;
@@ -3667,7 +3804,7 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
   type AccountDraft = {
     accountName: string;
   };
-  type ConnectedAccount = AccountDraft & { id: string };
+  type ConnectedAccount = AccountDraft & { id: string; purpose: "data-ingestion" | "activation"; status: "Connected" | "Disconnected" | "Syncing" | "Pending"; connectedBy: string; connectedAt: string; lastSynced: string };
   type OfflineEventSetDraft = {
     id: string;
     title: string;
@@ -3681,15 +3818,20 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
 
   const [query, setQuery] = useState("");
   const [connectionPage, setConnectionPage] = useState<"overview" | "standard" | "custom">("standard");
-  const [selectedCategory, setSelectedCategory] = useState<string>("All");
-  const [connectionsExpanded, setConnectionsExpanded] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [connectionsExpanded, setConnectionsExpanded] = useState(false);
   const [openIntegrationId, setOpenIntegrationId] = useState<string | null>(null);
+  const [openAccountId, setOpenAccountId] = useState<string | null>(null);
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [showAccountFrame, setShowAccountFrame] = useState(false);
   const [accountFrameExpanded, setAccountFrameExpanded] = useState(false);
+  const [connectionPurpose, setConnectionPurpose] = useState<"data-ingestion" | "activation">("data-ingestion");
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [pendingDisconnectIntegrationId, setPendingDisconnectIntegrationId] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<"name" | "category" | "syncDirection" | "summary" | "updated" | "status">("category");
+  const [mockLoginFallbackIntegrationId, setMockLoginFallbackIntegrationId] = useState<string | null>(null);
+  const [mockLoginEmail, setMockLoginEmail] = useState("demo@connection.local");
+  const [mockLoginPassword, setMockLoginPassword] = useState("DemoPass_2026!");
+  const [sortKey, setSortKey] = useState<"name" | "category" | "syncDirection" | "summary" | "updated" | "status">(showConnectionCategories ? "category" : "name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [offlineEventSetsByIntegration, setOfflineEventSetsByIntegration] = useState<Record<string, OfflineEventSetDraft[]>>({});
   const [onlineEventSetsByIntegration, setOnlineEventSetsByIntegration] = useState<Record<string, OfflineEventSetDraft[]>>({});
@@ -3702,27 +3844,30 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
   const DUMMY_TRACKING_PIXEL_IDS = ["482910374615", "731640928154", "960182745308"];
 
   const INITIAL_INTEGRATIONS: IntegrationRecord[] = [
-    { id: "lexer-api", name: "Lexer API", category: "API", status: "Connected", summary: "Core Lexer platform endpoints and webhooks are healthy.", updated: "Synced just now" },
-    { id: "shopify", name: "Shopify", category: "Transactions", status: "Connected", summary: "Orders, products, and customers sync continuously.", updated: "Synced 4 min ago" },
-    { id: "stripe", name: "Stripe", category: "Transactions", status: "Available", summary: "Payment, refund, and dispute events are mapped.", updated: "Not connected" },
-    { id: "bigcommerce", name: "BigCommerce", category: "Transactions", status: "Available", summary: "Catalog webhook signature check needs renewal.", updated: "Not connected" },
-    { id: "klaviyo", name: "Klaviyo", category: "Email", status: "Connected", summary: "Campaign and list engagement events are available.", updated: "Synced 9 min ago" },
+    { id: "lexer-api", name: "Lexer API", category: "API", status: "Connected", summary: "Core Lexer platform endpoints and webhooks are healthy.", updated: "Synced just now", syncDirection: "Inbound" },
+    { id: "shopify", name: "Shopify", category: "Transactions", status: "Syncing", summary: "Orders, products, and customers sync continuously.", updated: "Syncing now", syncDirection: "Inbound" },
+    { id: "stripe", name: "Stripe", category: "Transactions", status: "Pending", summary: "Payment, refund, and dispute events are awaiting authorization.", updated: "Awaiting authorization", syncDirection: "Inbound" },
+    { id: "bigcommerce", name: "BigCommerce", category: "Transactions", status: "Connected", summary: "Catalog and customer records are syncing.", updated: "Synced just now", syncDirection: "Inbound" },
+    { id: "klaviyo-inbound", name: "Klaviyo", category: "Email", status: "Connected", summary: "Campaign and list engagement events are available.", updated: "Synced 9 min ago", syncDirection: "Inbound" },
+    { id: "klaviyo-outbound", name: "Klaviyo", category: "Email", status: "Connected", summary: "Send approved audiences from Lexer to Klaviyo.", updated: "Synced 9 min ago", syncDirection: "Outbound" },
     { id: "mailchimp", name: "Mailchimp", category: "Email", status: "Available", summary: "Audience segments and sends are synced daily.", updated: "Not connected" },
-    { id: "sendgrid", name: "SendGrid", category: "Email", status: "Disconnected", summary: "Delivery and bounce feeds are temporarily paused.", updated: "Disconnected 1 hr ago" },
-    { id: "attentive", name: "Attentive", category: "SMS", status: "Available", summary: "Subscriber opt-in and campaign clickstream is flowing.", updated: "Not connected" },
+    { id: "sendgrid", name: "SendGrid", category: "Email", status: "Disconnected", summary: "Delivery and bounce feeds are temporarily paused.", updated: "Disconnected 1 hr ago", syncDirection: "Inbound" },
+    { id: "attentive", name: "Attentive", category: "SMS", status: "Pending", summary: "Subscriber opt-in and campaign clickstream are awaiting setup.", updated: "Awaiting setup", syncDirection: "Inbound" },
     { id: "postscript", name: "Postscript", category: "SMS", status: "Available", summary: "SMS conversion attribution is enabled.", updated: "Not connected" },
     { id: "meta-ads", name: "Meta Ads", category: "Paid ads", status: "Available", summary: "Spend, reach, and conversion performance is ingested.", updated: "Not connected" },
-    { id: "google-ads", name: "Google Ads", category: "Paid ads", status: "Disconnected", summary: "One account lost token scope for cost imports.", updated: "Disconnected 2 hr ago" },
+    { id: "google-ads", name: "Google Ads", category: "Paid ads", status: "Disconnected", summary: "One account lost token scope for cost imports.", updated: "Disconnected 2 hr ago", syncDirection: "Outbound" },
     { id: "tiktok-ads", name: "TikTok Ads", category: "Paid ads", status: "Available", summary: "Creative and ad group metrics sync hourly.", updated: "Not connected" },
-    { id: "ga4", name: "Google Analytics", category: "Web analytics", status: "Available", summary: "Session, source, and funnel events are unified.", updated: "Not connected" },
-    { id: "segment", name: "Segment", category: "CDP", status: "Available", summary: "Event routing to warehouse and activation tools is healthy.", updated: "Not connected" },
-    { id: "snowflake", name: "Snowflake", category: "Warehouse", status: "Connected", summary: "Modeled tables refresh every 30 minutes.", updated: "Synced 15 min ago" },
-    { id: "custom-customer-events-webhook", name: "Braze", category: "Webhook", status: "Connected", summary: "Inbound JSON webhooks deliver customer profile and event changes in near real time.", updated: "Synced 12 min ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "ga4", name: "Google Analytics 4", category: "Web analytics", status: "Connected", summary: "Session, source, and funnel events are unified.", updated: "Synced 8 min ago", syncDirection: "Inbound" },
+    { id: "segment", name: "Segment", category: "CDP", status: "Syncing", summary: "Event routing to warehouse and activation tools is syncing.", updated: "Syncing now", syncDirection: "Bidirectional" },
+    { id: "snowflake", name: "Snowflake", category: "Warehouse", status: "Connected", summary: "Modeled tables refresh every 30 minutes.", updated: "Synced 15 min ago", syncDirection: "Inbound" },
+    { id: "salesforce-crm", name: "Salesforce CRM", category: "CRM", status: "Connected", summary: "Contacts and lifecycle changes sync to Lexer.", updated: "Synced 18 min ago", syncDirection: "Inbound" },
+    { id: "zendesk", name: "Zendesk", category: "Customer support", status: "Connected", summary: "Tickets and service outcomes sync to customer profiles.", updated: "Synced 22 min ago", syncDirection: "Inbound" },
+    { id: "custom-customer-events-webhook", name: "Braze", category: "Webhook", status: "Connected", summary: "Data ingestion webhooks deliver customer profile and event changes in near real time.", updated: "Synced 12 min ago", syncDirection: "Inbound", connectionType: "Custom" },
     { id: "custom-fulfilment-webhook", name: "AP21", category: "Webhook", status: "Available", summary: "Outbound webhook sends order fulfilment updates to a partner endpoint.", updated: "Not connected", syncDirection: "Outbound", connectionType: "Custom" },
-    { id: "custom-product-sftp", name: "Nimbl", category: "SFTP", status: "Connected", summary: "Nightly inbound CSV imports update the product catalogue.", updated: "Synced 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-product-sftp", name: "Nimbl", category: "SFTP", status: "Connected", summary: "Nightly data ingestion CSV imports update the product catalogue.", updated: "Synced 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
     { id: "custom-suppression-sftp", name: "Customer suppression SFTP", category: "SFTP", status: "Disconnected", summary: "Nightly suppression files are paused and need the SFTP credentials refreshed.", updated: "Disconnected 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
     { id: "custom-history-upload", name: "Historical customer CSV upload", category: "One-time upload", status: "Connected", summary: "One-time CSV import added migrated customer history.", updated: "Uploaded 3 days ago", syncDirection: "Inbound", connectionType: "Custom" },
-    { id: "custom-inventory-upload", name: "Inventory snapshot upload", category: "One-time upload", status: "Available", summary: "One-time CSV upload can seed current inventory levels.", updated: "Not connected", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-inventory-upload", name: "Inventory snapshot upload", category: "One-time upload", status: "Pending", summary: "One-time CSV upload is awaiting inventory data.", updated: "Awaiting upload", syncDirection: "Inbound", connectionType: "Custom" },
   ];
 
   const buildDefaultAccount = (integration: IntegrationRecord): AccountDraft => {
@@ -3731,23 +3876,43 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     };
   };
 
+  const createSeedAccount = (
+    id: string,
+    accountName: string,
+    purpose: ConnectedAccount["purpose"],
+    status: ConnectedAccount["status"],
+    lastSynced: string,
+  ): ConnectedAccount => ({
+    id,
+    accountName,
+    purpose,
+    status,
+    connectedBy: "Amy Vong",
+    connectedAt: "Today",
+    lastSynced,
+  });
+
+  const INITIAL_CONNECTED_ACCOUNTS: Record<string, ConnectedAccount[]> = {
+    shopify: [createSeedAccount("acc-seed-shopify", "Shopify primary account", "data-ingestion", "Syncing", "Syncing now")],
+    bigcommerce: [createSeedAccount("acc-seed-bigcommerce", "BigCommerce primary account", "data-ingestion", "Connected", "Just now")],
+    "klaviyo-inbound": [createSeedAccount("acc-seed-klaviyo-ingestion", "Klaviyo ingestion account", "data-ingestion", "Connected", "Synced 9 min ago")],
+    "klaviyo-outbound": [createSeedAccount("acc-seed-klaviyo-activation", "Klaviyo activation account", "activation", "Connected", "Synced 9 min ago")],
+    "custom-customer-events-webhook": [createSeedAccount("acc-seed-custom-braze", "Braze webhook account", "data-ingestion", "Connected", "Synced 12 min ago")],
+    "custom-history-upload": [createSeedAccount("acc-seed-history-upload", "Historical customer CSV upload", "data-ingestion", "Connected", "Uploaded 3 days ago")],
+    attentive: [createSeedAccount("acc-seed-attentive", "Attentive primary account", "data-ingestion", "Pending", "Awaiting authorization")],
+    sendgrid: [createSeedAccount("acc-seed-sendgrid", "SendGrid primary account", "data-ingestion", "Disconnected", "Disconnected 1 hr ago")],
+    "google-ads": [createSeedAccount("acc-seed-google-ads", "Google Ads primary account", "activation", "Disconnected", "Disconnected 2 hr ago")],
+    ga4: [createSeedAccount("acc-seed-ga4", "Google Analytics 4 primary account", "data-ingestion", "Connected", "Synced 8 min ago")],
+    segment: [createSeedAccount("acc-seed-segment", "Segment primary account", "data-ingestion", "Syncing", "Syncing now")],
+    snowflake: [createSeedAccount("acc-seed-snowflake", "Snowflake primary account", "data-ingestion", "Connected", "Synced 15 min ago")],
+    "salesforce-crm": [createSeedAccount("acc-seed-salesforce-crm", "Salesforce CRM primary account", "data-ingestion", "Connected", "Synced 18 min ago")],
+    zendesk: [createSeedAccount("acc-seed-zendesk", "Zendesk primary account", "data-ingestion", "Connected", "Synced 22 min ago")],
+  };
+
   const [integrations, setIntegrations] = useState<IntegrationRecord[]>(() => INITIAL_INTEGRATIONS.filter((integration) => integration.status !== "Available"));
   const [accountDrafts, setAccountDrafts] = useState<Record<string, AccountDraft>>({});
-  const [connectedAccountsByIntegration, setConnectedAccountsByIntegration] = useState<Record<string, ConnectedAccount[]>>(() => {
-    const seeded: Record<string, ConnectedAccount[]> = {};
-    for (const integration of INITIAL_INTEGRATIONS) {
-      if (integration.status !== "Connected" && integration.status !== "Disconnected") continue;
-      seeded[integration.id] = [{ id: `acc-seed-${integration.id}`, ...buildDefaultAccount(integration) }];
-    }
-    return seeded;
-  });
-  const [activeAccountIdByIntegration, setActiveAccountIdByIntegration] = useState<Record<string, string | null>>(() => {
-    const seeded: Record<string, string | null> = {};
-    for (const integration of INITIAL_INTEGRATIONS) {
-      seeded[integration.id] = integration.status === "Connected" || integration.status === "Disconnected" ? `acc-seed-${integration.id}` : null;
-    }
-    return seeded;
-  });
+  const [connectedAccountsByIntegration, setConnectedAccountsByIntegration] = useState<Record<string, ConnectedAccount[]>>(() => INITIAL_CONNECTED_ACCOUNTS);
+  const [activeAccountIdByIntegration, setActiveAccountIdByIntegration] = useState<Record<string, string | null>>(() => ({}));
 
   const defaultAccountForIntegration = (integration: IntegrationRecord): AccountDraft => {
     return buildDefaultAccount(integration);
@@ -3968,11 +4133,13 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     const existing = activeId ? current.find((account) => account.id === activeId) : null;
     const targetId = existing?.id ?? `acc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const nextAccounts = existing
-      ? current.map((account) => (account.id === targetId ? { ...account, ...draft } : account))
-      : [...current, { id: targetId, ...draft }];
+      ? current.map((account) => (account.id === targetId ? { ...account, purpose: connectionPurpose, status: "Connected", ...draft } : account))
+      : [...current, { id: targetId, purpose: connectionPurpose, status: "Connected", connectedBy: "Amy Vong", connectedAt: "Today", lastSynced: "Just now", ...draft }];
 
     setConnectedAccountsByIntegration((prev) => ({ ...prev, [integrationId]: nextAccounts }));
     setActiveAccountIdByIntegration((prev) => ({ ...prev, [integrationId]: targetId }));
+    setShowAccountFrame(false);
+    setAccountFrameExpanded(false);
     setIntegrations((prev) => prev.map((item) => (
       item.id === integrationId
         ? { ...item, status: "Connected", updated: "Synced just now" }
@@ -3980,49 +4147,24 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     )));
   };
 
-  const openFivetranMockLogin = (integrationId: string) => {
-    if (typeof window === "undefined") return;
-    const popup = window.open("", "fivetran-mock-login", "popup=yes,width=520,height=640");
-    if (!popup) return;
-
-    const integrationName = integrations.find((item) => item.id === integrationId)?.name ?? "Integration";
-    const escapedIntegrationName = integrationName.replace(/[&<>"']/g, (character) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      "\"": "&quot;",
-      "'": "&#39;",
-    })[character] ?? character);
-    popup.document.title = `${integrationName} Login (Demo)`;
-    popup.document.body.innerHTML = `
-      <div style="font-family: Rubik, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; min-height: 100vh; margin: 0; padding: 24px; display: flex; align-items: center; justify-content: center;">
-        <div style="width: 100%; max-width: 420px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 12px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12); padding: 20px;">
-          <h1 style="margin: 0 0 8px; font-size: 20px; color: #115E59;">${escapedIntegrationName} connection (Demo)</h1>
-          <p style="margin: 0 0 16px; color: #57606a; font-size: 13px; line-height: 1.5;">Authorize this demo connection to return to Lexer.</p>
-          <label style="display: block; margin-bottom: 12px;">
-            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Email</span>
-            <input value="demo@connection.local" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
-          </label>
-          <label style="display: block; margin-bottom: 16px;">
-            <span style="display: block; margin-bottom: 6px; font-size: 12px; color: #57606a;">Password</span>
-            <input type="password" value="DemoPass_2026!" style="width: 100%; height: 36px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0 10px; font-size: 13px; box-sizing: border-box;" />
-          </label>
-          <button id="connect-btn" style="width: 100%; height: 38px; border: 0; border-radius: 8px; background: #115E59; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer;">Connect</button>
-        </div>
-      </div>
-    `;
-
-    popup.document.getElementById("connect-btn")?.addEventListener("click", () => {
-      finalizeIntegrationConnect(integrationId);
-      popup.close();
-    });
-  };
-
   const connectIntegration = (integrationId: string) => {
-    openFivetranMockLogin(integrationId);
+    setMockLoginEmail("demo@connection.local");
+    setMockLoginPassword("DemoPass_2026!");
+    setMockLoginFallbackIntegrationId(integrationId);
   };
 
   const openConnectedIntegration = (draft: IntegrationConnectionDraft) => {
+    setOpenAccountId(null);
+    setConnectionPurpose(draft.syncDirection === "Outbound" || draft.id.startsWith("google-ads") || draft.id.startsWith("braze") ? "activation" : "data-ingestion");
+    setConnectedAccountsByIntegration((prev) => {
+      if (prev[draft.id]?.length) return prev;
+
+      const baseId = draft.id.replace(/-(inbound|outbound)$/, "");
+      const purpose: "data-ingestion" | "activation" = baseId === "google-ads" || baseId === "braze"
+        ? "activation"
+        : draft.syncDirection === "Outbound" ? "activation" : "data-ingestion";
+      return prev;
+    });
     setIntegrations((current) => current.some((integration) => integration.id === draft.id)
       ? current
       : [{ ...draft, status: "Pending", updated: draft.connectionType === "Custom" ? "Awaiting scoping" : "Awaiting authorization" }, ...current]);
@@ -4074,29 +4216,40 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     }));
   };
 
-  const categories = [
+  const countAccountsForCategory = (category: string) => integrations.reduce((count, integration) => (
+    (category === "Custom" ? integration.connectionType === "Custom" : integration.category === category)
+      ? count + (connectedAccountsByIntegration[integration.id]?.length ?? 0)
+      : count
+  ), 0);
+
+  const statusCategories = [
     "All",
     "Connected sources",
+    "Syncing",
+    "Pending",
     "Disconnected sources",
-    ...Array.from(new Set([...integrations.map((integration) => integration.category), "Custom"]))
-      .sort((a, b) => a.localeCompare(b)),
   ];
+  const populatedCategories = Array.from(new Set([...integrations.map((integration) => integration.category), "Custom"]))
+    .filter((category) => countAccountsForCategory(category) > 0)
+    .sort((a, b) => a.localeCompare(b));
+  const categories = showConnectionCategories ? [...statusCategories, ...populatedCategories] : statusCategories;
 
   const syncDirectionForCategory = (category: string): "Inbound" | "Outbound" | "Bidirectional" => {
     if (category === "Transactions") return "Inbound";
     if (category === "Paid ads") return "Outbound";
-    if (["Web analytics", "Warehouse", "CRM", "Customer support"].includes(category)) return "Inbound";
+    if (category === "Warehouse") return "Bidirectional";
+    if (["Web analytics", "CRM", "Customer support"].includes(category)) return "Inbound";
     return "Bidirectional";
   };
 
-  const syncDirectionForIntegration = (integration: Pick<IntegrationRecord, "category" | "syncDirection">) => (
-    integration.syncDirection ?? syncDirectionForCategory(integration.category)
+  const syncDirectionForIntegration = (integration: Pick<IntegrationRecord, "category" | "syncDirection">): "Inbound" | "Outbound" => (
+    integration.syncDirection === "Outbound" ? "Outbound" : "Inbound"
   );
 
-  const syncDirectionIcon = (direction: "Inbound" | "Outbound" | "Bidirectional") => {
+  const syncDirectionIcon = (direction: "Inbound" | "Outbound") => {
     if (direction === "Inbound") return <RiArrowLeftCircleLine className="size-4" />;
     if (direction === "Outbound") return <RiArrowRightCircleLine className="size-4" />;
-    return <RiArrowLeftRightLine className="size-4" />;
+    return null;
   };
 
   const q = query.trim().toLowerCase();
@@ -4104,17 +4257,23 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     const customOnly = selectedCategory === "Custom";
     const connectedOnly = selectedCategory === "Connected sources";
     const disconnectedOnly = selectedCategory === "Disconnected sources";
-    const categoryMatch = customOnly || connectedOnly || disconnectedOnly || selectedCategory === "All" || integration.category === selectedCategory;
-    const statusMatch = (connectedOnly && integration.status === "Connected")
-      || (disconnectedOnly && integration.status === "Disconnected")
-      || (!connectedOnly && !disconnectedOnly);
+    const syncingOnly = selectedCategory === "Syncing";
+    const pendingOnly = selectedCategory === "Pending";
+    const categoryMatch = customOnly || connectedOnly || disconnectedOnly || syncingOnly || pendingOnly || selectedCategory === "All" || integration.category === selectedCategory;
+    const statusMatch = (connectedOnly && (connectedAccountsByIntegration[integration.id] ?? []).some((account) => account.status === "Connected"))
+      || (disconnectedOnly && (connectedAccountsByIntegration[integration.id] ?? []).some((account) => account.status === "Disconnected"))
+      || (syncingOnly && (connectedAccountsByIntegration[integration.id] ?? []).some((account) => account.status === "Syncing"))
+      || (pendingOnly && (connectedAccountsByIntegration[integration.id] ?? []).some((account) => account.status === "Pending"))
+      || (!connectedOnly && !disconnectedOnly && !syncingOnly && !pendingOnly);
     const typeMatch = !customOnly || integration.connectionType === "Custom";
     const nameMatch = q === "" || integration.name.toLowerCase().includes(q);
     return categoryMatch && statusMatch && typeMatch && nameMatch;
   });
 
-  const pinnedIntegration = filtered.find((integration) => integration.id === "lexer-api");
-  const filteredWithoutPinned = filtered.filter((integration) => integration.id !== "lexer-api");
+  const pinnedIntegration = showConnectionCategories ? filtered.find((integration) => integration.id === "lexer-api") : undefined;
+  const filteredWithoutPinned = showConnectionCategories
+    ? filtered.filter((integration) => integration.id !== "lexer-api")
+    : filtered;
 
   const sortValue = (
     integration: IntegrationRecord,
@@ -4142,6 +4301,12 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
   });
 
   const openIntegration = openIntegrationId ? integrations.find((integration) => integration.id === openIntegrationId) : null;
+  const openAccount = openIntegration
+    ? (connectedAccountsByIntegration[openIntegration.id] ?? []).find((account) => account.id === openAccountId) ?? null
+    : null;
+  const mockLoginFallbackIntegration = mockLoginFallbackIntegrationId
+    ? integrations.find((integration) => integration.id === mockLoginFallbackIntegrationId)
+    : null;
 
   useEffect(() => {
     setShowAccountFrame(false);
@@ -4190,11 +4355,12 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
   }, [showAccountFrame]);
 
   const countFor = (category: string) => {
-    if (category === "Custom") return integrations.filter((integration) => integration.connectionType === "Custom").length;
-    if (category === "Connected sources") return integrations.filter((integration) => integration.status === "Connected").length;
-    if (category === "Disconnected sources") return integrations.filter((integration) => integration.status === "Disconnected").length;
-    if (category === "All") return integrations.length;
-    return integrations.filter((integration) => integration.category === category).length;
+    if (category === "Connected sources") return Object.values(connectedAccountsByIntegration).flat().filter((account) => account.status === "Connected").length;
+    if (category === "Syncing") return Object.values(connectedAccountsByIntegration).flat().filter((account) => account.status === "Syncing").length;
+    if (category === "Pending") return Object.values(connectedAccountsByIntegration).flat().filter((account) => account.status === "Pending").length;
+    if (category === "Disconnected sources") return Object.values(connectedAccountsByIntegration).flat().filter((account) => account.status === "Disconnected").length;
+    if (category === "All") return Object.values(connectedAccountsByIntegration).flat().length;
+    return countAccountsForCategory(category);
   };
 
   const SortHeader = ({ label, keyName, className }: { label: string; keyName: "name" | "category" | "syncDirection" | "summary" | "updated" | "status"; className?: string }) => {
@@ -4228,22 +4394,21 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
 
     return (
       <>
-        <div className="space-y-2 rounded-lg border border-border bg-background p-2.5">
+        <div className="space-y-2">
           <div>
-            <p className="text-[11px] font-semibold text-muted-foreground">Account Name</p>
+            <p className="text-[11px] font-semibold text-muted-foreground">Account name</p>
             <Input
               value={draft.accountName}
               onChange={(e) => updateAccountDraft(integration.id, "accountName", e.target.value)}
-              className={cn("mt-0.5 h-8", inputBgClass)}
+              className={cn("mt-1 h-9", inputBgClass)}
             />
           </div>
 
-          <div className="mt-2 flex items-center justify-end gap-2 border-t border-border pt-2">
-            <Button variant="outline" size={mode === "docked" ? "sm" : undefined} onClick={() => saveAccountDraft(integration.id)}>Save</Button>
+          <div className="mt-2 flex items-center justify-end gap-2">
             {connected ? (
               <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setPendingDisconnectIntegrationId(integration.id)}>Remove</Button>
             ) : (
-              <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setCancelConfirmOpen(true)}>Cancel</Button>
+              <Button variant="destructive" size={mode === "docked" ? "sm" : undefined} onClick={() => setShowAccountFrame(false)}>Cancel</Button>
             )}
             <Button
               size={mode === "docked" ? "sm" : undefined}
@@ -4449,6 +4614,189 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     );
   };
 
+  const renderConnectionOptions = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
+    const direction = syncDirectionForCategory(integration.category);
+    const purpose = direction === "Outbound" ? "activation" : "data-ingestion";
+    const purposeLabel = purpose === "data-ingestion" ? "Data ingestion" : "Activation";
+    const accounts = (connectedAccountsByIntegration[integration.id] ?? []).filter((account) => account.purpose === purpose);
+
+    return (
+      <div className="space-y-3">
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <div className="flex items-center gap-2">
+            {syncDirectionIcon(direction)}
+            <p className="text-sm font-semibold text-foreground">{purposeLabel}</p>
+          </div>
+          <p className="mt-1 text-xs text-foreground-secondary">
+            {purpose === "data-ingestion"
+              ? `Bring data from ${integration.name} into Lexer.`
+              : `Send audiences from Lexer to ${integration.name}.`}
+          </p>
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="text-xs font-medium text-muted-foreground">Accounts</p>
+            {accounts.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {accounts.map((account) => (
+                  <div key={account.id} className="rounded-lg border border-border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium text-foreground">{account.accountName}</p>
+                      <Badge variant={account.status === "Connected" ? "success" : account.status === "Disconnected" ? "danger" : account.status === "Pending" ? "warning" : "default"} size="sm" className={account.status === "Syncing" ? "bg-sky-100 text-sky-700 ring-sky-600/20" : undefined}>{account.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{account.lastSynced}</p>
+                    <button type="button" onClick={() => setOpenAccountId(account.id)} className="mt-2 text-xs font-medium text-primary hover:underline">View</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-foreground-secondary">No connected accounts</p>
+            )}
+            <Button
+              size={mode === "docked" ? "sm" : undefined}
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={() => {
+                setConnectionPurpose(purpose);
+                setShowAccountFrame(true);
+                setAccountFrameExpanded(false);
+                handleAddNewAccount(integration);
+              }}
+            >
+              Add {accounts.length > 0 ? "another " : ""}{purposeLabel.toLowerCase()} account
+            </Button>
+            {showAccountFrame ? (
+              <div className="mt-3 border-t border-border pt-3">
+                {renderAccountEditor(integration, mode)}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderBidirectionalLanes = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
+    const accounts = integrations
+      .filter((candidate) => candidate.name === integration.name && candidate.category === integration.category)
+      .flatMap((candidate) => (connectedAccountsByIntegration[candidate.id] ?? []).map((account) => ({
+        ...account,
+        integrationId: candidate.id,
+      })));
+    const dataAccounts = accounts.filter((account) => account.purpose === "data-ingestion");
+    const activationAccounts = accounts.filter((account) => account.purpose === "activation");
+
+    if (showAccountFrame) {
+      const isDataIngestion = connectionPurpose === "data-ingestion";
+      return (
+        <div className="rounded-lg border border-border bg-background p-3">
+          <div className="flex items-center gap-2">
+            {isDataIngestion
+              ? <RiArrowLeftCircleLine className="size-4 text-primary" />
+              : <RiArrowRightCircleLine className="size-4 text-primary" />}
+            <p className="text-sm font-semibold text-foreground">{isDataIngestion ? "Data ingestion" : "Activation"}</p>
+          </div>
+          <p className="mt-1 text-xs text-foreground-secondary">
+            {isDataIngestion
+              ? `Bring data from ${integration.name} into Lexer.`
+              : `Send audiences from Lexer to ${integration.name}.`}
+          </p>
+          <div className="mt-3 border-t border-border pt-3">
+            <div>{renderAccountEditor(integration, mode)}</div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={mode === "docked" ? "grid grid-cols-1 gap-3" : "grid grid-cols-2 gap-4"}>
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <div className="flex items-center gap-2">
+            <RiArrowLeftCircleLine className="size-4 text-primary" />
+            <p className="text-sm font-semibold text-foreground">Data ingestion</p>
+          </div>
+          <p className="mt-1 text-xs text-foreground-secondary">Bring data from {integration.name} into Lexer.</p>
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="text-xs font-medium text-muted-foreground">Accounts</p>
+            {dataAccounts.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {dataAccounts.map((account) => (
+                  <div key={account.id} className="rounded-lg border border-border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium text-foreground">{account.accountName}</p>
+                      <Badge variant={account.status === "Connected" ? "success" : account.status === "Disconnected" ? "danger" : account.status === "Pending" ? "warning" : "default"} size="sm" className={account.status === "Syncing" ? "bg-sky-100 text-sky-700 ring-sky-600/20" : undefined}>{account.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{account.lastSynced}</p>
+                    <button type="button" onClick={() => {
+                      setOpenIntegrationId(account.integrationId);
+                      setOpenAccountId(account.id);
+                    }} className="mt-2 text-xs font-medium text-primary hover:underline">View</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-foreground-secondary">No connected accounts</p>
+            )}
+            <Button
+              size={mode === "docked" ? "sm" : undefined}
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={() => {
+                setConnectionPurpose("data-ingestion");
+                setShowAccountFrame(true);
+                setAccountFrameExpanded(false);
+                handleAddNewAccount(integration);
+              }}
+            >
+              Add another data ingestion account
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-accent bg-accent/40 p-3">
+          <div className="flex items-center gap-2">
+            <RiArrowRightCircleLine className="size-4 text-foreground-secondary" />
+            <p className="text-sm font-semibold text-foreground">Activation</p>
+          </div>
+          <p className="mt-1 text-xs text-foreground-secondary">Send audiences from Lexer to {integration.name}.</p>
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="text-xs font-medium text-muted-foreground">Accounts</p>
+            {activationAccounts.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {activationAccounts.map((account) => (
+                  <div key={account.id} className="rounded-lg border border-border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium text-foreground">{account.accountName}</p>
+                      <Badge variant={account.status === "Connected" ? "success" : account.status === "Disconnected" ? "danger" : account.status === "Pending" ? "warning" : "default"} size="sm" className={account.status === "Syncing" ? "bg-sky-100 text-sky-700 ring-sky-600/20" : undefined}>{account.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{account.lastSynced}</p>
+                    <button type="button" onClick={() => {
+                      setOpenIntegrationId(account.integrationId);
+                      setOpenAccountId(account.id);
+                    }} className="mt-2 text-xs font-medium text-primary hover:underline">View</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-foreground-secondary">No connected accounts</p>
+            )}
+            <Button
+              size={mode === "docked" ? "sm" : undefined}
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={() => {
+                setConnectionPurpose("activation");
+                setShowAccountFrame(true);
+                setAccountFrameExpanded(false);
+                handleAddNewAccount(integration);
+              }}
+            >
+              Add another activation account
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderAddAccountFrame = (integration: IntegrationRecord, mode: "docked" | "expanded") => {
     const connectedAccounts = connectedAccountsByIntegration[integration.id] ?? [];
     const activeAccountId = activeAccountIdByIntegration[integration.id] ?? null;
@@ -4494,81 +4842,84 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     );
   };
 
-  const renderIntegrationRow = (integration: IntegrationRecord) => (
-    <TableRow
-      key={integration.id}
-      onClick={() => setOpenIntegrationId(integration.id)}
-      className={cn("cursor-pointer", openIntegrationId === integration.id && "bg-accent/40")}
-    >
-      <TableCell>
-        <div className="inline-flex items-center gap-2">
-          <IntegrationLogo name={integration.name} />
-          <span className="font-medium text-foreground">{integration.name}</span>
-          {integration.id === "lexer-api" && <Badge variant="default" size="sm">Pinned</Badge>}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={integration.connectionType === "Custom" ? "secondary" : "outline"} size="sm">
-          {integration.connectionType === "Custom" ? "Custom" : "Native"}
-        </Badge>
-      </TableCell>
-      <TableCell><Badge variant="default" size="sm">{integration.category}</Badge></TableCell>
-      <TableCell>
-        <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
-          {syncDirectionIcon(syncDirectionForIntegration(integration))}
-          <span>{syncDirectionForIntegration(integration)}</span>
-        </span>
-      </TableCell>
-      <TableCell className="border-r border-border text-sm text-foreground-secondary">{integration.summary}</TableCell>
-      <TableCell>
-        <Badge
-          variant={integration.status === "Connected" ? "success" : "outline"}
-          size="sm"
-          className={cn(
-            integration.status === "Available" && "bg-foreground/70 text-background ring-foreground/30",
-            integration.status === "Disconnected" && "border-red-200 bg-red-50 text-red-700 ring-red-200",
-          )}
-        >
-          {integration.status}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-sm text-muted-foreground">{integration.updated}</TableCell>
-    </TableRow>
-  );
+  const renderIntegrationRows = (integration: IntegrationRecord): React.ReactNode[] => {
+    const accounts = connectedAccountsByIntegration[integration.id] ?? [];
+
+    if (accounts.length === 0) return [];
+
+    return accounts.map((account) => (
+      <TableRow
+        key={`${integration.id}-${account.id}`}
+        onClick={() => {
+          setConnectionPurpose(account.purpose);
+          setShowAccountFrame(false);
+          setAccountFrameExpanded(false);
+          setOpenIntegrationId(integration.id);
+          setOpenAccountId(account.id);
+        }}
+        className={cn("cursor-pointer", openIntegrationId === integration.id && openAccountId === account.id && "bg-accent/40")}
+      >
+        <TableCell>
+          <div className="inline-flex items-center gap-2">
+            <IntegrationLogo name={integration.name} />
+            <span className="font-medium text-foreground">{integration.name}</span>
+          </div>
+        </TableCell>
+        <TableCell><span className="text-sm font-medium text-foreground">{account.accountName}</span></TableCell>
+        <TableCell>
+          <Badge variant={integration.connectionType === "Custom" ? "secondary" : "outline"} size="sm">
+            {integration.connectionType === "Custom" ? "Custom" : "Standard"}
+          </Badge>
+        </TableCell>
+        {showConnectionCategories && <TableCell><Badge variant="default" size="sm">{integration.category}</Badge></TableCell>}
+        <TableCell>
+          <span className="inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
+            {account.purpose === "data-ingestion" ? <RiArrowLeftCircleLine className="size-4 text-primary" /> : <RiArrowRightCircleLine className="size-4 text-primary" />}
+            <span>{account.purpose === "data-ingestion" ? "Data ingestion" : "Activation"}</span>
+          </span>
+        </TableCell>
+        <TableCell>
+          <Badge variant={account.status === "Connected" ? "success" : account.status === "Disconnected" ? "danger" : "warning"} size="sm">{account.status}</Badge>
+        </TableCell>
+        <TableCell className="border-r border-border text-sm text-foreground-secondary">{account.lastSynced}</TableCell>
+        <TableCell className="text-sm text-muted-foreground">{account.lastSynced}</TableCell>
+      </TableRow>
+    ));
+  };
 
   const groupedRows: React.ReactNode[] = [];
   let currentCategory: string | null = null;
 
-  if (pinnedIntegration) groupedRows.push(renderIntegrationRow(pinnedIntegration));
+  if (pinnedIntegration) groupedRows.push(...renderIntegrationRows(pinnedIntegration));
   for (const integration of sorted) {
-    if (integration.category !== currentCategory) {
+    if (showConnectionCategories && integration.category !== currentCategory) {
       currentCategory = integration.category;
       groupedRows.push(
         <TableRow key={`category-${currentCategory}`}>
-          <TableCell colSpan={7} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
+          <TableCell colSpan={8} className="bg-muted/30 py-2 text-xs font-semibold text-foreground-secondary">
             {currentCategory}
           </TableCell>
         </TableRow>,
       );
     }
-    groupedRows.push(renderIntegrationRow(integration));
+    groupedRows.push(...renderIntegrationRows(integration));
   }
 
   return (
     <div className="flex h-full flex-col px-6 py-6">
       <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-        {!newConnectionsOnly ? <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p> : null}
+        <h1 className="text-xl font-semibold text-foreground">Connections</h1>
+        <p className="text-sm text-foreground-secondary">Manage connected systems that power your definitions, metrics, and sources.</p>
       </div>
 
-      {!newConnectionsOnly ? <IntegrationHealthBanner integrations={integrations} onReview={() => {
+      <IntegrationHealthBanner integrations={integrations} onReview={() => {
         setSelectedCategory("Disconnected sources");
         setConnectionPage("overview");
         setQuery("");
         setOpenIntegrationId(null);
         setPanelExpanded(false);
         setConnectionsExpanded(true);
-      }} /> : null}
+      }} />
 
       <div className="min-h-0 flex flex-1 gap-4 overflow-hidden">
         <aside className="w-56 shrink-0 space-y-4 overflow-y-auto">
@@ -4579,6 +4930,7 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                 type="button"
                 onClick={() => {
                   setConnectionPage("standard");
+                  setSelectedCategory("");
                   setOpenIntegrationId(null);
                   setPanelExpanded(false);
                 }}
@@ -4594,6 +4946,7 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                 type="button"
                 onClick={() => {
                   setConnectionPage("custom");
+                  setSelectedCategory("");
                   setOpenIntegrationId(null);
                   setPanelExpanded(false);
                 }}
@@ -4607,16 +4960,15 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
               </button>
             </div>
           </div>
-          {!newConnectionsOnly ? (
-          <div className="rounded-xl border border-border bg-card p-2">
+          <div className="rounded-xl border border-primary/60 bg-card p-2">
           <button
             type="button"
             aria-expanded={connectionsExpanded}
             aria-controls="mvp-integration-categories"
             onClick={() => setConnectionsExpanded((expanded) => !expanded)}
-            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-muted-foreground hover:bg-muted"
+            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold text-primary hover:bg-muted"
           >
-            <span>Connections</span>
+            <span>Your Connections</span>
             <RiArrowDownSLine className={cn("size-4 transition-transform", connectionsExpanded && "rotate-180")} />
           </button>
           {connectionsExpanded ? (
@@ -4636,28 +4988,53 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                       )}
                     >
                       <span className="truncate">{category === "All" ? "All connections" : category}</span>
-                      <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
+                      {countFor(category) > 0 ? (
+                        <span className="text-xs tabular-nums text-muted-foreground">{countFor(category)}</span>
+                      ) : null}
                     </button>
-                    {category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
+                    {showConnectionCategories && category === "Disconnected sources" && <div className="my-2 border-b border-border" />}
                   </li>
                 );
               })}
             </ul>
           ) : null}
           </div>
-          ) : null}
         </aside>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
-          {connectionPage === "standard" || (newConnectionsOnly && connectionPage !== "custom") ? (
+          {connectionPage === "standard" ? (
             <StandardConnectionPage
-              onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")}
+              onBack={() => setConnectionPage("overview")}
               onConnect={openConnectedIntegration}
+              onViewDetails={openConnectedIntegration}
               directionForCategory={syncDirectionForCategory}
+              connectionIdForDirection={(integrationId, direction) => {
+                const directionSpecificId = `${integrationId}-${direction.toLowerCase()}`;
+                return integrations.some((integration) => integration.id === directionSpecificId)
+                  ? directionSpecificId
+                  : integrationId;
+              }}
+              connections={integrations.filter((integration) => integration.connectionType !== "Custom").flatMap((integration) => {
+                const integrationId = integration.id.replace(/-(inbound|outbound)$/, "");
+                const accounts = connectedAccountsByIntegration[integration.id] ?? [];
+                return accounts.length > 0
+                  ? accounts.map((account) => ({
+                    integrationId,
+                    status: account.status,
+                    accountName: account.accountName,
+                    syncDirection: account.purpose === "data-ingestion" ? "Inbound" as const : "Outbound" as const,
+                  }))
+                  : integration.status === "Available" ? [] : [{
+                    integrationId,
+                    status: integration.status,
+                    accountName: "",
+                    syncDirection: syncDirectionForIntegration(integration),
+                  }];
+              })}
             />
           ) : connectionPage === "custom" ? (
             <CustomConnectionPage
-              onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")}
+              onBack={() => setConnectionPage("overview")}
               onCreate={openConnectedIntegration}
               addedBy={MOCK_USER.firstName}
               requests={integrations.filter((integration) => integration.connectionType === "Custom" && integration.status === "Pending")}
@@ -4670,7 +5047,7 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search integration names"
+                placeholder="Search connection names"
                 className="h-9 pl-8"
               />
             </div>
@@ -4680,21 +5057,24 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortHeader label="Integration" keyName="name" />
+                  <SortHeader label={showConnectionCategories ? "Provider" : "Source"} keyName="name" />
+                  <TableHead className="w-44">Account name</TableHead>
                   <TableHead className="w-36">Connection type</TableHead>
-                  <SortHeader label="Category" keyName="category" className="w-40" />
-                  <SortHeader label="Sync direction" keyName="syncDirection" className="w-44" />
-                  <SortHeader label="Description" keyName="summary" className="border-r border-border" />
-                  <SortHeader label="Status" keyName="status" className="w-40" />
-                  <SortHeader label="Last sync" keyName="updated" className="w-40" />
+                  {showConnectionCategories && <SortHeader label="Category" keyName="category" className="w-40" />}
+                  <TableHead className="w-44">Direction</TableHead>
+                  <TableHead className="w-32">Status</TableHead>
+                  <TableHead className="border-r border-border">Detail</TableHead>
+                  <TableHead className="w-40">Last sync or send</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {groupedRows}
                 {groupedRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
-                      No integrations match this search and category.
+                    <TableCell colSpan={showConnectionCategories ? 8 : 7} className="py-8 text-center text-sm text-muted-foreground">
+                      {showConnectionCategories
+                        ? "No connections match this search and category."
+                        : "No sources match this search and status."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -4740,28 +5120,88 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                       <RiCloseLine className="size-4" />
                     </button>
                   </div>
-                  <Badge
-                    variant={openIntegration.status === "Connected" ? "success" : "outline"}
-                    size="sm"
-                    className={cn(
-                      openIntegration.status === "Available" && "bg-foreground/70 text-background ring-foreground/30",
-                      openIntegration.status === "Disconnected" && "border-red-200 bg-red-50 text-red-700 ring-red-200",
-                    )}
-                  >
-                    {openIntegration.status}
-                  </Badge>
                 </div>
               </div>
             </div>
 
             <div className="space-y-4 p-4">
-              {(() => {
+              {openAccount ? (
+                <div className="space-y-4">
+                  <button type="button" onClick={() => setOpenAccountId(null)} className="text-sm font-medium text-primary hover:underline">
+                    Back to {openIntegration.name}
+                  </button>
+                  {openAccount.status === "Disconnected" ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                      {openIntegration.id === "google-ads" || openIntegration.id === "sendgrid" ? (
+                        <p className="font-semibold">An error has occurred. Please reach out to your Lexer partner for support.</p>
+                      ) : (
+                        <>
+                          <p className="font-semibold">This account has disconnected and needs to be reconnected to avoid disruption.</p>
+                          <p className="mt-2 font-medium text-foreground">Potential causes</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-foreground-secondary">
+                            <li>The access token has expired or been revoked.</li>
+                            <li>Account permissions may have changed or the provider may be temporarily unavailable.</li>
+                          </ul>
+                          <p className="mt-2 font-medium text-foreground">Resolution steps</p>
+                          <ol className="mt-1 list-decimal space-y-1 pl-5 text-foreground-secondary">
+                            <li>Check the provider status and confirm the account still has the required permissions.</li>
+                            <li>Select the account and reconnect with the authorized user.</li>
+                            <li>Retry the sync and check the sync log for confirmation that data is flowing.</li>
+                          </ol>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+                  <div>
+                    <h2 className="mt-2 text-lg font-semibold text-foreground">{openAccount.accountName}</h2>
+                    <p className="mt-1 text-sm text-foreground-secondary">{openAccount.lastSynced}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-border bg-background p-3">
+                      <p className="text-[11px] font-semibold text-muted-foreground">Category</p>
+                      <p className="mt-0.5 text-sm text-foreground">{openIntegration.category}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background p-3">
+                      <p className="text-[11px] font-semibold text-muted-foreground">Direction</p>
+                      <p className="mt-0.5 text-sm text-foreground">{openAccount.purpose === "data-ingestion" ? "Inbound data" : "Activation"}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-3">
+                    <p className="text-xs font-medium text-muted-foreground">About this connection</p>
+                    <dl className="mt-3 space-y-2 text-sm">
+                      <div className="flex justify-between gap-3"><dt className="text-foreground-secondary">Connected by</dt><dd className="text-foreground">{openAccount.connectedBy}</dd></div>
+                      <div className="flex justify-between gap-3"><dt className="text-foreground-secondary">Connected at</dt><dd className="text-foreground">{openAccount.connectedAt}</dd></div>
+                      <div className="flex justify-between gap-3"><dt className="text-foreground-secondary">Last synced</dt><dd className="text-foreground">{openAccount.lastSynced}</dd></div>
+                      <div className="flex justify-between gap-3"><dt className="text-foreground-secondary">Status</dt><dd><Badge variant={openAccount.status === "Connected" ? "success" : openAccount.status === "Disconnected" ? "danger" : openAccount.status === "Pending" ? "warning" : "default"} size="sm" className={openAccount.status === "Syncing" ? "bg-sky-100 text-sky-700 ring-sky-600/20" : undefined}>{openAccount.status}</Badge></dd></div>
+                    </dl>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background p-3">
+                    <p className="text-xs font-medium text-muted-foreground">Sync log</p>
+                    <p className="mt-2 text-sm text-foreground-secondary">{openAccount.lastSynced}</p>
+                  </div>
+                  <div className="border-t border-border pt-4">
+                    <Button
+                      variant="outline"
+                      className="w-full border-red-300 text-red-700 hover:bg-red-50 hover:text-red-700"
+                      onClick={() => {
+                        setConnectedAccountsByIntegration((prev) => ({
+                          ...prev,
+                          [openIntegration.id]: (prev[openIntegration.id] ?? []).filter((account) => account.id !== openAccount.id),
+                        }));
+                        setOpenAccountId(null);
+                      }}
+                    >{openAccount.status === "Disconnected" ? "Reconnect this account" : "Remove this account"}</Button>
+                  </div>
+                </div>
+              ) : (() => {
                 return (
                   <>
                     <div className="grid grid-cols-1 gap-3">
-                      {openIntegration.status === "Disconnected" && (
+                      {openIntegration.status === "Disconnected" && !((openIntegration.id === "google-ads" || openIntegration.id === "sendgrid") && !openAccountId) && (
                         <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          <DisconnectedConnectionGuidance category={openIntegration.category} />
+                          {openIntegration.id === "google-ads" || openIntegration.id === "sendgrid"
+                            ? <p className="font-semibold">An error has occurred. Please reach out to your Lexer partner for support.</p>
+                            : <DisconnectedConnectionGuidance category={openIntegration.category} />}
                         </div>
                       )}
 
@@ -4772,10 +5212,10 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                             <p className="mt-0.5 text-sm text-foreground">{openIntegration.category}</p>
                           </div>
                           <div className="rounded-lg border border-border bg-background p-3">
-                            <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
+                            <p className="text-[11px] font-semibold text-muted-foreground">Connection</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
                               {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
-                              <span>{syncDirectionForIntegration(openIntegration)}</span>
+                              <span>{syncDirectionForIntegration(openIntegration) === "Inbound" ? "Data ingestion" : "Activation"}</span>
                             </div>
                           </div>
                         </div>
@@ -4786,78 +5226,12 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                         <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
                       </div>
 
-                      {showAccountFrame ? (
-                        accountFrameExpanded ? (
-                          <div className="grid grid-cols-2 gap-3">
-                            <div ref={accountFrameRef} className="col-span-2 flex h-full flex-col rounded-lg border border-border bg-background p-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => setAccountFrameExpanded(false)}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Collapse account details"
-                                    aria-label="Collapse account details"
-                                  >
-                                    <RiFullscreenExitLine className="size-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setShowAccountFrame(false);
-                                      setAccountFrameExpanded(false);
-                                    }}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account details"
-                                    aria-label="Close account details"
-                                  >
-                                    <RiCloseLine className="size-4" />
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="mt-2 space-y-2">
-                                {renderAccountEditor(openIntegration, "docked")}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-3">
-                            {renderAddAccountFrame(openIntegration, "docked")}
-                            <div ref={accountFrameRef} className="flex h-full flex-col rounded-lg border border-border bg-background p-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => setAccountFrameExpanded(true)}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Expand account details"
-                                    aria-label="Expand account details"
-                                  >
-                                    <RiExpandDiagonalLine className="size-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setShowAccountFrame(false);
-                                      setAccountFrameExpanded(false);
-                                    }}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account details"
-                                    aria-label="Close account details"
-                                  >
-                                    <RiCloseLine className="size-4" />
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="mt-2 space-y-2">
-                                {renderAccountEditor(openIntegration, "docked")}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="col-span-2">{renderAddAccountFrame(openIntegration, "docked")}</div>
-                        </div>
-                      )}
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        {syncDirectionForCategory(openIntegration.category) === "Bidirectional"
+                          ? renderBidirectionalLanes(openIntegration, "docked")
+                          : renderConnectionOptions(openIntegration, "docked")}
+                      </div>
+
 
                       <div className="rounded-lg border border-border bg-background p-3">
                         <p className="text-xs font-medium text-muted-foreground">Sync Log</p>
@@ -4912,9 +5286,11 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                 {(() => {
                   return (
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                      {openIntegration.status === "Disconnected" && (
+                      {openIntegration.status === "Disconnected" && !((openIntegration.id === "google-ads" || openIntegration.id === "sendgrid") && !openAccountId) && (
                         <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
-                          <DisconnectedConnectionGuidance category={openIntegration.category} />
+                          {openIntegration.id === "google-ads" || openIntegration.id === "sendgrid"
+                            ? <p className="font-semibold">An error has occurred. Please reach out to your Lexer partner for support.</p>
+                            : <DisconnectedConnectionGuidance category={openIntegration.category} />}
                         </div>
                       )}
 
@@ -4925,10 +5301,10 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                             <p className="mt-0.5 text-sm text-foreground">{openIntegration.category}</p>
                           </div>
                           <div className="rounded-xl border border-border bg-card p-4">
-                            <p className="text-[11px] font-semibold text-muted-foreground">Sync direction</p>
+                            <p className="text-[11px] font-semibold text-muted-foreground">Connection</p>
                             <div className="mt-0.5 inline-flex items-center gap-1.5 text-sm text-foreground-secondary">
                               {syncDirectionIcon(syncDirectionForIntegration(openIntegration))}
-                              <span>{syncDirectionForIntegration(openIntegration)}</span>
+                              <span>{syncDirectionForIntegration(openIntegration) === "Inbound" ? "Data ingestion" : "Activation"}</span>
                             </div>
                           </div>
                         </div>
@@ -4939,76 +5315,12 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
                         <p className="mt-1 text-sm text-foreground-secondary">{openIntegration.summary}</p>
                       </div>
 
-                      {showAccountFrame ? (
-                        accountFrameExpanded ? (
-                          <div className="grid grid-cols-1 gap-4 lg:col-span-2">
-                            <div ref={accountFrameRef} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => setAccountFrameExpanded(false)}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Collapse account details"
-                                    aria-label="Collapse account details"
-                                  >
-                                    <RiFullscreenExitLine className="size-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setShowAccountFrame(false);
-                                      setAccountFrameExpanded(false);
-                                    }}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account details"
-                                    aria-label="Close account details"
-                                  >
-                                    <RiCloseLine className="size-4" />
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="mt-2 space-y-2">
-                                {renderAccountEditor(openIntegration, "expanded")}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 gap-4 lg:col-span-2">
-                            {renderAddAccountFrame(openIntegration, "expanded")}
-                            <div ref={accountFrameRef} className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-muted-foreground">Account details</p>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => setAccountFrameExpanded(true)}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Expand account details"
-                                    aria-label="Expand account details"
-                                  >
-                                    <RiExpandDiagonalLine className="size-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setShowAccountFrame(false);
-                                      setAccountFrameExpanded(false);
-                                    }}
-                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                    title="Close account details"
-                                    aria-label="Close account details"
-                                  >
-                                    <RiCloseLine className="size-4" />
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="mt-2 space-y-2">
-                                {renderAccountEditor(openIntegration, "expanded")}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      ) : (
-                        <div className="lg:col-span-2">{renderAddAccountFrame(openIntegration, "expanded")}</div>
-                      )}
+                      <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+                        {syncDirectionForCategory(openIntegration.category) === "Bidirectional"
+                          ? renderBidirectionalLanes(openIntegration, "expanded")
+                          : renderConnectionOptions(openIntegration, "expanded")}
+                      </div>
+
 
                       <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
                         <p className="text-xs font-medium text-muted-foreground">Sync Log</p>
@@ -5053,6 +5365,41 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
         cancelLabel="Keep account"
         onConfirm={confirmDisconnectIntegration}
       />
+
+      <Dialog
+        open={mockLoginFallbackIntegration != null}
+        onOpenChange={(open) => {
+          if (!open) setMockLoginFallbackIntegrationId(null);
+        }}
+      >
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>{mockLoginFallbackIntegration?.name ?? "Integration"} connection (Demo)</DialogTitle>
+            <DialogDescription>Enter the demo credentials to authorize this connection.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="mt-4 space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!mockLoginFallbackIntegrationId) return;
+              finalizeIntegrationConnect(mockLoginFallbackIntegrationId);
+              setMockLoginFallbackIntegrationId(null);
+            }}
+          >
+            <div>
+              <label htmlFor="mock-login-email" className="text-sm font-medium text-foreground">Email</label>
+              <Input id="mock-login-email" type="email" value={mockLoginEmail} onChange={(event) => setMockLoginEmail(event.target.value)} className="mt-1" required />
+            </div>
+            <div>
+              <label htmlFor="mock-login-password" className="text-sm font-medium text-foreground">Password</label>
+              <Input id="mock-login-password" type="password" value={mockLoginPassword} onChange={(event) => setMockLoginPassword(event.target.value)} className="mt-1" required />
+            </div>
+            <DialogFooter>
+              <Button type="submit">Save and connect</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -5083,11 +5430,12 @@ function Sidebar({
   const { state, dispatch } = useSession();
   const inSegments = page === "segments" || page === "segment-detail";
   const inActivations = page === "activations";
-  const inContext = page === "context";
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources";
-  const inKnowledge = inContext || page === "context-v1" || page === "definitions" || (page === "playbook" && playbookSection === "rules");
+  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources" || page === "integrations";
+  const inKnowledge = page === "context" || page === "definitions" || (page === "playbook" && playbookSection === "rules");
+  const inThinSlice = page === "connections-thin-slice-1";
   const [activationsOpen, setActivationsOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [thinSliceOpen, setThinSliceOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const activationCount = {
     all: state.activations.filter((a) => a.status !== "awaiting-approval").length,
@@ -5169,6 +5517,7 @@ function Sidebar({
               )}
             </li>
             <li><NavRow icon={RiDashboardLine} label="Dashboards" collapsed={collapsed} active={page === "dashboards"} onClick={() => onNavigate("dashboards")} /></li>
+            <li><NavRow icon={RiDashboardLine} label="Dashboards 2" collapsed={collapsed} active={page === "dashboards-2"} onClick={() => onNavigate("dashboards-2")} /></li>
             <li>
               <NavRow
                 icon={RiBrainLine}
@@ -5183,10 +5532,26 @@ function Sidebar({
               {!collapsed && knowledgeOpen && (
                 <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
                   <li><SubNavRow label="Context" active={page === "context"} onClick={() => onNavigate("context")} /></li>
-                  <li><SubNavRow label="Context v1" active={page === "context-v1"} onClick={() => onNavigate("context-v1")} /></li>
                   <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
                   <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
                   <li><SubNavRow label="Skills" active={page === "skills"} onClick={() => onNavigate("skills")} /></li>
+                </ul>
+              )}
+            </li>
+            <li>
+              <NavRow
+                icon={RiFlaskLine}
+                label="Thin Slice"
+                collapsed={collapsed}
+                active={inThinSlice || thinSliceOpen}
+                onClick={() => setThinSliceOpen((open) => !open)}
+                trailingToggle={!collapsed ? <RiArrowRightSLine className={cn("size-4 shrink-0 text-sidebar-foreground/40 transition-transform", thinSliceOpen && "rotate-90")} /> : undefined}
+                onTrailingToggle={!collapsed ? () => setThinSliceOpen((open) => !open) : undefined}
+                trailingToggleLabel="Toggle Thin Slice sections"
+              />
+              {!collapsed && thinSliceOpen && (
+                <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
+                  <li><SubNavRow label="Connections Thin Slice 1" active={inThinSlice} onClick={() => onNavigate("connections-thin-slice-1")} /></li>
                 </ul>
               )}
             </li>
@@ -5306,13 +5671,12 @@ function Sidebar({
                             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
                           )}
                         >
-                          <DropdownMenuItem onSelect={() => onNavigate("sources")}>Sources</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => onNavigate("sources")}>Logs</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => onNavigate("integrations")}>Connections</DropdownMenuItem>
                         </DropdownMenuPrimitive.SubContent>
                       </DropdownMenuPrimitive.Portal>
                     </DropdownMenuSub>
                     <DropdownMenuItem onSelect={() => onNavigate("users")}>Users</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onNavigate("integrations")}>Integrations</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onNavigate("connect-accounts")}>Connect Accounts</DropdownMenuItem>
                   </DropdownMenuPrimitive.SubContent>
                 </DropdownMenuPrimitive.Portal>
               </DropdownMenuSub>

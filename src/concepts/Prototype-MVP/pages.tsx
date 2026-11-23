@@ -1330,8 +1330,8 @@ function LegacyDashboardsPage() {
   );
 }
 
-export function DashboardsPage() {
-  return <GeneralReportingDashboard />;
+export function DashboardsPage({ title = "Dashboards" }: { title?: string } = {}) {
+  return <GeneralReportingDashboard title={title} />;
 }
 
 // ─── Insights page (Knowledge) ───────────────────────────────────────────────

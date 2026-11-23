@@ -15,7 +15,7 @@ export interface GlossaryTerm {
   term: string;
   /** Plain-language meaning. */
   definition: string;
-  category: "Lifecycle" | "Value" | "Engagement" | "Trade";
+  category: "Lifecycle" | "Value" | "Engagement" | "Trade" | (string & {});
   /** Other names people use for the same thing. */
   aka?: string[];
   /** Related glossary term ids. */
@@ -224,6 +224,13 @@ export const RULES: PlaybookRule[] = [
     statement: "Aim for a return on ad spend of at least 4.0x on paid campaigns.",
     source: "Set by Performance team",
     updatedAt: "2026-05-30",
+  },
+  {
+    id: "rl-us-shopper-exclusion",
+    name: "US shopper exclusion",
+    statement: "Exclude any transactions from the US Stores",
+    source: "Audience refinement",
+    updatedAt: "2026-12-09",
   },
 ];
 

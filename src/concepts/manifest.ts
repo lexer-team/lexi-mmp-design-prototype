@@ -22,7 +22,7 @@ const pageModules = import.meta.glob<{ default: ComponentType }>(
   "./*/index.tsx"
 );
 
-const EXCLUDED_CONCEPT_SLUGS = new Set<string>(["prototype-mvp"]);
+const EXCLUDED_CONCEPT_SLUGS = new Set<string>([]);
 
 export const CONCEPT_ENTRIES: ConceptEntry[] = Object.entries(metaModules)
   .map(([path, mod]) => {

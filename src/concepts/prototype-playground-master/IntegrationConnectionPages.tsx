@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RiAddLine, RiDeleteBinLine } from "@remixicon/react";
+import { RiAddLine, RiCloseLine, RiDeleteBinLine } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -177,6 +177,7 @@ export function DisconnectedConnectionGuidance({ category }: { category: string 
   );
 }
 
+
 const STANDARD_INTEGRATIONS: Array<{ id: string; name: string; category: string }> = [
   { id: "shopify", name: "Shopify", category: "Transactions" },
   { id: "bigcommerce", name: "BigCommerce", category: "Transactions" },
@@ -248,11 +249,22 @@ type Direction = IntegrationConnectionDraft["syncDirection"];
 export function StandardConnectionPage({
   onBack,
   onConnect,
+  onViewDetails,
   directionForCategory,
+  connectionIdForDirection,
+  connections = [],
 }: {
   onBack?: () => void;
   onConnect: (integration: IntegrationConnectionDraft) => void;
+  onViewDetails?: (integration: IntegrationConnectionDraft) => void;
   directionForCategory: (category: string) => Direction;
+  connectionIdForDirection?: (integrationId: string, direction: Direction) => string;
+  connections?: ReadonlyArray<{
+    integrationId: string;
+    status: "Connected" | "Available" | "Disconnected" | "Pending" | "Syncing";
+    accountName: string;
+    syncDirection: "Inbound" | "Outbound";
+  }>;
 }) {
   const [query, setQuery] = useState("");
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<string | null>(null);
@@ -269,9 +281,10 @@ export function StandardConnectionPage({
     syncDirection = directionForCategory(integration.category),
   ): IntegrationConnectionDraft => ({
     ...integration,
-    id: directionForCategory(integration.category) === "Bidirectional"
-      ? `${integration.id}-${syncDirection.toLowerCase()}`
-      : integration.id,
+    id: connectionIdForDirection?.(integration.id, syncDirection)
+      ?? (directionForCategory(integration.category) === "Bidirectional"
+        ? `${integration.id}-${syncDirection.toLowerCase()}`
+        : integration.id),
     summary: CATEGORY_DESCRIPTIONS[integration.category],
     syncDirection,
     connectionType: "Standard",
@@ -302,12 +315,20 @@ export function StandardConnectionPage({
       <div className="max-h-[19.75rem] overflow-y-auto rounded-xl border border-border bg-card">
         {filteredIntegrations.map((integration) => {
           const active = integration.id === selectedIntegrationId;
+          const providerConnections = connections.filter((connection) => connection.integrationId === integration.id);
+          const connectionRows = providerConnections.length > 0
+            ? providerConnections
+            : [{ integrationId: integration.id, status: "Available" as const, accountName: "", syncDirection: directionForCategory(integration.category) === "Outbound" ? "Outbound" as const : "Inbound" as const }];
           return (
             <button
               key={integration.id}
               type="button"
               aria-pressed={active}
-              onClick={() => setSelectedIntegrationId(integration.id)}
+              onClick={() => {
+                setSelectedIntegrationId(integration.id);
+                const direction = directionForCategory(integration.category);
+                onViewDetails?.(createDraft(integration, direction === "Bidirectional" ? "Inbound" : direction));
+              }}
               className={`flex w-full items-center justify-between gap-4 border-b border-border px-4 py-3 text-left last:border-b-0 ${active ? "bg-accent" : "hover:bg-muted/50"}`}
             >
               <span className="flex min-w-0 items-center gap-3">
@@ -317,11 +338,35 @@ export function StandardConnectionPage({
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-foreground-secondary">
                     <span>{integration.category}</span>
                     <span aria-hidden="true">|</span>
-                    <span>{directionForCategory(integration.category) === "Bidirectional" ? "Data ingestion + Activation" : directionForCategory(integration.category)}</span>
+                    <span>{directionForCategory(integration.category) === "Bidirectional" ? "Data ingestion + Activation" : directionForCategory(integration.category) === "Inbound" ? "Data ingestion" : "Activation"}</span>
+                  </span>
+                  <span className="mt-1 flex flex-col gap-1">
+                    {connectionRows.map((connection) => (
+                      <span key={`${connection.integrationId}-${connection.accountName}-${connection.status}`} className="flex min-w-0 items-center gap-2">
+                        <Badge
+                          variant={connection.status === "Connected" ? "success" : "outline"}
+                          size="sm"
+                          className={cn(
+                            connection.status === "Available" && "bg-foreground/70 text-background ring-foreground/30",
+                            connection.status === "Disconnected" && "border-red-200 bg-red-50 text-red-700 ring-red-200",
+                            connection.status === "Syncing" && "bg-primary/10 text-primary ring-primary/20",
+                          )}
+                        >
+                          {connection.status}
+                        </Badge>
+                        <span className="truncate text-xs text-foreground-secondary">
+                          {connection.accountName
+                            ? `${connection.syncDirection === "Inbound" ? "Data ingestion" : "Activation"}: ${connection.accountName}`
+                            : "No account connected"}
+                        </span>
+                      </span>
+                    ))}
                   </span>
                 </span>
               </span>
-              <span className="shrink-0 text-sm font-medium text-primary">{active ? "Selected" : "View details"}</span>
+              <span className="flex shrink-0 items-center gap-3">
+                <span className="text-sm font-medium text-primary">{active ? "Selected" : "View details"}</span>
+              </span>
             </button>
           );
         })}
@@ -330,7 +375,7 @@ export function StandardConnectionPage({
         ) : null}
       </div>
 
-      {selectedIntegration ? directionForCategory(selectedIntegration.category) === "Bidirectional" ? (
+      {false && selectedIntegration ? directionForCategory(selectedIntegration.category) === "Bidirectional" ? (
         <div aria-label={`${selectedIntegration.name} connection options`} className="space-y-3">
           <div>
             <h3 className="text-base font-semibold text-foreground">{selectedIntegration.name}</h3>
@@ -340,7 +385,7 @@ export function StandardConnectionPage({
             <section className="flex flex-col items-start gap-3 rounded-xl border border-border bg-card p-4">
               <div>
                 <h4 className="text-sm font-semibold text-foreground">Data ingestion</h4>
-                <p className="mt-1 text-sm text-foreground-secondary">Inbound data from {selectedIntegration.name} into Lexer.</p>
+                <p className="mt-1 text-sm text-foreground-secondary">Data ingestion from {selectedIntegration.name} into Lexer.</p>
               </div>
               <Button className="mt-auto" onClick={() => onConnect(createDraft(selectedIntegration, "Inbound"))}>Connect data ingestion</Button>
             </section>
@@ -410,8 +455,11 @@ export function CustomConnectionPage({
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("Webhook");
-  const [previousCategory, setPreviousCategory] = useState("Webhook");
+  const [category, setCategory] = useState("");
+  const [otherCategory, setOtherCategory] = useState("");
+  const [sharingMethod, setSharingMethod] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [previousCategory, setPreviousCategory] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [sftpRequirementsOpen, setSftpRequirementsOpen] = useState(false);
   const [sftpAllowlistOpen, setSftpAllowlistOpen] = useState(false);
@@ -426,15 +474,16 @@ export function CustomConnectionPage({
   const [addingKey, setAddingKey] = useState(false);
   const [keyError, setKeyError] = useState("");
   const normalizedName = name.trim();
+  const effectiveCategory = category === "Other" ? otherCategory.trim() : category;
 
   const submitConnection = () => {
-    if (!normalizedName) return;
+    if (!normalizedName || !effectiveCategory || !description.trim() || !sharingMethod || !contactEmail.trim()) return;
     const slug = normalizedName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     onCreate({
       id: `custom-${slug}-${Date.now()}`,
       name: normalizedName,
-      category,
-      summary: description.trim() || CATEGORY_DESCRIPTIONS.Custom,
+      category: effectiveCategory,
+      summary: `${description.trim()} Sharing: ${sharingMethod}. Contact: ${contactEmail.trim()}.`,
       syncDirection: "Inbound",
       connectionType: "Custom",
       ipAddresses: category === "SFTP" ? ipEntries.map(({ name, value, addedBy: entryAddedBy }) => ({ name, value, addedBy: entryAddedBy })) : undefined,
@@ -444,6 +493,10 @@ export function CustomConnectionPage({
     setSubmitted(true);
     setName("");
     setDescription("");
+    setCategory("");
+    setOtherCategory("");
+    setSharingMethod("");
+    setContactEmail("");
   };
 
   const addIpAddress = () => {
@@ -479,10 +532,15 @@ export function CustomConnectionPage({
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
-      <div>
-        {onBack ? <button type="button" onClick={onBack} className="text-sm font-medium text-primary hover:underline">Back to integrations</button> : null}
-        <h2 className="mt-2 text-lg font-semibold text-foreground">Add custom connection</h2>
-        <p className="mt-1 text-sm text-foreground-secondary">Describe the system and how it should exchange data with Lexer.</p>
+      <div className="relative pr-10">
+        {onBack ? <button type="button" onClick={onBack} className="text-sm font-medium text-primary hover:underline">Back to connections</button> : null}
+        <h2 className="mt-2 text-lg font-semibold text-foreground">Request a custom connection</h2>
+        <p className="mt-1 text-sm text-foreground-secondary">For data sources not in the standard list. Custom connections bring data into Lexer. Our data team reviews each request and contacts you to plan it.</p>
+        {onBack ? (
+          <button type="button" onClick={onBack} aria-label="Close" className="absolute right-0 top-0 rounded-md p-1 text-foreground-secondary hover:bg-muted hover:text-foreground">
+            <RiCloseLine className="size-5" />
+          </button>
+        ) : null}
       </div>
 
       <form
@@ -493,39 +551,67 @@ export function CustomConnectionPage({
         className="space-y-4 rounded-xl border border-border bg-card p-4"
       >
         <div>
-          <label htmlFor="custom-integration-name" className="text-sm font-medium text-foreground">Connection name</label>
-          <Input id="custom-integration-name" value={name} onChange={(event) => setName(event.target.value)} className="mt-1" placeholder="e.g. Acme data platform" required />
+          <label htmlFor="custom-integration-name" className="text-sm font-medium text-foreground">Source name <span className="text-muted-foreground">(required)</span></label>
+          <Input id="custom-integration-name" value={name} onChange={(event) => setName(event.target.value)} className="mt-1" required />
         </div>
         <div>
-          <label htmlFor="custom-integration-description" className="text-sm font-medium text-foreground">Description</label>
-          <Textarea id="custom-integration-description" value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1" placeholder="What data should this connection exchange?" />
+          <label htmlFor="custom-integration-category" className="text-sm font-medium text-foreground">Category <span className="text-muted-foreground">(required)</span></label>
+          <select id="custom-integration-category" value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-input-border bg-input px-3 text-sm text-foreground shadow-xs outline-none focus-visible:ring-4 focus-visible:ring-ring/40" required>
+            <option value="" disabled>Choose a category</option>
+            {["Transactions", "Email", "SMS", "Paid ads", "Web analytics", "CDP", "Warehouse", "CRM", "Customer support", "POS", "Loyalty", "Other"].map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+          {category === "Other" ? (
+            <div className="mt-2">
+              <label htmlFor="custom-integration-other-category" className="text-sm font-medium text-foreground">Other category <span className="text-muted-foreground">(required)</span></label>
+              <Input
+                id="custom-integration-other-category"
+                value={otherCategory}
+                onChange={(event) => setOtherCategory(event.target.value)}
+                className="mt-1"
+                placeholder="Enter a category name"
+                required
+              />
+            </div>
+          ) : null}
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="custom-integration-category" className="text-sm font-medium text-foreground">Category</label>
-            <select id="custom-integration-category" value={category} onChange={(event) => {
-              const nextCategory = event.target.value;
-              if (nextCategory === "SFTP") {
-                setPreviousCategory(category);
-                setCategory(nextCategory);
-                setSftpRequirementsOpen(true);
-              } else {
-                setCategory(nextCategory);
-              }
-            }} className="mt-1 h-10 w-full rounded-lg border border-input-border bg-input px-3 text-sm text-foreground shadow-xs outline-none focus-visible:ring-4 focus-visible:ring-ring/40">
-              {["Webhook", "SFTP", "One-time upload", "Transactions", "Email", "SMS", "Paid ads", "Web analytics", "CDP", "Warehouse", "CRM", "Customer support"].map((option) => <option key={option} value={option}>{option}</option>)}
-            </select>
+        <div>
+          <label htmlFor="custom-integration-description" className="text-sm font-medium text-foreground">Description <span className="text-muted-foreground">(required)</span></label>
+          <Textarea id="custom-integration-description" value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1" placeholder="What data do you want to bring in?" required />
+        </div>
+        <fieldset>
+          <legend className="text-sm font-medium text-foreground">How is the data shared today? <span className="text-muted-foreground">(required)</span></legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {["API", "Secure file transfer (SFTP)", "File upload", "Not sure"].map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={sharingMethod === option}
+                onClick={() => setSharingMethod(option)}
+                className={cn(
+                  "h-9 rounded-full border px-4 text-sm transition-colors",
+                  sharingMethod === option
+                    ? "border-primary bg-primary/10 font-medium text-primary"
+                    : "border-input-border bg-input text-foreground-secondary hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {option}
+              </button>
+            ))}
           </div>
+        </fieldset>
+        <div>
+          <label htmlFor="custom-integration-contact" className="text-sm font-medium text-foreground">Who should the data team contact? <span className="text-muted-foreground">(required)</span></label>
+          <Input id="custom-integration-contact" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} className="mt-1" placeholder="name@company.com" required />
         </div>
         {category === "SFTP" ? (
           <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-            <p className="text-sm italic text-primary">Inbound data ingestion only. {ipEntries.length} IP address{ipEntries.length === 1 ? "" : "es"} and {keyEntries.length} SSH key{keyEntries.length === 1 ? "" : "s"} saved.</p>
+            <p className="text-sm italic text-primary">Data ingestion only. {ipEntries.length} IP address{ipEntries.length === 1 ? "" : "es"} and {keyEntries.length} SSH key{keyEntries.length === 1 ? "" : "s"} saved.</p>
             <button type="button" onClick={() => setSftpAllowlistOpen(true)} className="mt-1 text-sm font-medium text-primary underline underline-offset-2 hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Open SFTP settings</button>
           </div>
         ) : null}
         <div className="flex justify-end gap-2 border-t border-border pt-4">
           {onBack ? <Button type="button" variant="outline" onClick={onBack}>Cancel</Button> : null}
-          <Button type="submit" disabled={!normalizedName || (category === "SFTP" && (ipEntries.length === 0 || keyEntries.length === 0))}>Submit inbound request</Button>
+          <Button type="submit" disabled={!normalizedName || !effectiveCategory || !description.trim() || !sharingMethod || !contactEmail.trim()}>Submit request</Button>
         </div>
       </form>
 
@@ -560,8 +646,8 @@ export function CustomConnectionPage({
       <Dialog open={submitted} onOpenChange={setSubmitted}>
         <DialogContent size="sm">
           <DialogHeader>
-            <DialogTitle>Custom inbound connection requested</DialogTitle>
-            <DialogDescription>We&apos;ll scope the requirements for this inbound connection and reach out to you.</DialogDescription>
+            <DialogTitle>Custom data ingestion connection requested</DialogTitle>
+            <DialogDescription>We&apos;ll scope the requirements for this data ingestion connection and reach out to you.</DialogDescription>
           </DialogHeader>
           <DialogFooter><Button onClick={() => setSubmitted(false)}>Done</Button></DialogFooter>
         </DialogContent>
@@ -571,7 +657,7 @@ export function CustomConnectionPage({
         <DialogContent size="sm" hideClose onInteractOutside={(event) => event.preventDefault()} onEscapeKeyDown={(event) => event.preventDefault()}>
           <DialogHeader>
             <DialogTitle>SFTP access requirements</DialogTitle>
-            <DialogDescription>To configure inbound SFTP data ingestion, we need the public IP address or addresses your team will connect from and an SSH public key.</DialogDescription>
+            <DialogDescription>To configure SFTP data ingestion, we need the public IP address or addresses your team will connect from and an SSH public key.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => {
@@ -594,7 +680,7 @@ export function CustomConnectionPage({
           <div className="border-b border-border px-5 py-4 pr-12">
             <DialogHeader>
               <DialogTitle>SFTP access</DialogTitle>
-              <DialogDescription>Add the client network IPs and SSH public keys authorized for inbound data ingestion.</DialogDescription>
+              <DialogDescription>Add the client network IPs and SSH public keys authorized for data ingestion.</DialogDescription>
             </DialogHeader>
           </div>
 

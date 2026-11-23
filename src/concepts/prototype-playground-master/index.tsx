@@ -3591,7 +3591,7 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     ipAddresses?: Array<{ name: string; value: string }>;
     sshKeys?: Array<{ name: string; fingerprint: string }>;
   };
-  type ConnectedAccount = AccountDraft & { id: string };
+  type ConnectedAccount = AccountDraft & { id: string; purpose?: "data-ingestion" | "activation" };
   type OfflineEventSetDraft = {
     id: string;
     title: string;
@@ -3641,9 +3641,9 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     { id: "ga4", name: "Google Analytics", category: "Web analytics", status: "Available", summary: "Session, source, and funnel events are unified.", updated: "Not connected" },
     { id: "segment", name: "Segment", category: "CDP", status: "Available", summary: "Event routing to warehouse and activation tools is healthy.", updated: "Not connected" },
     { id: "snowflake", name: "Snowflake", category: "Warehouse", status: "Connected", summary: "Modeled tables refresh every 30 minutes.", updated: "Synced 15 min ago" },
-    { id: "custom-customer-events-webhook", name: "Braze", category: "Webhook", status: "Connected", summary: "Inbound JSON webhooks deliver customer profile and event changes in near real time.", updated: "Synced 12 min ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-customer-events-webhook", name: "Braze", category: "Webhook", status: "Connected", summary: "Data ingestion webhooks deliver customer profile and event changes in near real time.", updated: "Synced 12 min ago", syncDirection: "Inbound", connectionType: "Custom" },
     { id: "custom-fulfilment-webhook", name: "AP21", category: "Webhook", status: "Available", summary: "Outbound webhook sends order fulfilment updates to a partner endpoint.", updated: "Not connected", syncDirection: "Outbound", connectionType: "Custom" },
-    { id: "custom-product-sftp", name: "Nimbl", category: "SFTP", status: "Connected", summary: "Nightly inbound CSV imports update the product catalogue.", updated: "Synced 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
+    { id: "custom-product-sftp", name: "Nimbl", category: "SFTP", status: "Connected", summary: "Nightly data ingestion CSV imports update the product catalogue.", updated: "Synced 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
     { id: "custom-suppression-sftp", name: "Customer suppression SFTP", category: "SFTP", status: "Disconnected", summary: "Nightly suppression files are paused and need the SFTP credentials refreshed.", updated: "Disconnected 1 day ago", syncDirection: "Inbound", connectionType: "Custom" },
     { id: "custom-history-upload", name: "Historical customer CSV upload", category: "One-time upload", status: "Connected", summary: "One-time CSV import added migrated customer history.", updated: "Uploaded 3 days ago", syncDirection: "Inbound", connectionType: "Custom" },
     { id: "custom-inventory-upload", name: "Inventory snapshot upload", category: "One-time upload", status: "Available", summary: "One-time CSV upload can seed current inventory levels.", updated: "Not connected", syncDirection: "Inbound", connectionType: "Custom" },
@@ -3671,7 +3671,18 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
     const seeded: Record<string, ConnectedAccount[]> = {};
     for (const integration of INITIAL_INTEGRATIONS) {
       if (integration.status !== "Connected" && integration.status !== "Disconnected") continue;
-      seeded[integration.id] = [{ id: `acc-seed-${integration.id}`, ...buildDefaultAccount(integration) }];
+      seeded[integration.id] = [{
+        id: `acc-seed-${integration.id}`,
+        ...buildDefaultAccount(integration),
+        ...(integration.id === "klaviyo" ? { purpose: "data-ingestion" as const } : {}),
+      }];
+      if (integration.id === "klaviyo") {
+        seeded[integration.id].push({
+          id: "acc-seed-klaviyo-activation",
+          accountName: "Klaviyo activation account",
+          purpose: "activation",
+        });
+      }
     }
     return seeded;
   });
@@ -4472,7 +4483,7 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
       </TableCell>
       <TableCell>
         <Badge variant={integration.connectionType === "Custom" ? "secondary" : "outline"} size="sm">
-          {integration.connectionType === "Custom" ? "Custom" : "Native"}
+          {integration.connectionType === "Custom" ? "Custom" : "Standard"}
         </Badge>
       </TableCell>
       <TableCell><Badge variant="default" size="sm">{integration.category}</Badge></TableCell>
@@ -4615,6 +4626,26 @@ function IntegrationsPage({ title = "Integrations", newConnectionsOnly = false }
               onBack={newConnectionsOnly ? undefined : () => setConnectionPage("overview")}
               onConnect={openConnectedIntegration}
               directionForCategory={syncDirectionForCategory}
+              connectionIdForDirection={(integrationId) => integrationId}
+              connections={integrations.filter((integration) => integration.connectionType !== "Custom").flatMap((integration) => {
+                const accounts = connectedAccountsByIntegration[integration.id] ?? [];
+                return accounts.length > 0
+                  ? accounts.map((account) => ({
+                    integrationId: integration.id,
+                    status: integration.status,
+                    accountName: account.accountName,
+                    syncDirection: account.purpose === "activation"
+                      || (!account.purpose && syncDirectionForIntegration(integration) === "Outbound")
+                      ? "Outbound" as const
+                      : "Inbound" as const,
+                  }))
+                  : integration.status === "Available" ? [] : [{
+                    integrationId: integration.id,
+                    status: integration.status,
+                    accountName: "",
+                    syncDirection: syncDirectionForIntegration(integration) === "Outbound" ? "Outbound" as const : "Inbound" as const,
+                  }];
+              })}
             />
           ) : connectionPage === "custom" ? (
             <CustomConnectionPage

@@ -805,20 +805,20 @@ function ActivationBuildCard({
               <button
                 type="button"
                 onClick={() => setSendTiming("schedule-send")}
-                disabled
                 className={cn(
                   "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                  "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-80",
+                  sendTiming === "schedule-send"
+                    ? "border-primary/60 bg-primary/10 text-foreground"
+                    : "border-border bg-card text-foreground hover:bg-accent",
                 )}
               >
-                <span className="inline-flex items-center gap-1.5"><RiLockLine className="size-3.5" aria-hidden="true" />Schedule Send</span>
+                Schedule Send
               </button>
             </div>
 
             <div className="mt-2 grid grid-cols-1 gap-2">
               <button
                 type="button"
-                disabled
                 onClick={() => {
                   const nextCadence = sendCadence === "re-occurring" ? "once-off" : "re-occurring";
                   setSendCadence(nextCadence);
@@ -829,13 +829,14 @@ function ActivationBuildCard({
                 }}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                  "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-80",
+                  sendCadence === "re-occurring"
+                    ? "border-primary/60 bg-primary/10 text-foreground"
+                    : "border-border bg-card text-foreground hover:bg-accent",
                 )}
               >
-                <span className="inline-flex items-center gap-1.5"><RiLockLine className="size-3.5" aria-hidden="true" />Recurring</span>
+                Recurring
               </button>
             </div>
-            <p className="mt-2 text-right text-xs italic text-muted-foreground">Recurring Activations coming soon</p>
 
             {sendTiming === "schedule-send" ? (
               <div className="mt-3 rounded-lg border border-border/70 bg-card p-3">
@@ -853,6 +854,9 @@ function ActivationBuildCard({
                       onChange={(e) => setScheduledStartDate(e.target.value)}
                       className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/40"
                     />
+                    {sendCadence === "re-occurring" ? (
+                      <p className="mt-1 text-xs text-foreground-secondary">This will be a daily send starting on this date.</p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="text-xs font-medium text-foreground-secondary" htmlFor="activation-schedule-start-time">
@@ -1248,8 +1252,8 @@ function ActivationSummaryView({ activationId }: { activationId: string }) {
         </div>
         <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Segment</span><span className="text-right text-foreground">{segment}</span></div>
         <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Channel</span><span className="text-right text-foreground">{activation.channel}</span></div>
-        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Cadence</span><span className="inline-flex items-center gap-1.5 text-foreground"><RiLockLine className="size-3.5 text-muted-foreground" />{cadence}</span></div>
-        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Timing</span><span className="inline-flex items-center gap-1.5 text-foreground"><RiLockLine className="size-3.5 text-muted-foreground" />{timing}{activation.scheduledDate ? ` · ${activation.scheduledDate}` : ""}</span></div>
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Cadence</span><span className="text-right text-foreground">{cadence}</span></div>
+        <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Timing</span><span className="text-right text-foreground">{timing}{activation.scheduledDate ? ` · ${activation.scheduledDate}` : ""}</span></div>
         <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Status</span><span className="text-right text-foreground">{ACTIVATION_STATUS_META[activation.status].label}</span></div>
         {activation.profilesReached !== undefined && <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Profiles reached</span><span className="tabular-nums text-foreground">{activation.profilesReached.toLocaleString()}</span></div>}
         {activation.resendCount !== undefined && <div className="flex justify-between gap-3"><span className="text-foreground-secondary">Resends</span><span className="tabular-nums text-foreground">{activation.resendCount}</span></div>}
@@ -1374,8 +1378,8 @@ function ActivationEditCard({ block }: { block: Extract<ContentBlock, { type: "a
           </div>
         </div>
         <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Segment used<p className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground">{activation.mvpDetails?.segmentName ?? activation.segmentName ?? "Not specified"}</p></div>
-        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Cadence<p className="inline-flex w-full items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"><RiLockLine className="size-3.5 shrink-0" />{activation.activationCadence ?? activation.mvpDetails?.cadence ?? "Once Off"}</p></div>
-        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Send date<p className="inline-flex w-full items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"><RiLockLine className="size-3.5 shrink-0" />{activation.scheduledDate ?? activation.recurringStartDate ?? "Not specified"}</p></div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Cadence<p className="inline-flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground">{activation.activationCadence ?? activation.mvpDetails?.cadence ?? "Once Off"}</p></div>
+        <div className="space-y-1.5 text-xs font-medium text-foreground-secondary">Send date<p className="inline-flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground">{activation.scheduledDate ?? activation.recurringStartDate ?? "Not specified"}</p></div>
         <div className="space-y-1.5 text-xs font-medium text-foreground-secondary sm:col-span-2">Latest result<p className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground-secondary">{activation.result ?? "No result recorded."}</p></div>
       </div>
 
