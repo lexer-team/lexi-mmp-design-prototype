@@ -454,6 +454,7 @@ export function CustomConnectionPage({
   addedBy?: string;
 }) {
   const [name, setName] = useState("");
+  const [connectionPurpose, setConnectionPurpose] = useState<"Data Ingestion" | "Activation">("Data Ingestion");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [otherCategory, setOtherCategory] = useState("");
@@ -484,7 +485,7 @@ export function CustomConnectionPage({
       name: normalizedName,
       category: effectiveCategory,
       summary: `${description.trim()} Sharing: ${sharingMethod}. Contact: ${contactEmail.trim()}.`,
-      syncDirection: "Inbound",
+      syncDirection: connectionPurpose === "Activation" ? "Outbound" : "Inbound",
       connectionType: "Custom",
       ipAddresses: category === "SFTP" ? ipEntries.map(({ name, value, addedBy: entryAddedBy }) => ({ name, value, addedBy: entryAddedBy })) : undefined,
       sshKeyFingerprints: category === "SFTP" ? keyEntries.map(({ name, value, addedBy: entryAddedBy }) => ({ name, fingerprint: value, addedBy: entryAddedBy })) : undefined,
@@ -492,6 +493,7 @@ export function CustomConnectionPage({
     if (category === "SFTP") setSftpAllowlistOpen(false);
     setSubmitted(true);
     setName("");
+    setConnectionPurpose("Data Ingestion");
     setDescription("");
     setCategory("");
     setOtherCategory("");
@@ -550,6 +552,18 @@ export function CustomConnectionPage({
         }}
         className="space-y-4 rounded-xl border border-border bg-card p-4"
       >
+        <div>
+          <label htmlFor="custom-integration-purpose" className="text-sm font-medium text-foreground">What type of connection is this?</label>
+          <select
+            id="custom-integration-purpose"
+            value={connectionPurpose}
+            onChange={(event) => setConnectionPurpose(event.target.value as "Data Ingestion" | "Activation")}
+            className="mt-1 h-10 w-full rounded-lg border border-input-border bg-input px-3 text-sm text-foreground shadow-xs outline-none focus-visible:ring-4 focus-visible:ring-ring/40"
+          >
+            <option value="Data Ingestion">Data Ingestion</option>
+            <option value="Activation">Activation</option>
+          </select>
+        </div>
         <div>
           <label htmlFor="custom-integration-name" className="text-sm font-medium text-foreground">Source name <span className="text-muted-foreground">(required)</span></label>
           <Input id="custom-integration-name" value={name} onChange={(event) => setName(event.target.value)} className="mt-1" required />
@@ -646,8 +660,8 @@ export function CustomConnectionPage({
       <Dialog open={submitted} onOpenChange={setSubmitted}>
         <DialogContent size="sm">
           <DialogHeader>
-            <DialogTitle>Custom data ingestion connection requested</DialogTitle>
-            <DialogDescription>We&apos;ll scope the requirements for this data ingestion connection and reach out to you.</DialogDescription>
+            <DialogTitle>Custom connection requested</DialogTitle>
+            <DialogDescription>We&apos;ll scope the requirements for this source connection and reach out to you.</DialogDescription>
           </DialogHeader>
           <DialogFooter><Button onClick={() => setSubmitted(false)}>Done</Button></DialogFooter>
         </DialogContent>

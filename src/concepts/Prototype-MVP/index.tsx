@@ -4304,6 +4304,44 @@ function IntegrationsPage({ showConnectionCategories = true }: { showConnectionC
   const openAccount = openIntegration
     ? (connectedAccountsByIntegration[openIntegration.id] ?? []).find((account) => account.id === openAccountId) ?? null
     : null;
+  const showDisconnectedDisclaimer = selectedCategory === "Disconnected sources"
+    || (connectionPage === "standard" && openAccountId !== null);
+  const renderDisconnectedDisclaimer = (integration: IntegrationRecord) => {
+    if (!showConnectionCategories) {
+      return <p className="font-semibold">An error has occurred. Please reach out to your Lexer partner for support.</p>;
+    }
+
+    const reconnectionSteps = integration.id === "google-ads"
+      ? [
+        "Reconnect Google Ads with an authorized user.",
+        "Restore the cost-import permission and save the authorization.",
+        "Run a sync and confirm cost data is flowing again.",
+      ]
+      : integration.id === "sendgrid"
+        ? [
+          "Reconnect SendGrid with an authorized user.",
+          "Confirm delivery and bounce events are enabled.",
+          "Run a sync and verify the feeds have resumed.",
+        ]
+        : null;
+
+    return (
+      <div className="space-y-3">
+        <p><span className="font-semibold">Reason:</span> {integration.summary}</p>
+        {reconnectionSteps ? (
+          <div>
+            <p className="font-semibold">Proposed reconnection steps</p>
+            <ol className="mt-1 list-decimal space-y-1 pl-5 text-foreground-secondary">
+              {reconnectionSteps.map((step) => <li key={step}>{step}</li>)}
+            </ol>
+          </div>
+        ) : (
+          <DisconnectedConnectionGuidance category={integration.category} />
+        )}
+        <p className="font-medium">If you continue to receive an error, please reach out to your Lexer partner for support.</p>
+      </div>
+    );
+  };
   const mockLoginFallbackIntegration = mockLoginFallbackIntegrationId
     ? integrations.find((integration) => integration.id === mockLoginFallbackIntegrationId)
     : null;
@@ -5130,26 +5168,9 @@ function IntegrationsPage({ showConnectionCategories = true }: { showConnectionC
                   <button type="button" onClick={() => setOpenAccountId(null)} className="text-sm font-medium text-primary hover:underline">
                     Back to {openIntegration.name}
                   </button>
-                  {openAccount.status === "Disconnected" ? (
+                  {openAccount.status === "Disconnected" && showDisconnectedDisclaimer ? (
                     <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                      {openIntegration.id === "google-ads" || openIntegration.id === "sendgrid" ? (
-                        <p className="font-semibold">An error has occurred. Please reach out to your Lexer partner for support.</p>
-                      ) : (
-                        <>
-                          <p className="font-semibold">This account has disconnected and needs to be reconnected to avoid disruption.</p>
-                          <p className="mt-2 font-medium text-foreground">Potential causes</p>
-                          <ul className="mt-1 list-disc space-y-1 pl-5 text-foreground-secondary">
-                            <li>The access token has expired or been revoked.</li>
-                            <li>Account permissions may have changed or the provider may be temporarily unavailable.</li>
-                          </ul>
-                          <p className="mt-2 font-medium text-foreground">Resolution steps</p>
-                          <ol className="mt-1 list-decimal space-y-1 pl-5 text-foreground-secondary">
-                            <li>Check the provider status and confirm the account still has the required permissions.</li>
-                            <li>Select the account and reconnect with the authorized user.</li>
-                            <li>Retry the sync and check the sync log for confirmation that data is flowing.</li>
-                          </ol>
-                        </>
-                      )}
+                      {renderDisconnectedDisclaimer(openIntegration)}
                     </div>
                   ) : null}
                   <div>
@@ -5197,11 +5218,9 @@ function IntegrationsPage({ showConnectionCategories = true }: { showConnectionC
                 return (
                   <>
                     <div className="grid grid-cols-1 gap-3">
-                      {openIntegration.status === "Disconnected" && !((openIntegration.id === "google-ads" || openIntegration.id === "sendgrid") && !openAccountId) && (
+                      {openIntegration.status === "Disconnected" && showDisconnectedDisclaimer && (
                         <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          {openIntegration.id === "google-ads" || openIntegration.id === "sendgrid"
-                            ? <p className="font-semibold">An error has occurred. Please reach out to your Lexer partner for support.</p>
-                            : <DisconnectedConnectionGuidance category={openIntegration.category} />}
+                          {renderDisconnectedDisclaimer(openIntegration)}
                         </div>
                       )}
 
@@ -5286,11 +5305,9 @@ function IntegrationsPage({ showConnectionCategories = true }: { showConnectionC
                 {(() => {
                   return (
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                      {openIntegration.status === "Disconnected" && !((openIntegration.id === "google-ads" || openIntegration.id === "sendgrid") && !openAccountId) && (
+                      {openIntegration.status === "Disconnected" && showDisconnectedDisclaimer && (
                         <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
-                          {openIntegration.id === "google-ads" || openIntegration.id === "sendgrid"
-                            ? <p className="font-semibold">An error has occurred. Please reach out to your Lexer partner for support.</p>
-                            : <DisconnectedConnectionGuidance category={openIntegration.category} />}
+                          {renderDisconnectedDisclaimer(openIntegration)}
                         </div>
                       )}
 
