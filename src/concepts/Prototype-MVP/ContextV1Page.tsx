@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RiBookOpenLine, RiDatabase2Line, RiSearchLine, RiAddLine, RiArrowLeftLine, RiCheckLine, RiCloseLine } from "@remixicon/react";
+import { RiBookOpenLine, RiDatabase2Line, RiSearchLine, RiAddLine, RiArrowLeftLine, RiCheckLine, RiCloseLine, RiExpandDiagonalLine, RiFullscreenExitLine, RiSidebarFoldLine, RiSidebarUnfoldLine } from "@remixicon/react";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +24,10 @@ type ContextEntry = {
   signals: string[];
   sources: string;
   updated: string;
+  addedBy?: string;
+  addedAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
 };
 
 const CONTEXT_CATEGORIES = [
@@ -208,12 +212,29 @@ Billing/shipping country is the reliable market field — Australia or New Zeala
   },
 ];
 
-export function ContextV1Page() {
+export function ContextV1Page({
+  initialMode = "editable",
+  showModeToggle = false,
+}: {
+  initialMode?: "read-only" | "editable";
+  showModeToggle?: boolean;
+} = {}) {
+  const [contextMode, setContextMode] = useState<"read-only" | "editable">(initialMode);
   const [selectedCategory, setSelectedCategory] = useState("All context");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState("");
+  const [entryExpanded, setEntryExpanded] = useState(false);
+  const [categoryBarCollapsed, setCategoryBarCollapsed] = useState(false);
+  const [auditEntryId, setAuditEntryId] = useState<string | null>(null);
+  const [viewedRevision, setViewedRevision] = useState<{ label: string; summary: string; knowledge: string } | null>(null);
+  const [revisionLogByEntry, setRevisionLogByEntry] = useState(() => Object.fromEntries(CONTEXT_ENTRIES.map((entry) => [entry.id, [
+    { id: `${entry.id}-revision-3`, label: "Revision 3", summary: entry.summary, knowledge: entry.knowledge || entry.content || entry.summary, updatedBy: entry.updatedBy ?? "Amy Vong", updatedAt: entry.updatedAt ?? entry.updated },
+    { id: `${entry.id}-revision-2`, label: "Revision 2", summary: entry.summary, knowledge: entry.knowledge || entry.content || entry.summary, updatedBy: "Amy Vong", updatedAt: entry.updatedAt ?? entry.updated },
+    { id: `${entry.id}-revision-1`, label: "Revision 1", summary: entry.summary, knowledge: entry.knowledge || entry.content || entry.summary, updatedBy: "Amy Vong", updatedAt: entry.updatedAt ?? entry.updated },
+  ]])));
   const [entries, setEntries] = useState<ContextEntry[]>(CONTEXT_ENTRIES);
   const [isAddingContext, setIsAddingContext] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [newContextName, setNewContextName] = useState("");
   const [newContextCategory, setNewContextCategory] = useState("");
   const [newContextDescription, setNewContextDescription] = useState("");
@@ -246,6 +267,16 @@ export function ContextV1Page() {
       setNewContextDescription("");
       setIsAddingContext(false);
     }
+  };
+
+  const handleEditContext = (entry: ContextEntry) => {
+    setEditingEntryId(entry.id);
+    setNewContextName(entry.title);
+    setNewContextCategory(entry.category);
+    setNewContextDescription(entry.content ?? entry.knowledge ?? entry.summary);
+    setShowInterpretation(false);
+    setLexiInterpretation(null);
+    setIsAddingContext(true);
   };
 
   const handleAddCategory = () => {
@@ -302,9 +333,7 @@ export function ContextV1Page() {
 
 **Category:** ${interp.header.category}
 
-**Description:** ${interp.header.description}
-
-**Tags:** ${interp.header.tags.join(", ")}`;
+**Description:** ${interp.header.description}`;
   };
 
   const handleReview = () => {
@@ -329,12 +358,42 @@ export function ContextV1Page() {
       signals: lexiInterpretation?.header.tags || [],
       sources: "Lexi KB",
       updated: new Date().toLocaleDateString("en-AU", { year: "numeric", month: "short", day: "numeric" }),
+      addedBy: "Amy Vong",
+      addedAt: new Date().toLocaleDateString("en-AU", { year: "numeric", month: "short", day: "numeric" }),
+      updatedBy: "Amy Vong",
+      updatedAt: new Date().toLocaleDateString("en-AU", { year: "numeric", month: "short", day: "numeric" }),
     };
     
-    // Add to entries
-    setEntries([...entries, newEntry]);
-    
-    // Reset form and navigate to the new entry
+    if (editingEntryId) {
+      setEntries((current) => current.map((entry) => entry.id === editingEntryId
+        ? {
+          ...entry,
+          category: newEntry.category,
+          title: newEntry.title,
+          summary: newEntry.summary,
+          knowledge: newEntry.knowledge,
+          signals: newEntry.signals,
+          sources: newEntry.sources,
+          updated: newEntry.updated,
+          updatedBy: newEntry.updatedBy,
+          updatedAt: newEntry.updatedAt,
+        }
+        : entry));
+      setAuditEntryId(editingEntryId);
+      setViewedRevision(null);
+      setRevisionLogByEntry((current) => ({
+        ...current,
+        [editingEntryId]: [
+          { id: `${editingEntryId}-revision-current`, label: "Revision 4", summary: newEntry.summary, knowledge: newEntry.knowledge, updatedBy: "Amy Vong", updatedAt: newEntry.updatedAt ?? newEntry.updated },
+          ...(current[editingEntryId] ?? []).slice(0, 3),
+        ],
+      }));
+    } else {
+      setEntries([...entries, newEntry]);
+    }
+    setEditingEntryId(null);
+
+    // Reset form and navigate to the updated or new entry
     setNewContextName("");
     setNewContextCategory("");
     setNewContextDescription("");
@@ -373,40 +432,71 @@ export function ContextV1Page() {
 
   return (
     <div className="flex h-full min-w-0 overflow-hidden bg-background">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-background px-3 py-4">
-        <div className="mb-4">
-          <Button 
-            onClick={() => {
-              setNewContextDescription(SEEDED_CONTEXT_DESCRIPTION);
-              setIsAddingContext(true);
-            }} 
-            className="w-full gap-2"
-            size="sm"
+      <aside className={cn("flex shrink-0 flex-col border-r border-border bg-background py-4 transition-[width]", categoryBarCollapsed ? "w-12 items-center px-2" : "w-64 px-3")}>
+        {categoryBarCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setCategoryBarCollapsed(false)}
+            className="inline-flex size-8 items-center justify-center rounded-lg text-foreground-secondary transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Expand categories"
+            title="Expand categories"
           >
-            <RiAddLine className="size-4" />
-            Add New Context
-          </Button>
-        </div>
+            <RiSidebarUnfoldLine className="size-4" />
+          </button>
+        ) : (
+          <>
+        {contextMode === "editable" ? (
+          <div className="mb-4">
+            <Button 
+              onClick={() => {
+                setEditingEntryId(null);
+                setNewContextDescription(SEEDED_CONTEXT_DESCRIPTION);
+                setIsAddingContext(true);
+              }} 
+              className="w-full gap-2"
+              size="sm"
+            >
+              <RiAddLine className="size-4" />
+              Add New Context
+            </Button>
+          </div>
+        ) : null}
         
         <div className="mb-3 flex items-center justify-between gap-2 px-2">
           <h2 className="text-sm font-semibold text-foreground">Categories</h2>
-          <RiDatabase2Line className="size-4 text-muted-foreground" />
+          <button
+            type="button"
+            onClick={() => setCategoryBarCollapsed(true)}
+            className="inline-flex size-7 items-center justify-center rounded-md text-foreground-secondary transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Collapse categories"
+            title="Collapse categories"
+          >
+            <RiSidebarFoldLine className="size-4" />
+          </button>
         </div>
         <nav aria-label="Context categories" className="flex flex-col gap-1 overflow-y-auto">
           {["All context", ...CONTEXT_CATEGORIES].map((category) => {
             const count = category === "All context"
-              ? CONTEXT_ENTRIES.length
-              : CONTEXT_ENTRIES.filter((entry) => entry.category === category).length;
+              ? entries.length
+              : entries.filter((entry) => entry.category === category).length;
             return (
               <button
                 key={category}
                 type="button"
                 aria-pressed={selectedCategory === category}
                 onClick={() => {
+                  setIsAddingContext(false);
+                  setEditingEntryId(null);
+                  setShowInterpretation(false);
+                  setLexiInterpretation(null);
+                  setInterpretationViewMode("lexi");
+                  setNewContextName("");
+                  setNewContextCategory("");
+                  setNewContextDescription("");
+                  setIsAddingCategory(false);
+                  setNewCategoryName("");
                   setSelectedCategory(category);
-                  setSelectedEntryId(category === "All context"
-                    ? ""
-                    : CONTEXT_ENTRIES.find((entry) => entry.category === category)?.id ?? "");
+                  setSelectedEntryId("");
                 }}
                 className={cn(
                   "flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
@@ -421,6 +511,8 @@ export function ContextV1Page() {
             );
           })}
         </nav>
+          </>
+        )}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto px-6 py-6">
@@ -431,6 +523,7 @@ export function ContextV1Page() {
                 <button 
                   onClick={() => {
                     setIsAddingContext(false);
+                    setEditingEntryId(null);
                     setNewContextName("");
                     setNewContextCategory("");
                     setNewContextDescription("");
@@ -445,9 +538,9 @@ export function ContextV1Page() {
               </div>
               <div className="flex items-center gap-2">
                 <RiAddLine className="size-5 text-foreground-secondary" />
-                <h1 className="text-xl font-semibold text-foreground">Add New Context</h1>
+                <h1 className="text-xl font-semibold text-foreground">{editingEntryId ? "Edit Context" : "Add New Context"}</h1>
               </div>
-              <p className="mt-1 text-sm text-foreground-secondary">Create a new context entry for your knowledge base.</p>
+              <p className="mt-1 text-sm text-foreground-secondary">{editingEntryId ? "Update this context entry for your knowledge base." : "Create a new context entry for your knowledge base."}</p>
             </header>
 
             <div className="max-w-2xl space-y-6">
@@ -529,12 +622,13 @@ export function ContextV1Page() {
                   disabled={!newContextName.trim() || !newContextCategory.trim() || !newContextDescription.trim()}
                   size="lg"
                 >
-                  Review
+                  Preview
                 </Button>
                 <Button 
                   variant="outline"
                   onClick={() => {
                     setIsAddingContext(false);
+                    setEditingEntryId(null);
                     setNewContextName("");
                     setNewContextCategory("");
                     setNewContextDescription("");
@@ -551,7 +645,7 @@ export function ContextV1Page() {
               {showInterpretation && lexiInterpretation && (
                 <div className="mt-8 space-y-4 rounded-lg border border-border bg-card p-6">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-lg font-semibold text-foreground">Lexi Interpretation</h3>
+                    <h3 className="text-lg font-semibold text-foreground">Context Preview</h3>
                     <button
                       onClick={() => setInterpretationViewMode(interpretationViewMode === "lexi" ? "markdown" : "lexi")}
                       className="text-xs font-medium text-primary hover:underline"
@@ -566,21 +660,9 @@ export function ContextV1Page() {
                         <p className="text-xs font-semibold text-muted-foreground">TITLE</p>
                         <p className="mt-1 text-base font-semibold text-foreground">{lexiInterpretation.header.title}</p>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground">CATEGORY</p>
-                          <p className="mt-1 text-sm text-foreground">{lexiInterpretation.header.category}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground">TAGS</p>
-                          <div className="mt-1 flex flex-wrap gap-2">
-                            {lexiInterpretation.header.tags.map((tag) => (
-                              <span key={tag} className="inline-block rounded-full bg-primary/10 px-2 py-1 text-xs text-foreground">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground">CATEGORY</p>
+                        <p className="mt-1 text-sm text-foreground">{lexiInterpretation.header.category}</p>
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground">DESCRIPTION</p>
@@ -625,7 +707,7 @@ export function ContextV1Page() {
                       onClick={handleApprove}
                       disabled={!newContextCategory.trim()}
                     >
-                      Approve
+                      Save
                     </Button>
                     <Button
                       variant="ghost"
@@ -636,15 +718,89 @@ export function ContextV1Page() {
                   </div>
                 </div>
               )}
+
+              {editingEntryId ? (
+                <aside aria-label="Audit history" className="mt-8 rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-foreground">Audit history</h3>
+                    <span className="text-xs text-muted-foreground">Revision log</span>
+                  </div>
+                  <div className="mt-3 divide-y divide-border rounded-lg border border-border">
+                    {(revisionLogByEntry[editingEntryId] ?? []).slice(0, 3).map((revision, index) => (
+                      <div key={revision.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">{revision.label} {index === 0 ? "· Current" : ""}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{revision.updatedBy} · {revision.updatedAt}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Button type="button" variant="outline" size="sm" onClick={() => {
+                            setAuditEntryId(editingEntryId);
+                            setViewedRevision({ label: revision.label, summary: revision.summary, knowledge: revision.knowledge });
+                          }}>View</Button>
+                          {index > 0 ? (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => {
+                              setEntries((current) => current.map((entry) => entry.id === editingEntryId ? {
+                                ...entry,
+                                summary: revision.summary,
+                                knowledge: revision.knowledge,
+                                updated: revision.updatedAt,
+                                updatedBy: revision.updatedBy,
+                                updatedAt: revision.updatedAt,
+                              } : entry));
+                              setNewContextName(entries.find((entry) => entry.id === editingEntryId)?.title ?? newContextName);
+                              setNewContextDescription(revision.summary);
+                              setViewedRevision({ label: revision.label, summary: revision.summary, knowledge: revision.knowledge });
+                              setAuditEntryId(editingEntryId);
+                            }}>Roll back</Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {auditEntryId === editingEntryId && viewedRevision ? (
+                    <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                      <p className="text-xs font-semibold text-foreground">Viewing {viewedRevision.label}</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">{viewedRevision.summary}</p>
+                      <p className="mt-1 line-clamp-3 text-xs text-foreground-secondary">{viewedRevision.knowledge}</p>
+                    </div>
+                  ) : null}
+                </aside>
+              ) : null}
             </div>
           </>
         ) : (
           <>
             <header className="mb-4">
+              {showModeToggle ? (
+                <div className="mb-4 flex justify-end">
+                  <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1" aria-label="Context mode">
+                    <button
+                      type="button"
+                      aria-pressed={contextMode === "read-only"}
+                      onClick={() => {
+                        setContextMode("read-only");
+                        setIsAddingContext(false);
+                        setEditingEntryId(null);
+                      }}
+                      className={cn("h-8 rounded-md px-3 text-sm transition-colors", contextMode === "read-only" ? "bg-card font-medium text-foreground shadow-xs" : "text-foreground-secondary hover:text-foreground")}
+                    >
+                      Read only
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={contextMode === "editable"}
+                      onClick={() => setContextMode("editable")}
+                      className={cn("h-8 rounded-md px-3 text-sm transition-colors", contextMode === "editable" ? "bg-card font-medium text-foreground shadow-xs" : "text-foreground-secondary hover:text-foreground")}
+                    >
+                      Editable
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex items-center gap-2">
                 <RiBookOpenLine className="size-5 text-foreground-secondary" />
                 <h1 className="text-xl font-semibold text-foreground">Context</h1>
-                <Badge variant="outline" size="sm">Read only</Badge>
+                {contextMode === "read-only" ? <Badge variant="outline" size="sm">Read only</Badge> : null}
               </div>
               <p className="mt-1 text-sm text-foreground-secondary">Business context and knowledge available to Lexi.</p>
             </header>
@@ -661,8 +817,8 @@ export function ContextV1Page() {
           />
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.8fr)]">
-          <section aria-label="Context entries" className="min-w-0 overflow-x-auto rounded-xl border border-border bg-card">
+        <div className={cn("grid min-h-0 flex-1 gap-4", selectedEntry && !entryExpanded && "xl:grid-cols-[minmax(0,1.35fr)_minmax(30.42rem,1.35fr)]")}> 
+          <section aria-label="Context entries" className={cn("min-w-0 overflow-x-auto rounded-xl border border-border bg-card", entryExpanded && "hidden xl:hidden")}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -677,12 +833,27 @@ export function ContextV1Page() {
                     <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">No context entries match your search.</TableCell>
                   </TableRow>
                 ) : filteredEntries.map((entry) => (
-                  <TableRow key={entry.id} className={cn(selectedEntry?.id === entry.id && "bg-accent/40")}>
+                  <TableRow key={entry.id} className={cn(selectedEntry?.id === entry.id && "bg-primary/10")}>
                     <TableCell className="min-w-[20rem] py-3">
-                      <button type="button" onClick={() => setSelectedEntryId(entry.id)} className="w-full text-left">
-                        <span className="block text-sm font-semibold text-foreground">{entry.title}</span>
-                        <span className="mt-0.5 block text-xs leading-relaxed text-foreground-secondary">{entry.summary}</span>
-                      </button>
+                      <div className="flex items-start gap-3">
+                        <button type="button" onClick={() => setSelectedEntryId(entry.id)} className="min-w-0 flex-1 text-left">
+                          <span className="block text-sm font-semibold text-foreground">{entry.title}</span>
+                          <span className="mt-0.5 block text-xs leading-relaxed text-foreground-secondary">{entry.summary}</span>
+                        </button>
+                        {contextMode === "editable" ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleEditContext(entry);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="align-top text-xs text-foreground-secondary">{entry.category}</TableCell>
                     <TableCell className="align-top text-xs text-foreground-secondary">{entry.sources}</TableCell>
@@ -692,15 +863,25 @@ export function ContextV1Page() {
             </Table>
           </section>
 
-          <aside aria-label="Selected context entry" className="min-w-0 rounded-xl border border-border bg-card p-4">
-            {selectedEntry ? (
-              <>
+          {selectedEntry ? (
+            <div className="min-w-0 space-y-4">
+              <aside aria-label="Selected context entry" className="min-w-0 rounded-xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-xs font-semibold text-foreground-secondary">Name</h2>
                     <p className="mt-1 text-base font-semibold text-foreground">{selectedEntry.title}</p>
                   </div>
-                  <Badge variant="outline" size="sm">Read only</Badge>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {contextMode === "read-only" ? <Badge variant="outline" size="sm">Read only</Badge> : (
+                      <Button type="button" variant="outline" size="sm" onClick={() => handleEditContext(selectedEntry)}>Edit</Button>
+                    )}
+                    <button type="button" onClick={() => setEntryExpanded((expanded) => !expanded)} className="inline-flex size-8 items-center justify-center rounded-lg text-foreground-secondary transition-colors hover:bg-muted hover:text-foreground" aria-label={entryExpanded ? "Collapse context entry" : "Expand context entry"} title={entryExpanded ? "Collapse" : "Expand"}>
+                      {entryExpanded ? <RiFullscreenExitLine className="size-4" /> : <RiExpandDiagonalLine className="size-4" />}
+                    </button>
+                    <button type="button" onClick={() => { setSelectedEntryId(""); setEntryExpanded(false); }} className="inline-flex size-8 items-center justify-center rounded-lg text-foreground-secondary transition-colors hover:bg-muted hover:text-foreground" aria-label="Close context entry" title="Close">
+                      <RiCloseLine className="size-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-5 border-t border-border pt-4">
                   <h3 className="text-xs font-semibold text-foreground">Description</h3>
@@ -709,22 +890,55 @@ export function ContextV1Page() {
                 <div className="mt-5 border-t border-border pt-4">
                   <h3 className="text-xs font-semibold text-foreground">Context</h3>
                   <div className="mt-2">
-                    {selectedEntry.content
-                      ? <Markdown source={selectedEntry.content} />
-                      : <p className="text-sm leading-relaxed text-foreground-secondary">{selectedEntry.knowledge}</p>}
-                </div>
+                    {selectedEntry.content ? <Markdown source={selectedEntry.content} /> : <p className="text-sm leading-relaxed text-foreground-secondary">{selectedEntry.knowledge}</p>}
+                  </div>
                 </div>
                 <div className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">
-                  <p>Sources: {selectedEntry.sources}</p>
-                  <p className="mt-1">Updated: {selectedEntry.updated}</p>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <div><dt className="font-semibold text-foreground-secondary">Added by</dt><dd className="mt-0.5">{selectedEntry.addedBy ?? "Amy Vong"}</dd></div>
+                    <div><dt className="font-semibold text-foreground-secondary">Date added</dt><dd className="mt-0.5">{selectedEntry.addedAt ?? "15 Oct 2026"}</dd></div>
+                    <div><dt className="font-semibold text-foreground-secondary">Last updated by</dt><dd className="mt-0.5">{selectedEntry.updatedBy ?? "Amy Vong"}</dd></div>
+                    <div><dt className="font-semibold text-foreground-secondary">Last updated</dt><dd className="mt-0.5">{selectedEntry.updatedAt ?? selectedEntry.updated}</dd></div>
+                  </dl>
                 </div>
-              </>
-            ) : (
-              <div className="flex h-full min-h-40 items-center justify-center text-sm text-muted-foreground">
-                Select a context entry to view its details.
-              </div>
-            )}
-          </aside>
+              </aside>
+              {contextMode === "editable" ? (
+                <aside aria-label="Audit history" className="min-w-0 rounded-xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-foreground">Audit history</h3>
+                    <span className="text-xs text-muted-foreground">Revision log</span>
+                  </div>
+                  <div className="mt-3 divide-y divide-border rounded-lg border border-border">
+                    {(revisionLogByEntry[selectedEntry.id] ?? []).slice(0, 3).map((revision, index) => (
+                      <div key={revision.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">{revision.label} {index === 0 ? "· Current" : ""}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{revision.updatedBy} · {revision.updatedAt}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Button type="button" variant="outline" size="sm" onClick={() => { setAuditEntryId(selectedEntry.id); setViewedRevision({ label: revision.label, summary: revision.summary, knowledge: revision.knowledge }); }}>View</Button>
+                          {index > 0 ? (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => {
+                              setEntries((current) => current.map((entry) => entry.id === selectedEntry.id ? { ...entry, summary: revision.summary, knowledge: revision.knowledge, updated: revision.updatedAt, updatedBy: revision.updatedBy, updatedAt: revision.updatedAt } : entry));
+                              setViewedRevision({ label: revision.label, summary: revision.summary, knowledge: revision.knowledge });
+                              setAuditEntryId(selectedEntry.id);
+                            }}>Roll back</Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {auditEntryId === selectedEntry.id && viewedRevision ? (
+                    <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                      <p className="text-xs font-semibold text-foreground">Viewing {viewedRevision.label}</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">{viewedRevision.summary}</p>
+                      <p className="mt-1 line-clamp-3 text-xs text-foreground-secondary">{viewedRevision.knowledge}</p>
+                    </div>
+                  ) : null}
+                </aside>
+              ) : null}
+            </div>
+          ) : null}
         </div>
           </>
         )}

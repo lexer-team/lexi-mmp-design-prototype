@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LexerLogo } from "@/components/layout/LexerLogo";
-import { PrototypeOptionsButton } from "@/components/layout/PrototypeOptionsButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -82,7 +81,7 @@ import { SessionProvider, useSession } from "./store";
 import { PromptComposer } from "./components/PromptComposer";
 import { BetaBadge } from "@/components/BetaBadge";
 
-type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "dashboards-2" | "playbook" | "skills" | "calendar" | "insights" | "sources" | "integrations" | "connections-thin-slice-1" | "activations" | "context" | "users";
+type Page = "chat" | "space" | "space-detail" | "segments" | "segment-detail" | "definitions" | "metrics" | "benchmarks" | "scorecard" | "dashboards" | "dashboards-2" | "playbook" | "skills" | "calendar" | "insights" | "sources" | "integrations" | "connections-thin-slice-1" | "context-thin-slice-1" | "activations" | "context" | "users";
 type DefinitionsTab = "source" | "calculated" | "custom";
 type ActivationNavFilter = "all" | ActivationStatus;
 type PlaybookSection = "glossary" | "rules" | "calendar" | "documents";
@@ -563,18 +562,19 @@ function SegmentV1Inner() {
     : page === "scorecard" ? "Scorecard"
     : page === "dashboards" ? "Dashboards"
     : page === "dashboards-2" ? "Dashboards 2"
-    : page === "playbook" ? (playbookSection === "rules" ? "Rules" : "Playbook")
+    : page === "playbook" ? (playbookSection === "rules" ? "Rules" : playbookSection === "documents" ? "Uploads" : "Playbook")
     : page === "skills" ? "Skills"
     : page === "calendar" ? "Calendar"
     : page === "insights" ? "Insights"
     : page === "users" ? "Users"
     : page === "context" ? "Context"
+    : page === "context-thin-slice-1" ? "Context Thin Slice 1"
     : page === "sources" ? "Sources"
     : page === "integrations" || page === "connections-thin-slice-1" ? "Connections"
     : page === "activations" ? "Activations"
     : (activeConv?.title ?? "New chat");
-  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "definitions" || page === "skills" || page === "connections-thin-slice-1" || (page === "playbook" && playbookSection === "rules");
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
+  const inKnowledge = page === "calendar" || page === "insights" || page === "segments" || page === "segment-detail" || page === "context" || page === "definitions" || page === "skills" || page === "connections-thin-slice-1" || (page === "playbook" && (playbookSection === "rules" || playbookSection === "documents"));
+  const inData = (page === "playbook" && playbookSection !== "rules" && playbookSection !== "documents") || page === "definitions" || page === "metrics" || page === "benchmarks" || page === "scorecard" || page === "sources" || page === "integrations";
   const inSpace = page === "space" || page === "space-detail";
   const inActivations = page === "activations";
   const HeaderIcon = isChat ? RiMessage2Line : page === "dashboards" || page === "dashboards-2" ? RiDashboardLine : inSpace ? RiPlanetLine : inActivations ? RiBroadcastLine : inKnowledge ? RiBrainLine : RiDatabase2Line;
@@ -616,6 +616,10 @@ function SegmentV1Inner() {
           }}
           onOpenRules={() => {
             setPlaybookSection("rules");
+            navigateFromSidebar("playbook");
+          }}
+          onOpenUploads={() => {
+            setPlaybookSection("documents");
             navigateFromSidebar("playbook");
           }}
           onNavigate={navigateFromSidebar}
@@ -680,7 +684,6 @@ function SegmentV1Inner() {
               <RiLayoutRightLine className="size-4" />
             </button>
           )}
-          <PrototypeOptionsButton />
         </header>
 
         {/* Content */}
@@ -788,7 +791,11 @@ function SegmentV1Inner() {
             </div>
           ) : page === "context" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
-              <ContextV1Page />
+              <ContextV1Page key="knowledge-context" initialMode="read-only" showModeToggle />
+            </div>
+          ) : page === "context-thin-slice-1" ? (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <ContextV1Page key="context-thin-slice-1" initialMode="read-only" showModeToggle />
             </div>
           ) : page === "space" ? (
             <div className="min-w-0 flex-1 overflow-hidden">
@@ -5432,6 +5439,7 @@ function Sidebar({
   onTogglePinnedChat,
   onSelectActivationFilter,
   onOpenRules,
+  onOpenUploads,
   onNavigate,
 }: {
   collapsed: boolean;
@@ -5442,14 +5450,15 @@ function Sidebar({
   onTogglePinnedChat: (id: string) => void;
   onSelectActivationFilter: (status: ActivationNavFilter) => void;
   onOpenRules: () => void;
+  onOpenUploads: () => void;
   onNavigate: (p: Page) => void;
 }) {
   const { state, dispatch } = useSession();
   const inSegments = page === "segments" || page === "segment-detail";
   const inActivations = page === "activations";
-  const inData = page === "playbook" || page === "definitions" || page === "metrics" || page === "sources" || page === "integrations";
-  const inKnowledge = page === "context" || page === "definitions" || (page === "playbook" && playbookSection === "rules");
-  const inThinSlice = page === "connections-thin-slice-1";
+  const inData = (page === "playbook" && playbookSection !== "rules" && playbookSection !== "documents") || page === "definitions" || page === "metrics" || page === "sources" || page === "integrations";
+  const inKnowledge = page === "context" || page === "definitions" || page === "calendar" || (page === "playbook" && (playbookSection === "rules" || playbookSection === "documents"));
+  const inThinSlice = page === "connections-thin-slice-1" || page === "context-thin-slice-1";
   const [activationsOpen, setActivationsOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [thinSliceOpen, setThinSliceOpen] = useState(false);
@@ -5549,9 +5558,11 @@ function Sidebar({
               {!collapsed && knowledgeOpen && (
                 <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
                   <li><SubNavRow label="Context" active={page === "context"} onClick={() => onNavigate("context")} /></li>
+                  <li><SubNavRow label="Calendar" active={page === "calendar"} onClick={() => onNavigate("calendar")} /></li>
                   <li><SubNavRow label="Definitions" active={page === "definitions"} onClick={() => onNavigate("definitions")} /></li>
                   <li><SubNavRow label="Rules" active={page === "playbook" && playbookSection === "rules"} onClick={onOpenRules} /></li>
                   <li><SubNavRow label="Skills" active={page === "skills"} onClick={() => onNavigate("skills")} /></li>
+                  <li><SubNavRow label="Uploads" active={page === "playbook" && playbookSection === "documents"} onClick={onOpenUploads} /></li>
                 </ul>
               )}
             </li>
@@ -5568,7 +5579,8 @@ function Sidebar({
               />
               {!collapsed && thinSliceOpen && (
                 <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-9">
-                  <li><SubNavRow label="Connections Thin Slice 1" active={inThinSlice} onClick={() => onNavigate("connections-thin-slice-1")} /></li>
+                  <li><SubNavRow label="Connections Thin Slice 1" active={page === "connections-thin-slice-1"} onClick={() => onNavigate("connections-thin-slice-1")} /></li>
+                  <li><SubNavRow label="Context Thin Slice 1" active={page === "context-thin-slice-1"} onClick={() => onNavigate("context-thin-slice-1")} /></li>
                 </ul>
               )}
             </li>

@@ -138,12 +138,12 @@ function buildActivationCalendarDummies(baseDate: Date): CalendarEntry[] {
 export function PlaybookPage({ initialTab = "glossary" }: { initialTab?: PlaybookTab }) {
   const { state } = useSession();
   const [tab, setTab] = useState<PlaybookTab>(initialTab);
-  const pageTitle = tab === "glossary" ? "Custom Definitions" : tab === "rules" ? "Rules" : "Playbook";
+  const pageTitle = initialTab === "documents" ? "Uploads" : initialTab === "calendar" ? "Calendar" : tab === "glossary" ? "Custom Definitions" : tab === "rules" ? "Rules" : "Playbook";
   const visibleTabs = initialTab === "rules"
     ? TAB_META.filter((section) => section.value === "rules")
     : initialTab === "glossary"
       ? TAB_META.filter((section) => section.value === "glossary")
-      : TAB_META;
+      : initialTab === "documents" || initialTab === "calendar" ? [] : TAB_META;
   const showSectionNav = visibleTabs.length > 1;
   const [selected, setSelected] = useState<Selection | null>(null);
   // Documents are lifted here so uploads are visible to both the grid and the drawer.
@@ -230,7 +230,9 @@ export function PlaybookPage({ initialTab = "glossary" }: { initialTab?: Playboo
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold text-foreground">{pageTitle}</h1>
           <p className="max-w-2xl text-sm text-foreground-secondary">
-            The shared vocabulary, rules, key dates and documents that govern how Lexi interprets a request before it builds anything.
+            {initialTab === "calendar"
+              ? "Calendar and key dates"
+              : "The shared vocabulary, rules, key dates and documents that govern how Lexi interprets a request before it builds anything."}
           </p>
         </div>
       </div>
